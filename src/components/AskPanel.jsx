@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { Icon, Spinner } from './ui.jsx';
 
@@ -18,6 +18,20 @@ export default function AskPanel({ material, open, onClose }) {
   const endRef = useRef(null);
 
   const chunkById = new Map((material.chunks ?? []).map((c) => [c.id, c]));
+
+  /**
+   * Prompts drawn from this material's own key terms and section headings.
+   * Hardcoded examples would suggest database questions to someone who just
+   * uploaded a chemistry deck — worse than showing nothing, because it implies
+   * the panel has not read their file.
+   */
+  const suggestions = useMemo(() => {
+    const terms = (material.recap?.keyTerms ?? []).slice(0, 2).map((t) => `What does "${t.term}" mean?`);
+    const headings = (material.recap?.sections ?? [])
+      .slice(0, 2)
+      .map((s) => `Explain ${s.heading.charAt(0).toLowerCase()}${s.heading.slice(1)}.`);
+    return [...terms, ...headings].slice(0, 3);
+  }, [material]);
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
@@ -66,15 +80,11 @@ export default function AskPanel({ material, open, onClose }) {
       </header>
 
       <div className="ask-thread">
-        {thread.length === 0 && (
+        {thread.length === 0 && suggestions.length > 0 && (
           <div className="ask-hint">
             <p>Try one of these:</p>
             <ul>
-              {[
-                'What is the difference between 2NF and 3NF?',
-                'Which anomaly does redundancy cause?',
-                'Explain functional dependencies with the example from the slides.',
-              ].map((s) => (
+              {suggestions.map((s) => (
                 <li key={s}>
                   <button type="button" onClick={() => setQuestion(s)}>
                     {s}

@@ -45,7 +45,7 @@ export default function Signup() {
   return (
     <AuthLayout
       title="Start your first recap"
-      subtitle="Free while the project runs on AWS Learner Lab credits and free-tier models. No card, no model spend."
+      subtitle="Free, and no card needed. If you have been using SmartRecap as a guest, everything you have already made moves across with you."
       mascotState="wave"
       footer={
         <>

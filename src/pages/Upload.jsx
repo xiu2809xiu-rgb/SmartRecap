@@ -39,6 +39,7 @@ export default function Upload() {
   const [moduleName, setModuleName] = useState('');
   const [quizLength, setQuizLength] = useState(10);
   const [dragging, setDragging] = useState(false);
+  const [step, setStep] = useState(1);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef(null);
@@ -124,8 +125,8 @@ export default function Upload() {
           <p className="eyebrow">New recap</p>
           <h1 className="upload-title">What are we working through?</h1>
           <p className="lede">
-            Slides, notes, a scanned handout or a photo of what you wrote in the lecture. If there is no text layer,
-            Amazon Textract reads it instead.
+            Slides, notes, a scanned handout, or a photo of what you wrote in the lecture. If it is a scan or a
+            photo, SmartRecap reads the text off it for you.
           </p>
         </div>
         {allowMascot && <Mascot state={file ? 'reading' : 'wave'} size={170} shadow={false} />}
@@ -136,8 +137,12 @@ export default function Upload() {
           initialStep={1}
           backButtonText="Back"
           nextButtonText="Continue"
+          onStepChange={setStep}
           onFinalStepCompleted={start}
-          nextButtonProps={{ disabled: busy }}
+          /* Gate step one on actually having a file. Without this you can walk
+             all three steps and only discover the problem at the end, which is
+             the worst possible moment to be told. */
+          nextButtonProps={{ disabled: busy || (step === 1 && !file) }}
         >
           {/* ------------------------------------------------------- step 1 */}
           <Step>
@@ -204,8 +209,8 @@ export default function Upload() {
 
             <p className="upload-privacy">
               <Icon name="lock" size={15} />
-              The file uploads straight to a private S3 bucket with a presigned URL. It is not sent to the AI provider
-              in full — only the extracted text chunks are.
+              Your file is stored privately — only you can open it. Only the text inside is read; the file itself is
+              never handed to the AI.
             </p>
           </Step>
 
@@ -259,8 +264,8 @@ export default function Upload() {
                 label="Quiz length"
               />
               <p className="field-hint">
-                Questions the model cannot settle from your material are generated but excluded from scoring, so the
-                final count can come out slightly lower.
+                Questions your material does not clearly answer are still shown and explained, but they do not count
+                toward your score — so the scored total can come out slightly lower.
               </p>
             </div>
 

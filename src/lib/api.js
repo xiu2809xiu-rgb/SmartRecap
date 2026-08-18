@@ -83,7 +83,10 @@ const live = {
   auth: {
     me: () => request('/auth/me'),
     signup: async (payload) => {
-      const r = await request('/auth/signup', { method: 'POST', body: payload, auth: false });
+      // Sent WITH the current token on purpose: if the caller is a guest, the
+      // API moves their library onto the new account. The route itself stays
+      // unauthenticated, so a missing token is fine.
+      const r = await request('/auth/signup', { method: 'POST', body: payload, auth: true });
       tokenStore.set(r.token);
       return r.user;
     },
@@ -118,7 +121,7 @@ const live = {
         headers: { 'Content-Type': file.type || 'application/octet-stream' },
         body: file,
       });
-      if (!res.ok) throw new ApiError('Upload to S3 failed', res.status, null);
+      if (!res.ok) throw new ApiError('Could not upload your file. Check your connection and try again.', res.status, null);
     },
   },
 

@@ -45,13 +45,13 @@ const persist = () => write(db);
 
 /** Mirrors `backend/src/handlers/process.js` so the UI shows the real pipeline. */
 export const PIPELINE_STAGES = [
-  { id: 'upload', label: 'Uploading to Amazon S3', detail: 'Presigned PUT, private bucket', ms: 900 },
-  { id: 'extract', label: 'Extracting text layer', detail: 'Page and slide boundaries preserved', ms: 1600 },
-  { id: 'chunk', label: 'Segmenting into citable chunks', detail: 'Each chunk keeps its slide number', ms: 700 },
-  { id: 'recap', label: 'Generating structured recap', detail: 'Constrained JSON, citations required', ms: 4200 },
-  { id: 'quiz', label: 'Writing quiz items', detail: 'Every option traced to a chunk', ms: 3200 },
-  { id: 'ground', label: 'Verifying claims against source', detail: 'Ungrounded claims dropped, not shown', ms: 1400 },
-  { id: 'store', label: 'Saving to DynamoDB', detail: 'Recap, quiz and chunk index', ms: 600 },
+  { id: 'upload', label: 'Uploading your file', detail: 'Stored privately — only you can open it', ms: 900 },
+  { id: 'extract', label: 'Reading the text', detail: 'Keeping track of which slide each part came from', ms: 1600 },
+  { id: 'chunk', label: 'Sorting it by slide', detail: 'So every point can link back to where it came from', ms: 700 },
+  { id: 'recap', label: 'Writing your recap', detail: 'Every point has to name the slide it came from', ms: 4200 },
+  { id: 'quiz', label: 'Writing your quiz', detail: 'Every answer traced back to your material', ms: 3200 },
+  { id: 'ground', label: 'Checking every claim', detail: 'Anything that cannot be traced is dropped', ms: 1400 },
+  { id: 'store', label: 'Saving to your library', detail: 'Recap, quiz and sources', ms: 600 },
 ];
 
 async function runJob(jobId, material) {
@@ -274,7 +274,7 @@ export const mockApi = {
   },
 
   async tts() {
-    throw Object.assign(new Error('Read-aloud needs the deployed backend (Amazon Polly).'), { status: 501 });
+    throw Object.assign(new Error('Read-aloud is not available in demo mode.'), { status: 501 });
   },
 
   /** Test hook — lets Settings reset the demo store. */

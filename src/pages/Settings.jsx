@@ -32,8 +32,9 @@ export default function Settings() {
             <h2>You are in a guest session</h2>
             <p>
               Your {materials.length} {materials.length === 1 ? 'material' : 'materials'} and {attempts.length}{' '}
-              {attempts.length === 1 ? 'attempt' : 'attempts'} live under a temporary identity tied to this browser.
-              Create an account to reach them from your phone, and to stop a cleared cache from taking them with it.
+              {attempts.length === 1 ? 'attempt' : 'attempts'} are tied to this browser. Clearing your browsing data
+              would take them with it. Create an account and they move across with you — nothing is lost, and you can
+              pick them up on your phone.
             </p>
           </div>
           <Link to="/signup" className="btn btn-primary">
@@ -49,9 +50,9 @@ export default function Settings() {
           <div>
             <h2>Motion and effects</h2>
             <p>
-              SmartRecap runs WebGL backgrounds and a 3D mascot. On <strong>Reduced</strong> they are not slowed down —
-              they are removed, and no GPU context is created at all. Your system's reduced-motion setting picks the
-              default.
+              SmartRecap uses animated backgrounds and a 3D assistant. On <strong>Reduced</strong> they are switched
+              off completely rather than just slowed down, which is easier on your eyes and on your battery. Your
+              device's own reduced-motion setting picks the default.
             </p>
           </div>
           <Segmented
@@ -67,7 +68,7 @@ export default function Settings() {
 
         <Toggle
           label="Animated backgrounds"
-          hint="The aurora mesh, threads and particle fields behind each screen."
+          hint="The moving colour and light behind each screen."
           checked={prefs.effects}
           disabled={prefs.reduced}
           onChange={() => prefs.toggle('effects')}
@@ -75,7 +76,7 @@ export default function Settings() {
 
         <Toggle
           label="Show Rec, the 3D assistant"
-          hint="Rec reacts to what the pipeline is doing and to your quiz results. Turning this off falls back to a flat badge."
+          hint="Rec reacts to what SmartRecap is doing and to your quiz results."
           checked={prefs.mascot}
           disabled={prefs.reduced}
           onChange={() => prefs.toggle('mascot')}
@@ -95,8 +96,8 @@ export default function Settings() {
           <div>
             <h2>Reading</h2>
             <p>
-              The recap reader uses a light surface at 17px with a 74-character measure. If a different typeface reads
-              better for you, switch it here — it applies to the whole app.
+              Recaps are shown on a light background at a comfortable reading width. If a different typeface is
+              easier for you to read, switch it here — it applies everywhere.
             </p>
           </div>
           <Segmented
@@ -125,11 +126,11 @@ export default function Settings() {
           </div>
           <div>
             <dt>Email</dt>
-            <dd>{isGuest ? 'Guest session — no email' : user?.email}</dd>
+            <dd>{isGuest ? 'None yet' : user?.email}</dd>
           </div>
           <div>
-            <dt>Identity provider</dt>
-            <dd>{isDemo ? 'Demo mode (browser storage)' : 'Amazon Cognito user pool'}</dd>
+            <dt>Signed in with</dt>
+            <dd>{isGuest ? 'Guest session' : 'Email and password'}</dd>
           </div>
           <div>
             <dt>Materials stored</dt>
@@ -166,45 +167,46 @@ export default function Settings() {
         </div>
       </section>
 
-      {/* ------------------------------------------------------ pipeline -- */}
+      {/* ------------------------------------------------------- privacy -- */}
       <section className="panel settings-card">
-        <h2>How your files are handled</h2>
+        <h2>Your files and your privacy</h2>
         <ul className="settings-facts">
           <li>
             <Icon name="lock" size={18} />
             <div>
-              <strong>Uploads go straight to a private S3 bucket</strong>
-              <span>
-                The browser gets a presigned PUT URL valid for five minutes. The file never passes through an
-                application server, and the bucket blocks all public access.
-              </span>
+              <strong>Only you can open what you upload</strong>
+              <span>Your files are stored privately. No other student can reach them, and none of them are public.</span>
             </div>
           </li>
           <li>
             <Icon name="content_cut" size={18} />
             <div>
-              <strong>Only extracted text reaches the model</strong>
+              <strong>Only the text is read</strong>
               <span>
-                Lambda pulls the text layer out, splits it into numbered chunks, and sends those. The original file is
-                never forwarded to the AI provider.
+                SmartRecap pulls the words out of your file and works from those. The file itself is never handed to
+                the AI.
               </span>
             </div>
           </li>
           <li>
-            <Icon name="key_off" size={18} />
+            <Icon name="visibility" size={18} />
             <div>
-              <strong>No API key reaches the browser</strong>
+              <strong>The text is sent to an outside AI service</strong>
               <span>
-                Provider keys live in Lambda environment variables. Every model call is made server-side, which is also
-                why demo mode cannot generate recaps.
+                That is how the recap gets written. The free services SmartRecap uses may keep requests to improve
+                their own models, so treat anything you upload as if it could be seen — do not upload confidential or
+                personal documents.
               </span>
             </div>
           </li>
           <li>
             <Icon name="delete" size={18} />
             <div>
-              <strong>Deleting a material deletes the file</strong>
-              <span>The S3 object, the DynamoDB records, the chunks and the attempt history all go together.</span>
+              <strong>Deleting really deletes</strong>
+              <span>
+                Remove a material and the file, its recap, its quiz, its flashcards and your scores for it all go with
+                it. Uploaded files are also cleared automatically after 30 days.
+              </span>
             </div>
           </li>
         </ul>

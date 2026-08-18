@@ -4,7 +4,7 @@ import {
   InitiateAuthCommand,
   AdminConfirmSignUpCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
-import { keys, newId, getItem, putItem, ttlDays } from '../lib/db.js';
+import { keys, newId, getItem, putItem, deleteItem, queryPrefix, ttlDays } from '../lib/db.js';
 import { issueToken } from '../lib/jwt.js';
 import { badRequest, conflict, unauthorized, HttpError } from '../lib/http.js';
 
@@ -28,7 +28,53 @@ export const publicUser = (u) => ({
   createdAt: u.createdAt,
 });
 
-export async function signup({ email: rawEmail, password, name: rawName }) {
+/**
+ * Moves a guest's library onto a real account.
+ *
+ * Settings tells a guest their work comes with them when they sign up. Without
+ * this it did not: a guest's items live under `USER#<guestId>` and signing up
+ * minted a fresh `USER#<newId>`, orphaning everything they had made. A promise
+ * the product does not keep is worse than not offering the upgrade at all.
+ *
+ * DynamoDB cannot rename a partition key, so each item is rewritten under the
+ * new one and the original deleted. A student library is tens of items, so a
+ * read-then-write pass is fine; it is not a general-purpose migration.
+ */
+async function claimGuestLibrary(fromUserId, toUserId) {
+  const moved = { materials: 0, attempts: 0, cards: 0 };
+
+  for (const [prefix, counter] of [
+    ['MATERIAL#', 'materials'],
+    ['ATTEMPT#', 'attempts'],
+    ['CARDS#', 'cards'],
+  ]) {
+    const items = await queryPrefix({ pk: `USER#${fromUserId}`, prefix });
+    for (const item of items) {
+      const { pk, ...rest } = item;
+      await putItem({ ...rest, pk: `USER#${toUserId}` });
+      await deleteItem({ pk, sk: item.sk });
+
+      // A share link points at the owner by id, so it would 404 after the move.
+      // The token is kept on the material precisely so it can be repointed.
+      if (item.shareToken) {
+        const share = await getItem(keys.share(item.shareToken));
+        if (share) await putItem({ ...share, userId: toUserId });
+      }
+      moved[counter] += 1;
+    }
+  }
+
+  // The guest profile is left to expire on its own TTL rather than deleted, so
+  // a half-finished migration cannot strand a session with no account behind it.
+  console.log('Claimed guest library', { fromUserId, toUserId, ...moved });
+  return moved;
+}
+
+/**
+ * `claimFromUserId` is the id from the caller's current token, when that token
+ * belongs to a guest. The adapters pass it; a signed-in real user passes null.
+ */
+export async function signup({ email: rawEmail, password, name: rawName }, claimFromUserId = null) {
   if (!rawEmail || !password) throw badRequest('Email and password are required.');
   const email = String(rawEmail).trim().toLowerCase();
   const name = String(rawName ?? '').trim() || email.split('@')[0];
@@ -62,7 +108,23 @@ export async function signup({ email: rawEmail, password, name: rawName }) {
   await putItem({ ...keys.user(user.id), ...user });
   await putItem({ ...keys.emailIndex(email), userId: user.id });
 
-  return { token: issueToken({ sub: user.id, email, name }), user: publicUser(user) };
+  let claimed = null;
+  if (claimFromUserId && claimFromUserId !== user.id) {
+    const previous = await getItem(keys.user(claimFromUserId));
+    // Only a guest identity can be claimed. Honouring this for a real account
+    // would let anyone who obtained a token migrate someone else's library.
+    if (previous?.guest) {
+      try {
+        claimed = await claimGuestLibrary(claimFromUserId, user.id);
+      } catch (e) {
+        // The account exists and is usable; losing the migration is bad but
+        // failing the whole sign-up over it is worse.
+        console.error('Guest library claim failed', claimFromUserId, e?.message);
+      }
+    }
+  }
+
+  return { token: issueToken({ sub: user.id, email, name }), user: publicUser(user), claimed };
 }
 
 export async function login({ email: rawEmail, password }) {

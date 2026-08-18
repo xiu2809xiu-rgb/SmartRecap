@@ -1,6 +1,7 @@
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { json, noContent, withErrors, parseBody } from '../lib/http.js';
 import { requireUser } from '../lib/jwt.js';
+
 import * as auth from '../core/auth.js';
 import * as library from '../core/library.js';
 import * as study from '../core/study.js';
@@ -15,6 +16,20 @@ import * as jobs from '../core/jobs.js';
  */
 
 const lambda = new LambdaClient({});
+
+/**
+ * The caller's id when they are signing up from a guest session, otherwise
+ * null. Sign-up is an unauthenticated route, so a missing or invalid token is
+ * the normal case and must not fail the request.
+ */
+const guestIdOf = (event) => {
+  try {
+    const user = requireUser(event);
+    return user.guest ? user.id : null;
+  } catch {
+    return null;
+  }
+};
 
 /**
  * On Lambda a job cannot run here: generation takes 20-40 seconds and API
@@ -34,7 +49,7 @@ const dispatchToProcessor = (payload) =>
 const publicOrigin = () => (process.env.PUBLIC_WEB_ORIGIN ?? (process.env.ALLOWED_ORIGIN !== '*' ? process.env.ALLOWED_ORIGIN : '') ?? '');
 
 const ROUTES = [
-  ['POST', /^\/auth\/signup$/, async (e) => json(201, await auth.signup(parseBody(e)))],
+  ['POST', /^\/auth\/signup$/, async (e) => json(201, await auth.signup(parseBody(e), guestIdOf(e)))],
   ['POST', /^\/auth\/login$/, async (e) => json(200, await auth.login(parseBody(e)))],
   ['POST', /^\/auth\/guest$/, async () => json(201, await auth.guest())],
   ['GET', /^\/auth\/me$/, async (e) => json(200, await auth.me(requireUser(e).id))],

@@ -64,6 +64,20 @@ const send = (fn, status = 200) => async (req, res, next) => {
   }
 };
 
+/**
+ * The caller's id when they are signing up from a guest session, otherwise
+ * null. Sign-up is unauthenticated, so a missing or invalid token is the normal
+ * case and must not fail the request.
+ */
+function guestIdOf(req) {
+  try {
+    const user = requireUser(req);
+    return user.guest ? user.id : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Bearer-token gate. Mirrors `requireUser` on the Lambda side. */
 function requireUser(req) {
   const header = req.get('authorization') ?? '';
@@ -97,7 +111,7 @@ app.get(
   })),
 );
 
-app.post('/auth/signup', send((req) => auth.signup(req.body), 201));
+app.post('/auth/signup', send((req) => auth.signup(req.body, guestIdOf(req)), 201));
 app.post('/auth/login', send((req) => auth.login(req.body)));
 app.post('/auth/guest', send(() => auth.guest(), 201));
 app.get('/auth/me', send((req) => auth.me(requireUser(req).id)));
