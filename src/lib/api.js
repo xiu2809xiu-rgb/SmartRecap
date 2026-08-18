@@ -33,6 +33,16 @@ export const tokenStore = {
   },
 };
 
+/**
+ * Shown when nothing is listening on the API.
+ *
+ * Names the actual cause and the actual fix. The person reading it is either a
+ * teammate who forgot to start the backend, or a judge watching a demo — both
+ * are better served by one concrete instruction than by a status code.
+ */
+export const API_UNREACHABLE =
+  'The SmartRecap API is not responding. If you are running this locally, start the backend with "npm run backend:dev" in a second terminal.';
+
 export class ApiError extends Error {
   constructor(message, status, body) {
     super(message);
@@ -58,7 +68,7 @@ async function request(path, { method = 'GET', body, signal, auth = true } = {})
     });
   } catch (cause) {
     if (cause?.name === 'AbortError') throw cause;
-    throw new ApiError('Could not reach the SmartRecap API. Check your connection and try again.', 0, null);
+    throw new ApiError(API_UNREACHABLE, 0, null);
   }
 
   const text = await res.text();
@@ -73,6 +83,19 @@ async function request(path, { method = 'GET', body, signal, auth = true } = {})
 
   if (!res.ok) {
     if (res.status === 401) tokenStore.set(null);
+
+    // A dead backend and a broken one look identical to `fetch`, and they need
+    // completely different responses from whoever is reading the screen.
+    //
+    // When the API process is not running, Vite's dev proxy answers 5xx with an
+    // EMPTY body; nginx does much the same in production. A real server error
+    // always carries a body — FastAPI sends `{"detail": ...}`. So an empty 5xx
+    // means "nothing is listening", and saying "Request failed (500)" for that
+    // sends people looking for a bug in code that is fine.
+    if (res.status >= 500 && !text.trim()) {
+      throw new ApiError(API_UNREACHABLE, res.status, null);
+    }
+
     throw new ApiError(payload?.detail || payload?.message || `Request failed (${res.status})`, res.status, payload);
   }
   return payload;
