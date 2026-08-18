@@ -71,18 +71,11 @@ export default function AvatarShowcase() {
         <div className="avatar-copy">
           <p className="eyebrow">Built by</p>
 
-          {/* The name in particles, reusing the component the 404 hero uses.
-              Canvas 2D, so it costs no WebGL context of its own alongside the
-              model's, and it degrades on its own terms under reduced motion.
-              The real <h2> below still carries the heading for a screen reader;
-              this is the name, said once, loudly. */}
-          <ParticleText text="Richie Koh" className="avatar-name" ratio={0.2} />
-          <p className="sr-only">Richie Koh</p>
-
-          <h2 className="section-title">A student who had the problem</h2>
+          <h2 className="section-title">A team who had the same problem</h2>
           <p className="lede">
-            SmartRecap was built for the Nanyang Polytechnic Cloud Computing Club hackathon, by someone who had
-            already spent too many nights re-reading slides to check whether a summary was telling the truth.
+            SmartRecap was built for the Nanyang Polytechnic Cloud Computing Club hackathon by a team of students who
+            had all spent too many nights re-reading slides to check whether a summary was telling the truth. The
+            frontend, the grounding pipeline, the backend and the deployment were each somebody&rsquo;s week.
           </p>
           <p className="avatar-note">
             <Icon name="drag_pan" size={16} />
@@ -97,6 +90,18 @@ export default function AvatarShowcase() {
             <Suspense fallback={<div className="avatar-loading" role="status"><Spinner size={22} /><span>Loading…</span></div>}>
               <AvatarStage url={MODEL_URL} />
             </Suspense>
+          )}
+
+          {/* The name labels the MODEL rather than heading the section. It is
+              whose likeness this is — a caption, not a byline. Heading the
+              section with one person's name read as sole credit for work four
+              people did. */}
+          {allowMascot && seen && exists === true && (
+            <figcaption className="avatar-caption">
+              <ParticleText text="Richie Koh" className="avatar-name" ratio={0.19} />
+              <span className="sr-only">Richie Koh</span>
+              <span className="avatar-caption-role">modelled himself for this page</span>
+            </figcaption>
           )}
 
           {/* Everything that is not the live model: 3D disabled, the file

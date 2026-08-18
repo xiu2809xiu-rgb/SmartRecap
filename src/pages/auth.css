@@ -95,3 +95,16 @@
   .auth-main { grid-template-columns: minmax(0, 1fr); }
   .auth-mascot { display: none; }
 }
+
+/* The avatar needs a real box: <Canvas> fills its parent, and the grid cell
+   that suited a 300px mascot would collapse it to nothing. */
+.auth-mascot.has-avatar {
+  width: min(420px, 100%);
+  aspect-ratio: 4 / 5;
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  background: radial-gradient(60% 55% at 50% 32%, color-mix(in srgb, var(--aurora-violet) 30%, transparent), transparent 72%);
+}
+
+.auth-mascot.has-avatar .avatar-stage { position: absolute; inset: 0; }
+.auth-mascot.has-avatar { position: relative; }

@@ -2,6 +2,12 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import AuroraBackdrop from '../components/AuroraBackdrop.jsx';
 import Mascot from '../mascot/Mascot.jsx';
+import { lazy, Suspense } from 'react';
+import useAvatarModel from '../components/avatar/useAvatarModel.js';
+
+// Only reached once the probe says the model is there, so the three.js chunk
+// is never downloaded on an auth page that is going to show Rec instead.
+const AvatarStage = lazy(() => import('../components/avatar/AvatarStage.jsx'));
 import { Brand } from '../components/layout/Shells.jsx';
 import { Icon, Spinner } from '../components/ui.jsx';
 import { useAuth } from '../lib/auth.jsx';
@@ -21,6 +27,7 @@ import './auth.css';
  */
 export default function AuthLayout({ title, subtitle, children, footer, methods, mascotState = 'wave' }) {
   const { guest } = useAuth();
+  const avatar = useAvatarModel();
   const { allowEffects } = usePrefs();
   const navigate = useNavigate();
   const location = useLocation();
@@ -98,8 +105,19 @@ export default function AuthLayout({ title, subtitle, children, footer, methods,
       </header>
 
       <main className="auth-main shell" id="main">
-        <div className="auth-mascot">
-          <Mascot state={mascotState} size={300} caption />
+        {/* The builder's own avatar when it is available, Rec when it is not.
+            Both are the same slot: this is the first screen anyone sees, and
+            it should be a face rather than an empty half of the page. Rec
+            remains the fallback for reduced motion, 3D turned off, or a
+            missing model file — never a hole. */}
+        <div className={`auth-mascot ${avatar.ready ? 'has-avatar' : ''}`}>
+          {avatar.ready ? (
+            <Suspense fallback={<Mascot state={mascotState} size={300} caption />}>
+              <AvatarStage url={avatar.url} />
+            </Suspense>
+          ) : (
+            <Mascot state={mascotState} size={300} caption />
+          )}
         </div>
         {/* ElectricBorder's `chaos` is the displacement amplitude, not a style
             knob. Past roughly 0.2 the noise pushes the traced border far enough
