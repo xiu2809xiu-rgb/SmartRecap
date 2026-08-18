@@ -1,0 +1,157 @@
+/* ============================================================================
+   SmartRecap design tokens — Aurora Maximalism
+   ----------------------------------------------------------------------------
+   One system, two luminances. The dark shell (marketing, auth, dashboard,
+   processing) runs the mesh gradient at full strength. The study surface
+   (recap reader, quiz, flashcards) inverts to a light panel so long-form
+   reading is comfortable, but keeps the same accents, the same type scale and
+   the same motion language — the mesh still bleeds at the page edges.
+   ========================================================================= */
+
+:root {
+  /* ---- Aurora mesh: the primary surface feature ------------------------ */
+  --aurora-violet: #5d34d0;
+  --aurora-magenta: #ff006e;
+  --aurora-cyan: #00f0ff;
+
+  /* ---- Ground -------------------------------------------------------- */
+  --ground: #0b0616;
+  --ground-raised: #150c26;
+  --ground-sunken: #070310;
+
+  /* ---- Glass panels over the mesh ------------------------------------ */
+  --glass: rgba(30, 18, 54, 0.58);
+  --glass-strong: rgba(24, 14, 44, 0.86);
+  --glass-line: rgba(163, 132, 255, 0.22);
+  --glass-line-strong: rgba(186, 160, 255, 0.4);
+
+  /* ---- Ink on dark ---------------------------------------------------- */
+  --ink: #f4f0ff;
+  --ink-2: #c3b6e4;
+  --ink-3: #8e80b4;
+  --ink-4: #665a8c;
+
+  /* ---- Accents (interactive) ----------------------------------------- */
+  --accent: #a78bfa;
+  --accent-hot: #ff4d94;
+  --accent-cool: #3ddce8;
+
+  /* ---- Neon glow — the anchor's signature ---------------------------- */
+  --glow-violet: 0 0 20px rgba(167, 139, 250, 0.55);
+  --glow-magenta: 0 0 20px rgba(255, 0, 110, 0.5);
+  --glow-cyan: 0 0 20px rgba(0, 240, 255, 0.45);
+
+  /* ---- Chart series — validated against #0b0616 -----------------------
+     node scripts/validate_palette.js "#8F7BF5,#F0407F,#0FA5BA" --mode dark
+     Lightness band PASS · Chroma PASS · CVD ΔE 10.0 PASS · Contrast PASS   */
+  --series-1: #8f7bf5;
+  --series-2: #f0407f;
+  --series-3: #0fa5ba;
+  --series-1-soft: rgba(143, 123, 245, 0.18);
+  --series-2-soft: rgba(240, 64, 127, 0.18);
+  --series-3-soft: rgba(15, 165, 186, 0.18);
+
+  /* ---- Sequential ramp (one hue, light to dark) for mastery -------------- */
+  --seq-0: rgba(143, 123, 245, 0.07);
+  --seq-1: rgba(143, 123, 245, 0.22);
+  --seq-2: rgba(143, 123, 245, 0.42);
+  --seq-3: rgba(143, 123, 245, 0.66);
+  --seq-4: #8f7bf5;
+
+  /* ---- Status — reserved, never reused as a series -------------------- */
+  --good: #34d399;
+  --good-bg: rgba(52, 211, 153, 0.12);
+  --warn: #fbbf24;
+  --warn-bg: rgba(251, 191, 36, 0.12);
+  --bad: #fb7185;
+  --bad-bg: rgba(251, 113, 133, 0.12);
+
+  /* ---- Type ----------------------------------------------------------- */
+  --font: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-num: 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+  /* Display sizes lean oversized, but the hero headline is a sentence rather
+     than a single word — past ~5.5rem it wraps to four lines and pushes the
+     lede and the mascot below the fold. */
+  --t-hero: clamp(2.6rem, 6.2vw, 5.4rem);
+  --t-display: clamp(2.25rem, 6vw, 4.5rem);
+  --t-h1: clamp(2rem, 4.4vw, 3.25rem);
+  --t-h2: clamp(1.5rem, 2.8vw, 2.25rem);
+  --t-h3: clamp(1.175rem, 1.9vw, 1.5rem);
+  --t-body: 1.0625rem;
+  --t-sm: 0.9375rem;
+  --t-xs: 0.8125rem;
+
+  /* ---- Space / shape --------------------------------------------------- */
+  --r-sm: 10px;
+  --r: 16px;
+  --r-lg: 24px;
+  --r-xl: 32px;
+  --r-pill: 999px;
+
+  --shadow-lift: 0 24px 60px -18px rgba(4, 0, 16, 0.85);
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 30px 70px -30px rgba(0, 0, 0, 0.9);
+
+  /* ---- Motion — spring-physics orchestration -------------------------- */
+  --spring: cubic-bezier(0.22, 1.4, 0.36, 1);
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 160ms;
+  --dur: 280ms;
+  --dur-slow: 520ms;
+
+  --shell-max: 1240px;
+  --read-max: 74ch;
+}
+
+/* ============================================================================
+   The study surface — same system, inverted luminance.
+   Scoped by [data-surface="study"] rather than a media query: which surface
+   you are on is a product decision, not an OS preference.
+   ========================================================================= */
+[data-surface='study'] {
+  --ground: #f6f4fb;
+  --ground-raised: #ffffff;
+  --ground-sunken: #ebe6f7;
+
+  --glass: rgba(255, 255, 255, 0.86);
+  --glass-strong: #ffffff;
+  --glass-line: rgba(93, 52, 208, 0.16);
+  --glass-line-strong: rgba(93, 52, 208, 0.32);
+
+  --ink: #140f22;
+  --ink-2: #453a63;
+  --ink-3: #6b5f8c;
+  --ink-4: #8d82ab;
+
+  --accent: #6d4fe0;
+  --accent-hot: #d01b63;
+  --accent-cool: #0098b0;
+
+  --glow-violet: 0 0 18px rgba(109, 79, 224, 0.28);
+  --glow-magenta: 0 0 18px rgba(208, 27, 99, 0.24);
+  --glow-cyan: 0 0 18px rgba(0, 152, 176, 0.24);
+
+  /* Validated against #F6F4FB — all six checks PASS. */
+  --series-1: #6d4fe0;
+  --series-2: #d01b63;
+  --series-3: #0098b0;
+  --series-1-soft: rgba(109, 79, 224, 0.14);
+  --series-2-soft: rgba(208, 27, 99, 0.14);
+  --series-3-soft: rgba(0, 152, 176, 0.14);
+
+  --seq-0: rgba(109, 79, 224, 0.06);
+  --seq-1: rgba(109, 79, 224, 0.2);
+  --seq-2: rgba(109, 79, 224, 0.4);
+  --seq-3: rgba(109, 79, 224, 0.66);
+  --seq-4: #6d4fe0;
+
+  --good: #0f7a52;
+  --good-bg: rgba(15, 122, 82, 0.1);
+  --warn: #8a5a00;
+  --warn-bg: rgba(138, 90, 0, 0.1);
+  --bad: #b4123c;
+  --bad-bg: rgba(180, 18, 60, 0.09);
+
+  --shadow-lift: 0 24px 50px -22px rgba(31, 12, 66, 0.24);
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 18px 44px -26px rgba(31, 12, 66, 0.28);
+}

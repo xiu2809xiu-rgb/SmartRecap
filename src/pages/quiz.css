@@ -1,0 +1,163 @@
+.quiz {
+  max-width: 780px;
+  padding-block: clamp(24px, 4vw, 40px) 90px;
+}
+
+.quiz-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--ink-3);
+  padding-block: 100px;
+}
+
+.quiz-progress { margin-bottom: 26px; }
+
+.quiz-meter {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 9px;
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+}
+
+.quiz-card {
+  padding: clamp(22px, 4vw, 34px);
+  border-radius: var(--r-xl);
+  animation: quiz-in 340ms var(--spring) both;
+}
+
+@keyframes quiz-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+
+.quiz-tags { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 18px; }
+
+.quiz-prompt {
+  font-size: clamp(1.25rem, 2.6vw, 1.6rem);
+  line-height: 1.32;
+  margin-bottom: 22px;
+}
+
+.quiz-unverified {
+  font-size: var(--t-xs);
+  color: var(--warn);
+  background: var(--warn-bg);
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+  border-radius: var(--r-sm);
+  padding: 10px 13px;
+  margin-bottom: 18px;
+  line-height: 1.55;
+}
+
+.options { display: flex; flex-direction: column; gap: 10px; }
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 15px 17px;
+  text-align: left;
+  border-radius: var(--r);
+  border: 1.5px solid var(--glass-line);
+  background: var(--ground);
+  font-size: 1rem;
+  line-height: 1.45;
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease),
+    transform var(--dur) var(--spring);
+}
+
+.option:not(:disabled):hover { border-color: var(--accent); transform: translateX(3px); }
+
+.option-key {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--ground-sunken);
+  border: 1px solid var(--glass-line);
+  font-size: 0.82rem;
+  font-weight: 750;
+  color: var(--ink-3);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.option-text { flex: 1; }
+
+.option.is-picked {
+  border-color: var(--accent);
+  background: var(--series-1-soft);
+}
+
+.option.is-picked .option-key { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.option.is-right {
+  border-color: var(--good);
+  background: var(--good-bg);
+}
+
+.option.is-right .option-key { background: var(--good); border-color: var(--good); color: #fff; }
+.option.is-right .material-symbols-rounded { color: var(--good); }
+
+.option.is-wrong {
+  border-color: var(--bad);
+  background: var(--bad-bg);
+}
+
+.option.is-wrong .option-key { background: var(--bad); border-color: var(--bad); color: #fff; }
+.option.is-wrong .material-symbols-rounded { color: var(--bad); }
+
+.option:disabled { cursor: default; opacity: 1; }
+.option.is-idle:disabled { opacity: 0.55; }
+
+.explain {
+  margin-top: 20px;
+  padding: 17px 19px;
+  border-radius: var(--r);
+  border: 1px solid var(--glass-line);
+  background: var(--ground-sunken);
+  animation: quiz-in 300ms var(--spring) both;
+}
+
+.explain.is-right { background: var(--good-bg); border-color: color-mix(in srgb, var(--good) 26%, transparent); }
+.explain.is-wrong { background: var(--bad-bg); border-color: color-mix(in srgb, var(--bad) 26%, transparent); }
+
+.explain-verdict {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 750;
+  font-size: var(--t-sm);
+  margin-bottom: 8px;
+}
+
+.explain.is-right .explain-verdict { color: var(--good); }
+.explain.is-wrong .explain-verdict { color: var(--bad); }
+.explain p { font-size: var(--t-sm); line-height: 1.6; color: var(--ink-2); }
+.explain-cites { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 10px; font-size: var(--t-xs); color: var(--ink-4); }
+
+.quiz-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--glass-line);
+}
+
+.quiz-hint { font-size: var(--t-xs); color: var(--ink-4); }
+
+@media (max-width: 560px) {
+  .quiz-hint { display: none; }
+  .quiz-foot { justify-content: flex-end; }
+  .quiz-foot .btn { width: 100%; }
+}

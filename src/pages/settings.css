@@ -1,0 +1,133 @@
+.settings { display: flex; flex-direction: column; gap: 18px; max-width: 880px; }
+
+.settings-head { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.settings-title { font-size: var(--t-h1); margin-top: 8px; }
+
+.settings-card {
+  padding: clamp(20px, 3vw, 28px);
+  border-radius: var(--r-xl);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.settings-card h2 { font-size: var(--t-h3); }
+.settings-card > p, .settings-row p { font-size: var(--t-sm); color: var(--ink-2); line-height: 1.6; max-width: 64ch; }
+
+.settings-card.is-accent {
+  flex-direction: row;
+  align-items: center;
+  gap: 22px;
+  border-color: var(--accent);
+  background: linear-gradient(120deg, rgba(167, 139, 250, 0.14), transparent 62%), var(--glass);
+}
+
+.settings-card.is-accent h2 { margin-bottom: 6px; }
+
+.settings-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.settings-row > div { flex: 1; min-width: 260px; }
+.settings-row h2 { margin-bottom: 6px; }
+
+.settings-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: var(--t-xs);
+  color: var(--warn);
+  background: var(--warn-bg);
+  border: 1px solid color-mix(in srgb, var(--warn) 28%, transparent);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  line-height: 1.5;
+}
+
+.settings-note .material-symbols-rounded { flex-shrink: 0; margin-top: 1px; }
+
+.settings-sample {
+  padding: 16px 18px;
+  border-radius: var(--r);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-line);
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+
+[data-reading-font='hyperlegible'] .settings-sample {
+  font-family: 'Atkinson Hyperlegible', var(--font);
+  letter-spacing: 0.012em;
+  word-spacing: 0.08em;
+}
+
+/* ---------------------------------------------------------------- toggle */
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  cursor: pointer;
+  padding-top: 16px;
+  border-top: 1px solid var(--glass-line);
+}
+
+.toggle.is-disabled { cursor: not-allowed; opacity: 0.5; }
+.toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.toggle-copy { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.toggle-copy strong { font-size: var(--t-sm); }
+.toggle-copy span { font-size: var(--t-xs); color: var(--ink-4); line-height: 1.5; max-width: 62ch; }
+
+.toggle-track {
+  width: 48px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--glass-line);
+  padding: 3px;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.toggle-thumb {
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--ink-3);
+  transition: transform var(--dur) var(--spring), background var(--dur) var(--ease);
+}
+
+.toggle input:checked ~ .toggle-track {
+  background: linear-gradient(120deg, var(--aurora-violet), var(--accent-hot));
+  border-color: transparent;
+}
+
+.toggle input:checked ~ .toggle-track .toggle-thumb { transform: translateX(20px); background: #fff; }
+.toggle input:focus-visible ~ .toggle-track { outline: 2px solid var(--accent-cool); outline-offset: 3px; }
+
+/* -------------------------------------------------------------- account */
+
+.settings-dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 18px; margin: 0; }
+.settings-dl dt { font-size: var(--t-xs); color: var(--ink-4); margin-bottom: 3px; }
+.settings-dl dd { margin: 0; font-size: var(--t-sm); font-weight: 650; word-break: break-word; }
+.settings-actions { padding-top: 4px; }
+
+/* ---------------------------------------------------------------- facts */
+
+.settings-facts { display: flex; flex-direction: column; gap: 14px; }
+
+.settings-facts li { display: flex; gap: 13px; }
+.settings-facts .material-symbols-rounded { color: var(--accent-cool); flex-shrink: 0; margin-top: 2px; }
+.settings-facts strong { display: block; font-size: var(--t-sm); margin-bottom: 3px; }
+.settings-facts span { font-size: var(--t-xs); color: var(--ink-3); line-height: 1.55; }
+
+@media (max-width: 720px) {
+  .settings-head .mascot { display: none; }
+  .settings-card.is-accent { flex-direction: column; align-items: flex-start; }
+}

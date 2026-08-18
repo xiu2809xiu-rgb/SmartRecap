@@ -1,0 +1,164 @@
+.dash { display: flex; flex-direction: column; gap: clamp(26px, 4vw, 42px); }
+
+.dash-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink-3);
+  padding-block: 90px;
+  justify-content: center;
+}
+
+.dash-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 22px;
+  flex-wrap: wrap;
+}
+
+.dash-title { font-size: var(--t-h1); margin-block: 8px 10px; }
+.dash-lede { font-size: 1.0625rem; }
+
+.dash-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+}
+
+/* -------------------------------------------------------------- resume */
+
+.resume-card {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  padding: clamp(22px, 3vw, 32px);
+  border-radius: var(--r-xl);
+  position: relative;
+  overflow: hidden;
+}
+
+.resume-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, rgba(93, 52, 208, 0.24), rgba(255, 0, 110, 0.12) 52%, transparent 76%);
+  pointer-events: none;
+}
+
+.resume-body { position: relative; flex: 1; min-width: 0; }
+.resume-body h2 { font-size: var(--t-h2); margin-block: 8px 8px; }
+.resume-meta { font-size: var(--t-sm); color: var(--ink-3); }
+.resume-actions { margin-top: 20px; }
+.resume-mascot { position: relative; flex-shrink: 0; }
+
+@media (max-width: 780px) {
+  .resume-mascot { display: none; }
+}
+
+/* -------------------------------------------------------------- library */
+
+.library-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.library-bar h2 { font-size: var(--t-h2); }
+
+.search {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 14px;
+  height: 42px;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-line);
+  color: var(--ink-3);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(167, 139, 250, 0.14);
+}
+
+.search input {
+  border: 0;
+  background: none;
+  outline: none;
+  width: 210px;
+  max-width: 44vw;
+  font-size: var(--t-sm);
+  color: var(--ink);
+}
+
+.search input::placeholder { color: var(--ink-4); }
+.search input::-webkit-search-cancel-button { filter: invert(0.6); }
+
+.empty-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: clamp(24px, 5vw, 48px) 20px 20px;
+  border-radius: var(--r-xl);
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.material-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  padding: 20px !important;
+  border-radius: var(--r-lg) !important;
+  background: var(--glass) !important;
+  border-color: var(--glass-line) !important;
+  transition: transform var(--dur) var(--spring), border-color var(--dur) var(--ease);
+}
+
+.material-card:hover { transform: translateY(-3px); border-color: var(--glass-line-strong) !important; }
+
+.material-top { display: flex; align-items: flex-start; gap: 12px; }
+.material-top h3 { font-size: 1.0625rem; font-weight: 700; letter-spacing: -0.02em; }
+.material-meta { font-size: var(--t-xs); color: var(--ink-4); margin-top: 4px; }
+
+.file-badge {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: #fff;
+  background: linear-gradient(140deg, #5d34d0, #8b5cf6);
+}
+
+.file-badge.is-pptx { background: linear-gradient(140deg, #c2410c, #f97316); }
+.file-badge.is-docx { background: linear-gradient(140deg, #1d4ed8, #3b82f6); }
+.file-badge.is-image { background: linear-gradient(140deg, #0f766e, #14b8a6); }
+.file-badge.is-txt { background: linear-gradient(140deg, #4338ca, #6366f1); }
+
+.material-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.material-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+.material-actions .btn { flex: 1; }
+
+@media (max-width: 520px) {
+  .material-actions { flex-wrap: wrap; }
+}
