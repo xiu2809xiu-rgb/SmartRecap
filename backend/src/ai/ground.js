@@ -189,19 +189,59 @@ export function groundQuiz(quiz, chunks) {
   let unverified = 0;
 
   for (const q of quiz.questions ?? []) {
-    if (!q?.prompt || !Array.isArray(q.options) || q.options.length < 2) {
-      removed += 1;
-      continue;
-    }
-    const answer = Number(q.answer);
-    if (!Number.isInteger(answer) || answer < 0 || answer >= q.options.length) {
+    if (!q?.prompt) {
       removed += 1;
       continue;
     }
 
-    // The correct option carries the claim, so it is what gets checked — not
-    // the stem, which is often a neutral question with little vocabulary.
-    const claim = `${q.prompt} ${q.options[answer]}`;
+    const type = q.type === 'multi' || q.type === 'short' ? q.type : 'single';
+    let claim;
+    let typedFields;
+
+    if (type === 'short') {
+      const modelAnswer = String(q.modelAnswer ?? '').trim();
+      const rubric = String(q.rubric ?? '').trim();
+      if (!modelAnswer || !rubric || q.options != null) {
+        removed += 1;
+        continue;
+      }
+      claim = `${q.prompt} ${modelAnswer} ${rubric}`;
+      typedFields = { modelAnswer, rubric };
+    } else {
+      if (!Array.isArray(q.options) || q.options.length < 2) {
+        removed += 1;
+        continue;
+      }
+      const options = q.options.map(String);
+      if (type === 'multi') {
+        if (!Array.isArray(q.answer)) {
+          removed += 1;
+          continue;
+        }
+        const answer = [...new Set(q.answer)].sort((a, b) => a - b);
+        if (
+          answer.length < 2 ||
+          answer.length >= options.length ||
+          answer.some((i) => !Number.isInteger(i) || i < 0 || i >= options.length)
+        ) {
+          removed += 1;
+          continue;
+        }
+        claim = `${q.prompt} ${answer.map((i) => options[i]).join(' ')}`;
+        typedFields = { options, answer };
+      } else {
+        // Keep legacy single-select normalisation exactly as before. A missing
+        // type intentionally lands here for backward compatibility.
+        const answer = Number(q.answer);
+        if (!Number.isInteger(answer) || answer < 0 || answer >= options.length) {
+          removed += 1;
+          continue;
+        }
+        claim = `${q.prompt} ${options[answer]}`;
+        typedFields = { options, answer };
+      }
+    }
+
     const check = checkCitations(claim, q.citations, chunkById, idf);
     if (!check.ok) {
       removed += 1;
@@ -213,11 +253,11 @@ export function groundQuiz(quiz, chunks) {
 
     questions.push({
       id: q.id,
+      type,
       topic: q.topic || 'General',
       difficulty: Math.min(3, Math.max(1, Number(q.difficulty) || 1)),
       prompt: q.prompt,
-      options: q.options.map(String),
-      answer,
+      ...typedFields,
       explanation: q.explanation || '',
       citations: check.resolved,
       verified,

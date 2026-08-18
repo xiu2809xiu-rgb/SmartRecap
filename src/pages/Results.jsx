@@ -9,7 +9,14 @@ import { ScoreRing, MasteryBars } from '../components/charts/Charts.jsx';
 import Mascot from '../mascot/Mascot.jsx';
 import CountUp from '../reactbits/CountUp.jsx';
 import { formatDuration } from '../lib/format.js';
+import { questionType, exactSetMatch } from '../lib/quizScoring.js';
 import './results.css';
+
+function optionText(question, indices) {
+  const values = Array.isArray(indices) ? indices : [];
+  if (!values.length) return 'No answer';
+  return values.map((index) => question.options?.[index]).filter(Boolean).join('; ') || 'No answer';
+}
 
 export default function Results() {
   const { id, attemptId } = useParams();
@@ -186,38 +193,73 @@ export default function Results() {
           <h2>Every question, with the source</h2>
           <ul className="review-list">
             {(material.quiz?.questions ?? [])
-              .filter((q) => q.id in shown.answers)
+              .filter((q) => q.id in (shown.answers ?? {}))
               .map((q) => {
                 const picked = shown.answers[q.id];
-                const right = picked === q.answer;
+                const type = questionType(q);
+                const judgement = shown.judgements?.[q.id];
+                const right =
+                  type === 'short'
+                    ? judgement?.correct === true
+                    : type === 'multi'
+                      ? exactSetMatch(picked, q.answer)
+                      : picked === q.answer;
+                const unscored = !q.verified || (type === 'short' && judgement?.verified !== true);
+                const neutral = type === 'short' && judgement?.correct == null;
                 const labels = (q.citations ?? [])
                   .map((c) => material.chunks?.find((x) => x.id === c)?.label)
                   .filter(Boolean);
-                return (
-                  <li key={q.id} className={`review ${right ? 'is-right' : 'is-wrong'} ${q.verified ? '' : 'is-unscored'}`}>
-                    <span className="review-mark">
-                      <Icon name={right ? 'check' : 'close'} size={16} />
-                    </span>
-                    <div>
-                      <p className="review-prompt">{q.prompt}</p>
+
+                let answerReview;
+                if (type === 'short') {
+                  answerReview = (
+                    <>
+                      <p className="review-answer"><strong>{neutral ? 'Not scored' : right ? 'Correct' : 'Incorrect'}.</strong> Your answer: <em>{picked || 'No answer'}</em></p>
+                      <p className="review-answer">Model answer: <strong>{q.modelAnswer}</strong></p>
+                      <p className="review-explain">
+                        {judgement?.feedback ?? (q.verified ? 'No judgement was returned, so this answer was not scored.' : q.explanation)}
+                      </p>
+                    </>
+                  );
+                } else if (type === 'multi') {
+                  answerReview = (
+                    <>
+                      <p className="review-answer">Your answers: <em>{optionText(q, picked)}</em></p>
+                      {!right && <p className="review-answer">Correct answers: <strong>{optionText(q, q.answer)}</strong></p>}
+                      <p className="review-explain">{q.explanation}</p>
+                    </>
+                  );
+                } else {
+                  answerReview = (
+                    <>
                       <p className="review-answer">
                         {right ? (
-                          <>Your answer: {q.options[picked]}</>
+                          <>Your answer: {q.options?.[picked] ?? 'No answer'}</>
                         ) : (
-                          <>
-                            You chose <em>{q.options[picked]}</em>. The answer is <strong>{q.options[q.answer]}</strong>.
-                          </>
+                          <>You chose <em>{q.options?.[picked] ?? 'No answer'}</em>. The answer is <strong>{q.options?.[q.answer]}</strong>.</>
                         )}
                       </p>
                       <p className="review-explain">{q.explanation}</p>
+                    </>
+                  );
+                }
+
+                return (
+                  <li key={q.id} className={`review ${neutral ? 'is-unscored' : right ? 'is-right' : 'is-wrong'} ${unscored ? 'is-unscored' : ''}`}>
+                    <span className="review-mark">
+                      <Icon name={neutral ? 'info' : right ? 'check' : 'close'} size={16} />
+                    </span>
+                    <div>
+                      <p className="review-prompt">{q.prompt}</p>
+                      {answerReview}
                       <p className="review-tags">
                         <span className="chip">{q.topic}</span>
+                        <span className="chip">{type === 'single' ? 'Single-select' : type === 'multi' ? 'Multi-select' : 'Short answer'}</span>
                         {labels.map((l) => (
-                          <span key={l} className="cite">
-                            {l}
-                          </span>
+                          <span key={l} className="cite">{l}</span>
                         ))}
-                        {!q.verified && <span className="chip chip-warn">Not scored</span>}
+                        {judgement?.gradedBy && <span className="chip">Graded by {judgement.gradedBy}</span>}
+                        {unscored && <span className="chip chip-warn">Not scored</span>}
                       </p>
                     </div>
                   </li>

@@ -1,5 +1,6 @@
 import { SAMPLE_MATERIAL, SAMPLE_CHUNKS } from '../data/seed.js';
 import { makeId, fileTypeOf } from './format.js';
+import { questionType, exactSetMatch } from './quizScoring.js';
 
 /**
  * Demo backend.
@@ -42,6 +43,38 @@ let db = read();
 const jobs = new Map();
 
 const persist = () => write(db);
+
+function objectiveAnswerIsCorrect(question, answer) {
+  if (questionType(question) === 'multi') return exactSetMatch(answer, question.answer);
+  // Keep the real backend's legacy strict comparison for single questions.
+  return answer === question.answer;
+}
+
+function judgeShortAnswerDemo(question, studentAnswer) {
+  const normalise = (value) =>
+    String(value ?? '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  const answer = normalise(studentAnswer);
+  const modelAnswer = normalise(question.modelAnswer);
+  const ignored = new Set(['about', 'after', 'also', 'because', 'been', 'from', 'into', 'only', 'that', 'their', 'them', 'then', 'these', 'they', 'this', 'with']);
+  const keywords = [...new Set(modelAnswer.split(' ').filter((word) => word.length > 3 && !ignored.has(word)))];
+  const matches = keywords.filter((word) => answer.includes(word));
+  const substringMatch =
+    answer.length >= 12 && (answer.includes(modelAnswer) || (modelAnswer.includes(answer) && answer.split(' ').length >= 3));
+  const correct = Boolean(answer) && (substringMatch || matches.length >= Math.max(1, Math.ceil(keywords.length / 2)));
+
+  return {
+    correct,
+    feedback: correct
+      ? 'Your answer includes the key ideas from the model answer.'
+      : 'Your answer is missing one or more key ideas from the model answer.',
+    gradedBy: 'keyword-match (demo mode)',
+    verified: true,
+  };
+}
 
 /** Mirrors `backend/src/handlers/process.js` so the UI shows the real pipeline. */
 export const PIPELINE_STAGES = [
@@ -184,17 +217,38 @@ export const mockApi = {
   },
 
   quiz: {
-    async submit({ materialId, answers, durationMs }) {
+    async submit({ materialId, answers, durationMs, questionIds }) {
       await sleep(400);
       const material = db.materials.find((m) => m.id === materialId);
-      const questions = material?.quiz?.questions ?? [];
-      const scored = questions.filter((q) => q.verified);
-      const correct = scored.filter((q) => answers[q.id] === q.answer).length;
+      if (!material) throw Object.assign(new Error('Material not found'), { status: 404 });
+
+      const allQuestions = material.quiz?.questions ?? [];
+      if (Array.isArray(questionIds)) {
+        if (!questionIds.length) throw Object.assign(new Error('questionIds must contain at least one question.'), { status: 400 });
+        const knownIds = new Set(allQuestions.map((q) => q.id));
+        if (questionIds.some((id) => !knownIds.has(id))) {
+          throw Object.assign(new Error('questionIds contains a question not in this material.'), { status: 400 });
+        }
+      }
+      const requestedIds = Array.isArray(questionIds) ? new Set(questionIds) : null;
+      const questions = allQuestions.filter((q) => !requestedIds || requestedIds.has(q.id));
+      const verifiedQuestions = questions.filter((q) => q.verified);
+      const judgements = Object.fromEntries(
+        verifiedQuestions
+          .filter((q) => questionType(q) === 'short')
+          .map((q) => [q.id, judgeShortAnswerDemo(q, answers[q.id])]),
+      );
+      const scored = verifiedQuestions.filter(
+        (q) => questionType(q) !== 'short' || judgements[q.id]?.verified === true,
+      );
+      const isCorrect = (q) =>
+        questionType(q) === 'short' ? judgements[q.id]?.correct === true : objectiveAnswerIsCorrect(q, answers[q.id]);
+      const correct = scored.filter(isCorrect).length;
       const attempt = {
         id: makeId('a'),
         materialId,
         at: new Date().toISOString(),
-        durationMs,
+        durationMs: Number(durationMs) || 0,
         correct,
         total: scored.length,
         score: scored.length ? Math.round((correct / scored.length) * 100) : 0,
@@ -202,11 +256,12 @@ export const mockApi = {
           scored.reduce((acc, q) => {
             acc[q.topic] ??= { correct: 0, total: 0 };
             acc[q.topic].total += 1;
-            if (answers[q.id] === q.answer) acc[q.topic].correct += 1;
+            if (isCorrect(q)) acc[q.topic].correct += 1;
             return acc;
           }, {}),
         ).map(([topic, v]) => ({ topic, ...v })),
         answers,
+        judgements,
       };
       db.attempts = [attempt, ...db.attempts];
       persist();

@@ -26,6 +26,15 @@ const labelFor = (chunks, ids = []) => {
   return ids.map((id) => map.get(id)).filter(Boolean);
 };
 
+const questionAnswer = (question) => {
+  const type = question.type ?? 'single';
+  if (type === 'short') return question.modelAnswer ?? '';
+  if (type === 'multi') {
+    return (question.answer ?? []).map((index) => question.options?.[index]).filter(Boolean).join('; ');
+  }
+  return question.options?.[question.answer] ?? '';
+};
+
 export function toMarkdown(material) {
   const { recap, chunks = [], quiz } = material;
   const lines = [];
@@ -70,9 +79,12 @@ export function toMarkdown(material) {
   if (quiz?.questions?.length) {
     lines.push('## Quiz', '');
     quiz.questions.forEach((q, i) => {
+      const type = q.type ?? 'single';
       lines.push(`**${i + 1}. ${q.prompt}**${q.verified ? '' : ' *(not scored — unverifiable from the source)*'}`, '');
-      q.options.forEach((o, oi) => lines.push(`   ${String.fromCharCode(65 + oi)}. ${o}`));
-      lines.push('', `   Answer: ${String.fromCharCode(65 + q.answer)} — ${q.explanation}`, '');
+      if (type !== 'short') {
+        q.options.forEach((o, oi) => lines.push(`   ${String.fromCharCode(65 + oi)}. ${o}`));
+      }
+      lines.push('', `   Answer: ${questionAnswer(q)} — ${q.explanation}`, '');
     });
   }
 
@@ -98,7 +110,7 @@ export function toAnkiCsv(material) {
     const cites = labelFor(chunks, q.citations);
     rows.push([
       q.prompt,
-      `${q.options[q.answer]}<br><br>${q.explanation}${cites.length ? `<br><i>${cites.join(', ')}</i>` : ''}`,
+      `${questionAnswer(q)}<br><br>${q.explanation}${cites.length ? `<br><i>${cites.join(', ')}</i>` : ''}`,
       `${tag} ${q.topic.replace(/\s+/g, '_')}`,
     ]);
   }

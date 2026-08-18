@@ -79,10 +79,17 @@ export function buildFlashcards(material) {
   }
   for (const q of material.quiz?.questions ?? []) {
     if (!q.verified) continue;
+    const type = q.type ?? 'single';
+    const answer =
+      type === 'short'
+        ? q.modelAnswer
+        : type === 'multi'
+          ? (q.answer ?? []).map((index) => q.options?.[index]).filter(Boolean).join('; ')
+          : q.options?.[q.answer];
     cards.push({
       id: `fc_${q.id}`,
       front: q.prompt,
-      back: `${q.options[q.answer]}\n\n${q.explanation}`,
+      back: `${answer ?? ''}\n\n${q.explanation}`,
       topic: q.topic,
       citations: q.citations ?? [],
       srs: newCardState(),
