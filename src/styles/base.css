@@ -248,6 +248,22 @@ img, svg, canvas { display: block; max-width: 100%; }
 
 .field-error { font-size: var(--t-xs); color: var(--bad); font-weight: 600; }
 
+/* Edge and Safari draw their own reveal control inside a password field, and it
+   is a dark glyph they will not let us recolour. On this surface it renders as
+   a near-invisible black eye sitting next to our white one — two icons, one of
+   them unreadable. Suppressed so the only reveal control is ours. */
+input[type='password']::-ms-reveal,
+input[type='password']::-ms-clear {
+  display: none;
+}
+
+input[type='password']::-webkit-credentials-auto-fill-button,
+input[type='password']::-webkit-strong-password-auto-fill-button {
+  display: none !important;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 /* ---- Chips ---- */
 .chip {
   display: inline-flex;

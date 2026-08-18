@@ -219,6 +219,11 @@ const DotGrid = ({
     };
 
     const onClick = e => {
+      // SmartRecap change: this listener is on `window`, so it also fires for
+      // clicks that unmount the grid — navigating away, for one. By the time it
+      // runs the canvas ref can already be null, which threw an uncaught
+      // TypeError on every link click in the app shell.
+      if (!canvasRef.current) return;
       const rect = canvasRef.current.getBoundingClientRect();
       const cx = e.clientX - rect.left;
       const cy = e.clientY - rect.top;
