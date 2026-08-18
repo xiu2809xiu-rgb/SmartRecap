@@ -80,18 +80,18 @@
   .avatar-frame { aspect-ratio: 1 / 1; max-width: 420px; }
 }
 
+/* One grid cell holds the frame and its caption. */
+.avatar-figure { margin: 0; display: flex; flex-direction: column; gap: 12px; }
+
 /* The name captions the model rather than heading the section: it says whose
-   likeness this is, which is a different claim from who built the product. */
+   likeness this is, which is a different claim from who built the product.
+   BELOW the frame, not inside it — overlaid at the bottom it landed on the
+   figure's hands during every clip that bends forward. */
 .avatar-caption {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 14px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  pointer-events: none;
 }
 
 .avatar-name { width: min(300px, 78%); }

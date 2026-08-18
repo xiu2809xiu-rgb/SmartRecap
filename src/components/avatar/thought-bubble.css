@@ -1,0 +1,76 @@
+/* Sits above the figure's head, toward the side the copy is not on, so it
+   fills the empty upper half of the frame rather than covering the model. */
+.thought {
+  position: absolute;
+  top: 2%;
+  right: 2%;
+  width: min(230px, 62%);
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(10px) scale(0.96);
+  transform-origin: bottom left;
+  transition:
+    opacity 420ms var(--ease),
+    transform 520ms var(--spring);
+}
+
+.thought.is-in {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.thought-body {
+  position: relative;
+  margin: 0;
+  padding: 13px 16px;
+  border-radius: 18px 18px 18px 6px;
+  font-size: var(--t-sm);
+  line-height: 1.5;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ground-raised) 88%, transparent);
+  border: 1px solid var(--glass-line-strong);
+  box-shadow: var(--shadow-panel), 0 0 34px -14px var(--aurora-violet);
+  backdrop-filter: blur(10px);
+}
+
+/* The trailing dots. Positioned below-left of the bubble, shrinking toward the
+   figure, which is what separates a thought from a speech balloon. */
+.thought-dot {
+  position: absolute;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ground-raised) 88%, transparent);
+  border: 1px solid var(--glass-line-strong);
+  backdrop-filter: blur(10px);
+}
+
+.thought-dot-1 {
+  width: 11px;
+  height: 11px;
+  bottom: -14px;
+  left: 6px;
+}
+
+.thought-dot-2 {
+  width: 6px;
+  height: 6px;
+  bottom: -26px;
+  left: -2px;
+}
+
+/* Reduced motion: present and readable, with no entrance. The transition is
+   already clamped globally, so this only removes the offset it would snap
+   through. */
+.thought.is-still {
+  transform: none;
+  transition: opacity 0.01ms;
+}
+
+@media (max-width: 900px) {
+  .thought {
+    width: min(200px, 70%);
+    top: 4%;
+    right: 2%;
+  }
+  .thought-body { font-size: var(--t-xs); padding: 11px 13px; }
+}

@@ -85,23 +85,12 @@ export default function AvatarShowcase() {
           </p>
         </div>
 
-        <div className="avatar-frame">
+        <figure className="avatar-figure">
+          <div className="avatar-frame">
           {allowMascot && seen && exists === true && (
             <Suspense fallback={<div className="avatar-loading" role="status"><Spinner size={22} /><span>Loading…</span></div>}>
               <AvatarStage url={MODEL_URL} />
             </Suspense>
-          )}
-
-          {/* The name labels the MODEL rather than heading the section. It is
-              whose likeness this is — a caption, not a byline. Heading the
-              section with one person's name read as sole credit for work four
-              people did. */}
-          {allowMascot && seen && exists === true && (
-            <figcaption className="avatar-caption">
-              <ParticleText text="Richie Koh" className="avatar-name" ratio={0.19} />
-              <span className="sr-only">Richie Koh</span>
-              <span className="avatar-caption-role">modelled himself for this page</span>
-            </figcaption>
           )}
 
           {/* Everything that is not the live model: 3D disabled, the file
@@ -118,8 +107,21 @@ export default function AvatarShowcase() {
                     : 'Checking for the model…'}
               </p>
             </div>
+            )}
+          </div>
+
+          {/* The name labels the MODEL rather than heading the section. It is
+              whose likeness this is — a caption, not a byline. Heading the
+              section with one person's name read as sole credit for work four
+              people did. */}
+          {allowMascot && seen && exists === true && (
+            <figcaption className="avatar-caption">
+              <ParticleText text="Richie Koh" className="avatar-name" ratio={0.19} />
+              <span className="sr-only">Richie Koh</span>
+              <span className="avatar-caption-role">modelled himself for this page</span>
+            </figcaption>
           )}
-        </div>
+        </figure>
       </div>
     </section>
   );

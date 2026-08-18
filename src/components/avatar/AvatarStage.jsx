@@ -1,16 +1,19 @@
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { Spinner } from '../ui.jsx';
 import AvatarModel from './AvatarModel.jsx';
+import ThoughtBubble from './ThoughtBubble.jsx';
+import { thoughtFor } from './thoughts.js';
 
 /**
  * The three.js canvas for the avatar. Loaded lazily by `AvatarShowcase`, which
  * owns the decision about whether to load it at all — everything in this file
  * is only ever reached once that decision is yes.
  */
-export default function AvatarStage({ url }) {
+export default function AvatarStage({ url, thoughts = true }) {
   const [ready, setReady] = useState(false);
+  const [clip, setClip] = useState(null);
   const mounted = useRef(true);
 
   // Both halves matter. StrictMode runs effects mount → cleanup → mount in
@@ -26,8 +29,11 @@ export default function AvatarStage({ url }) {
     };
   }, []);
 
+  const onClip = useCallback((index) => setClip(index), []);
+
   return (
     <div className={`avatar-stage ${ready ? 'is-ready' : ''}`}>
+      {thoughts && ready && clip !== null && <ThoughtBubble text={thoughtFor(clip)} />}
       {/* The model is large, and the canvas element exists long before there is
           anything in it. Without this the frame is simply blank for as long as
           the download takes, which reads as broken rather than as loading. */}
@@ -63,7 +69,7 @@ export default function AvatarStage({ url }) {
             dependency the rest of this app avoids: the demo has to survive
             conference wifi. Three directional lights do the job. */}
         <Suspense fallback={null}>
-          <AvatarModel url={url} onReady={() => mounted.current && setReady(true)} />
+          <AvatarModel url={url} onClip={onClip} onReady={() => mounted.current && setReady(true)} />
         </Suspense>
 
         {/* Rotate only. Pan and zoom inside a scrolling page fight the scroll,
