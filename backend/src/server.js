@@ -7,6 +7,7 @@ import * as auth from './core/auth.js';
 import * as library from './core/library.js';
 import * as study from './core/study.js';
 import * as jobs from './core/jobs.js';
+import * as face from './core/face.js';
 import { runPipeline } from './core/pipeline.js';
 import { configuredProviders } from './ai/provider.js';
 
@@ -114,7 +115,15 @@ app.get(
 app.post('/auth/signup', send((req) => auth.signup(req.body, guestIdOf(req)), 201));
 app.post('/auth/login', send((req) => auth.login(req.body)));
 app.post('/auth/guest', send(() => auth.guest(), 201));
+app.post('/auth/google', send((req) => auth.loginWithGoogle(req.body, guestIdOf(req))));
 app.get('/auth/me', send((req) => auth.me(requireUser(req).id)));
+
+// Face sign-in is unauthenticated by nature — the face is the credential.
+// See docs/FACE-AUTH-CONTRACT.md; the matching itself is not wired up yet.
+app.post('/auth/face', send((req) => face.signIn(req.body)));
+app.post('/auth/face/enrol', send((req) => face.enrol(requireUser(req).id, req.body), 201));
+app.get('/auth/face/status', send((req) => face.status(requireUser(req).id)));
+app.delete('/auth/face', send((req) => face.remove(requireUser(req).id)));
 
 app.get('/materials', send((req) => library.listMaterials(requireUser(req).id)));
 app.get('/materials/:id', send((req) => library.getMaterial(requireUser(req).id, req.params.id)));

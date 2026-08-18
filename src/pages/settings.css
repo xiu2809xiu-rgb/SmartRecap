@@ -131,3 +131,11 @@
   .settings-head .mascot { display: none; }
   .settings-card.is-accent { flex-direction: column; align-items: flex-start; }
 }
+
+.face-enrol-action { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.settings-note.is-quiet {
+  color: var(--ink-3);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--glass-line);
+}
+.settings-note.is-quiet .material-symbols-rounded { color: var(--accent-cool); }

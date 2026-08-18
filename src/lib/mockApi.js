@@ -26,7 +26,7 @@ function read() {
   } catch {
     /* fall through to a fresh store */
   }
-  return { user: null, materials: [SAMPLE_MATERIAL], attempts: [], flashcards: {}, shares: {} };
+  return { user: null, materials: [SAMPLE_MATERIAL], attempts: [], flashcards: {}, shares: {}, faceEnrolled: false };
 }
 
 function write(db) {
@@ -110,6 +110,56 @@ export const mockApi = {
     async logout() {
       db.user = null;
       persist();
+    },
+
+    /**
+     * Demo mode has no Google client id and no server, so this stands in a
+     * placeholder account. The UI says so underneath the button rather than
+     * letting it look like a real sign-in.
+     */
+    async google() {
+      await sleep(650);
+      db.user = {
+        id: makeId('u'),
+        email: 'demo.student@example.com',
+        name: 'Demo Student',
+        guest: false,
+        provider: 'google',
+        createdAt: new Date().toISOString(),
+      };
+      persist();
+      return db.user;
+    },
+
+    /**
+     * Face matching is the backend's job and there is no backend here. Failing
+     * with the real "nothing enrolled" message is more useful than a fake
+     * success, which would make the whole flow untestable.
+     */
+    async face() {
+      await sleep(1100);
+      throw Object.assign(new Error('No saved face to compare against yet. Sign in with your email, then set up face sign-in in Settings.'), {
+        status: 404,
+      });
+    },
+
+    async enrolFace() {
+      await sleep(900);
+      if (!db.user) throw Object.assign(new Error('Sign in first.'), { status: 401 });
+      db.faceEnrolled = true;
+      persist();
+      return { enrolled: true, demo: true };
+    },
+
+    async faceStatus() {
+      await sleep(120);
+      return { enrolled: !!db.faceEnrolled, demo: true };
+    },
+
+    async removeFace() {
+      db.faceEnrolled = false;
+      persist();
+      return { enrolled: false };
     },
   },
 

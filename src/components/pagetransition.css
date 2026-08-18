@@ -1,0 +1,110 @@
+/* ===========================================================================
+   Route transitions
+   ======================================================================== */
+
+.route-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 300;
+  pointer-events: none;
+  background: rgba(167, 139, 250, 0.14);
+}
+
+.route-progress-bar {
+  display: block;
+  height: 100%;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(90deg, var(--aurora-violet), var(--accent-hot) 55%, var(--aurora-cyan));
+  box-shadow: 0 0 12px rgba(255, 0, 110, 0.7);
+  /* Eased so the crawl decelerates: a linear creep reads as a stall. */
+  transition: width 420ms cubic-bezier(0.16, 0.84, 0.44, 1);
+}
+
+/* The bright head of the bar, which is what actually reads as motion. */
+.route-progress-glow {
+  position: absolute;
+  top: -3px;
+  width: 90px;
+  height: 9px;
+  transform: translateX(-100%);
+  background: radial-gradient(ellipse at right, rgba(0, 240, 255, 0.85), transparent 70%);
+  transition: left 420ms cubic-bezier(0.16, 0.84, 0.44, 1);
+  filter: blur(2px);
+}
+
+/* Reduced motion: present and announced, but not moving. */
+.route-progress.is-static {
+  background: linear-gradient(90deg, var(--aurora-violet), var(--accent-hot) 55%, var(--aurora-cyan));
+  opacity: 0.9;
+}
+
+[data-surface='study'] .route-progress {
+  background: rgba(109, 79, 224, 0.14);
+}
+
+.page-transition {
+  /* `will-change` on a wrapper that animates on every route change is worth the
+     layer; without it the blur transition repaints the whole page on the CPU. */
+  will-change: opacity, transform, filter;
+}
+
+/* ---------------------------------------------------------------- fallback */
+
+.route-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  min-height: 62vh;
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.route-fallback-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.route-fallback-copy strong {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.route-fallback-copy span {
+  font-size: var(--t-xs);
+  color: var(--ink-4);
+}
+
+/* Three dots that fill in sequence — enough to say "working" and nothing more. */
+.route-fallback-dots {
+  display: flex;
+  gap: 7px;
+}
+
+.route-fallback-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: fallback-pulse 1.15s ease-in-out infinite;
+}
+
+.route-fallback-dots i:nth-child(2) { animation-delay: 0.16s; }
+.route-fallback-dots i:nth-child(3) { animation-delay: 0.32s; }
+
+@keyframes fallback-pulse {
+  0%, 70%, 100% { opacity: 0.25; transform: scale(0.75); }
+  35% { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-fallback-dots i { animation: none; opacity: 0.7; }
+}
+
+[data-motion='reduced'] .route-fallback-dots i { animation: none; opacity: 0.7; }

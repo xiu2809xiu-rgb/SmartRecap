@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import AuthLayout from './AuthLayout.jsx';
 import { Icon, Spinner } from '../components/ui.jsx';
 import { useAuth } from '../lib/auth.jsx';
+import GoogleButton from '../components/auth/GoogleButton.jsx';
+import '../components/auth/auth-methods.css';
 
 /**
  * Password rules mirror the Cognito user-pool policy in
@@ -16,7 +18,7 @@ const RULES = [
 ];
 
 export default function Signup() {
-  const { signup } = useAuth();
+  const { signup, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [busy, setBusy] = useState(false);
@@ -47,6 +49,18 @@ export default function Signup() {
       title="Start your first recap"
       subtitle="Free, and no card needed. If you have been using SmartRecap as a guest, everything you have already made moves across with you."
       mascotState="wave"
+      methods={
+        <GoogleButton
+          label="Sign up with Google"
+          disabled={busy}
+          onError={setError}
+          onCredential={async (credential) => {
+            setError(null);
+            await loginWithGoogle(credential);
+            navigate('/app', { replace: true });
+          }}
+        />
+      }
       footer={
         <>
           Already have an account? <Link to="/login">Sign in</Link>

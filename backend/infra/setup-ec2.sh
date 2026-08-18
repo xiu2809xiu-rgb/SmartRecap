@@ -71,6 +71,11 @@ OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct:free
 NVIDIA_API_KEY=
 NVIDIA_MODEL=meta/llama-3.3-70b-instruct
 
+# Google sign-in. Must be the SAME client id the frontend uses as
+# VITE_GOOGLE_CLIENT_ID — the server verifies the token's audience against it,
+# so a mismatch fails every Google login. Leave blank to disable it.
+GOOGLE_CLIENT_ID=
+
 # Your frontend URL once you have one. '*' is fine while developing.
 ALLOWED_ORIGIN=*
 PUBLIC_WEB_ORIGIN=

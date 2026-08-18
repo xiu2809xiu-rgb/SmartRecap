@@ -100,6 +100,25 @@ const live = {
       tokenStore.set(r.token);
       return r.user;
     },
+    /**
+     * The Google ID token is passed straight through — it is verified on the
+     * server against Google's keys, never here. Sent with the current token so
+     * a guest signing in with Google keeps the work they already did.
+     */
+    google: async (credential) => {
+      const r = await request('/auth/google', { method: 'POST', body: { credential }, auth: true });
+      tokenStore.set(r.token);
+      return r.user;
+    },
+    /** Face sign-in. See docs/FACE-AUTH-CONTRACT.md. */
+    face: async (image) => {
+      const r = await request('/auth/face', { method: 'POST', body: { image }, auth: false });
+      tokenStore.set(r.token);
+      return r.user;
+    },
+    enrolFace: (image) => request('/auth/face/enrol', { method: 'POST', body: { image } }),
+    faceStatus: () => request('/auth/face/status'),
+    removeFace: () => request('/auth/face', { method: 'DELETE' }),
     logout: async () => {
       tokenStore.set(null);
     },

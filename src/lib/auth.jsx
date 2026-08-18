@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { api, tokenStore, isDemo } from './api.js';
+import { disableGoogleAutoSelect } from './google.js';
 
 /**
  * Identity.
@@ -45,14 +46,31 @@ export function AuthProvider({ children }) {
   const signup = useCallback(async (payload) => setUser(await api.auth.signup(payload)), []);
   const login = useCallback(async (payload) => setUser(await api.auth.login(payload)), []);
   const guest = useCallback(async () => setUser(await api.auth.guest()), []);
+  const loginWithGoogle = useCallback(async (credential) => setUser(await api.auth.google(credential)), []);
+  const loginWithFace = useCallback(async (image) => setUser(await api.auth.face(image)), []);
   const logout = useCallback(async () => {
     await api.auth.logout();
+    // Clears Google's cached choice too, so the next sign-in shows the account
+    // chooser instead of silently reusing the last one — which on a shared
+    // library machine is the difference between logging out and not.
+    disableGoogleAutoSelect();
     setUser(null);
   }, []);
 
   const value = useMemo(
-    () => ({ user, status, isAuthed: !!user, isGuest: !!user?.guest, signup, login, guest, logout }),
-    [user, status, signup, login, guest, logout],
+    () => ({
+      user,
+      status,
+      isAuthed: !!user,
+      isGuest: !!user?.guest,
+      signup,
+      login,
+      guest,
+      loginWithGoogle,
+      loginWithFace,
+      logout,
+    }),
+    [user, status, signup, login, guest, loginWithGoogle, loginWithFace, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

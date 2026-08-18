@@ -6,6 +6,7 @@ import * as auth from '../core/auth.js';
 import * as library from '../core/library.js';
 import * as study from '../core/study.js';
 import * as jobs from '../core/jobs.js';
+import * as face from '../core/face.js';
 
 /**
  * Lambda adapter.
@@ -52,6 +53,12 @@ const ROUTES = [
   ['POST', /^\/auth\/signup$/, async (e) => json(201, await auth.signup(parseBody(e), guestIdOf(e)))],
   ['POST', /^\/auth\/login$/, async (e) => json(200, await auth.login(parseBody(e)))],
   ['POST', /^\/auth\/guest$/, async () => json(201, await auth.guest())],
+  ['POST', /^\/auth\/google$/, async (e) => json(200, await auth.loginWithGoogle(parseBody(e), guestIdOf(e)))],
+  // Unauthenticated by nature: the face is the credential.
+  ['POST', /^\/auth\/face$/, async (e) => json(200, await face.signIn(parseBody(e)))],
+  ['POST', /^\/auth\/face\/enrol$/, async (e) => json(201, await face.enrol(requireUser(e).id, parseBody(e)))],
+  ['GET', /^\/auth\/face\/status$/, async (e) => json(200, await face.status(requireUser(e).id))],
+  ['DELETE', /^\/auth\/face$/, async (e) => json(200, await face.remove(requireUser(e).id))],
   ['GET', /^\/auth\/me$/, async (e) => json(200, await auth.me(requireUser(e).id))],
 
   ['GET', /^\/materials$/, async (e) => json(200, await library.listMaterials(requireUser(e).id))],

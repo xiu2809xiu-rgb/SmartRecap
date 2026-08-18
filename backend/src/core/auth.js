@@ -7,6 +7,7 @@ import {
 import { keys, newId, getItem, putItem, deleteItem, queryPrefix, ttlDays } from '../lib/db.js';
 import { issueToken } from '../lib/jwt.js';
 import { badRequest, conflict, unauthorized, HttpError } from '../lib/http.js';
+import { verifyGoogleIdToken } from '../lib/googleToken.js';
 
 /**
  * Identity, as plain functions.
@@ -25,6 +26,8 @@ export const publicUser = (u) => ({
   email: u.email ?? null,
   name: u.name,
   guest: !!u.guest,
+  picture: u.picture ?? null,
+  provider: u.provider ?? 'password',
   createdAt: u.createdAt,
 });
 
@@ -172,6 +175,72 @@ export async function guest() {
   };
   await putItem({ ...keys.user(user.id), ...user });
   return { token: issueToken({ sub: user.id, name: user.name, guest: true }), user: publicUser(user) };
+}
+
+/**
+ * Google sign-in.
+ *
+ * Accounts are linked by verified email: if someone signed up with a password
+ * and later uses Google with the same address, they land in the same account
+ * rather than a duplicate. This is only safe because `verifyGoogleIdToken`
+ * rejects tokens whose `email_verified` is false — without that check, linking
+ * by email would let anyone claim an address they do not own.
+ *
+ * `claimFromUserId` behaves exactly as it does for `signup`: a guest signing in
+ * with Google brings their library with them.
+ */
+export async function loginWithGoogle({ credential }, claimFromUserId = null) {
+  if (!credential) throw badRequest('No Google credential was supplied.');
+
+  const profile = await verifyGoogleIdToken(credential, process.env.GOOGLE_CLIENT_ID);
+
+  const index = await getItem(keys.emailIndex(profile.email));
+  let user = index ? await getItem(keys.user(index.userId)) : null;
+  const isNew = !user;
+
+  if (user) {
+    // Keep the name and avatar in step with the Google account, which is what
+    // a student expects after changing them there.
+    user = {
+      ...user,
+      name: profile.name || user.name,
+      picture: profile.picture ?? user.picture ?? null,
+      googleSub: profile.sub,
+      lastSignInAt: new Date().toISOString(),
+    };
+    await putItem({ ...keys.user(user.id), ...user });
+  } else {
+    user = {
+      id: newId('u'),
+      email: profile.email,
+      name: profile.name,
+      picture: profile.picture,
+      googleSub: profile.sub,
+      provider: 'google',
+      guest: false,
+      createdAt: new Date().toISOString(),
+    };
+    await putItem({ ...keys.user(user.id), ...user });
+    await putItem({ ...keys.emailIndex(profile.email), userId: user.id });
+  }
+
+  let claimed = null;
+  if (isNew && claimFromUserId && claimFromUserId !== user.id) {
+    const previous = await getItem(keys.user(claimFromUserId));
+    if (previous?.guest) {
+      try {
+        claimed = await claimGuestLibrary(claimFromUserId, user.id);
+      } catch (e) {
+        console.error('Guest library claim failed', claimFromUserId, e?.message);
+      }
+    }
+  }
+
+  return {
+    token: issueToken({ sub: user.id, email: user.email, name: user.name }),
+    user: publicUser(user),
+    claimed,
+  };
 }
 
 export async function me(userId) {
