@@ -52,6 +52,20 @@
 .results-meta dd.is-up { color: var(--good); }
 .results-meta dd.is-down { color: var(--bad); }
 
+.results-game-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.results-game-stats .game-chip {
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: var(--ground-sunken);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--t-xs);
+  font-weight: 750;
+}
+.results-game-stats .game-chip-points .material-symbols-rounded { color: var(--good); }
+.results-game-stats .game-chip-streak .material-symbols-rounded { color: var(--warn); }
+
 .results-actions { margin-top: 24px; }
 .results-mascot { position: relative; flex-shrink: 0; }
 

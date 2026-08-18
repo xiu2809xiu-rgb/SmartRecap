@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useStore } from '../lib/store.jsx';
 import { usePrefs } from '../lib/prefs.jsx';
@@ -15,6 +15,8 @@ export default function Results() {
   const { id, attemptId } = useParams();
   const { materialById, attemptsFor } = useStore();
   const { allowMascot } = usePrefs();
+  const location = useLocation();
+  const gameStats = location.state?.gamePoints != null ? location.state : null;
 
   const material = materialById(id);
   const attempts = attemptsFor(id);
@@ -133,6 +135,19 @@ export default function Results() {
                 </dd>
               </div>
             </dl>
+
+            {gameStats && (
+              <div className="results-game-stats">
+                <span className="game-chip game-chip-points">
+                  <Icon name="military_tech" size={16} />
+                  {gameStats.gamePoints} pts
+                </span>
+                <span className="game-chip game-chip-streak">
+                  <Icon name="local_fire_department" size={16} />
+                  Best streak {gameStats.bestStreak}x
+                </span>
+              </div>
+            )}
 
             <div className="row wrap gap-2 results-actions">
               {weakTopics.length > 0 && (

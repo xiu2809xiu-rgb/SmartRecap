@@ -6,6 +6,7 @@ import { usePrefs } from '../lib/prefs.jsx';
 import { StudyShell } from '../components/layout/Shells.jsx';
 import { Icon, Spinner, Empty, ProgressBar, Modal, useToast } from '../components/ui.jsx';
 import BlurText from '../reactbits/BlurText.jsx';
+import { TIME_LIMIT_SECONDS, pointsForAnswer, streakMultiplier } from '../lib/quizLogic.js';
 import './quiz.css';
 
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
@@ -38,6 +39,10 @@ export default function Quiz() {
   const [checked, setChecked] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [confirmExit, setConfirmExit] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(TIME_LIMIT_SECONDS);
+  const [streak, setStreak] = useState(0);
+  const [bestStreak, setBestStreak] = useState(0);
+  const [gamePoints, setGamePoints] = useState(0);
   const startedAt = useRef(Date.now());
 
   useEffect(() => {
@@ -55,7 +60,10 @@ export default function Quiz() {
     return () => {
       cancelled = true;
     };
-  }, [id, cached, upsertMaterial]);
+    // `cached` is intentionally excluded: upsertMaterial() always returns a
+    // new materials array reference, so depending on it here re-triggers this
+    // fetch every time the store updates, in an infinite loop.
+  }, [id, upsertMaterial]);
 
   const topicFilter = params.get('topics');
 
@@ -92,9 +100,40 @@ export default function Quiz() {
     return () => window.removeEventListener('keydown', onKey);
   });
 
+  // Resets the per-question timer whenever a new question comes into view.
+  useEffect(() => {
+    setTimeLeft(TIME_LIMIT_SECONDS);
+  }, [question?.id]);
+
+  // Counts down while a question is live; running out auto-checks with
+  // whatever (if anything) is selected, same as clicking "Check answer".
+  useEffect(() => {
+    if (!question || checked) return undefined;
+    if (timeLeft <= 0) {
+      check();
+      return undefined;
+    }
+    const timer = setTimeout(() => setTimeLeft((v) => v - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [question, checked, timeLeft]);
+
   const check = () => {
-    if (selected == null) return;
+    if (checked) return;
     setAnswers((a) => ({ ...a, [question.id]: selected }));
+    const isCorrect = selected != null && selected === question.answer;
+    if (question.verified) {
+      if (isCorrect) {
+        const earned = Math.round(pointsForAnswer(true, timeLeft) * streakMultiplier(streak));
+        setGamePoints((p) => p + earned);
+        setStreak((s) => {
+          const next = s + 1;
+          setBestStreak((b) => Math.max(b, next));
+          return next;
+        });
+      } else {
+        setStreak(0);
+      }
+    }
     setChecked(true);
   };
 
@@ -113,7 +152,7 @@ export default function Quiz() {
         durationMs: Date.now() - startedAt.current,
       });
       addAttempt(attempt);
-      navigate(`/app/material/${id}/results/${attempt.id}`, { replace: true });
+      navigate(`/app/material/${id}/results/${attempt.id}`, { replace: true, state: { gamePoints, bestStreak } });
     } catch (e) {
       toast.error(e.message ?? 'Could not save your attempt.');
       setSubmitting(false);
@@ -196,6 +235,24 @@ export default function Quiz() {
               {correctSoFar} correct{scored < questions.length ? ` · ${scored} scored` : ''}
             </span>
           </div>
+        </div>
+
+        <div className="quiz-game-row">
+          <span className="game-chip game-chip-timer">
+            <Icon name="timer" size={15} />
+            {timeLeft}s
+          </span>
+          <div className="game-timer-track">
+            <span style={{ width: `${(Math.max(timeLeft, 0) / TIME_LIMIT_SECONDS) * 100}%` }} />
+          </div>
+          <span className="game-chip game-chip-streak">
+            <Icon name="local_fire_department" size={15} />
+            {streak}x streak
+          </span>
+          <span className="game-chip game-chip-points">
+            <Icon name="military_tech" size={15} />
+            {gamePoints} pts
+          </span>
         </div>
 
         <article className="quiz-card panel-solid" key={question.id}>

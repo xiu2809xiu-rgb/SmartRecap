@@ -12,7 +12,45 @@
   padding-block: 100px;
 }
 
-.quiz-progress { margin-bottom: 26px; }
+.quiz-progress { margin-bottom: 16px; }
+
+.quiz-game-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.game-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--t-xs);
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.game-chip-timer .material-symbols-rounded { color: var(--accent); }
+.game-chip-streak .material-symbols-rounded { color: var(--warn); }
+.game-chip-points .material-symbols-rounded { color: var(--good); }
+
+.game-timer-track {
+  flex: 1;
+  min-width: 60px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--ground-sunken);
+  overflow: hidden;
+}
+
+.game-timer-track > span {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--accent);
+  transition: width 1s linear;
+}
 
 .quiz-meter {
   display: flex;
