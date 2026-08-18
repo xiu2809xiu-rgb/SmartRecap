@@ -95,3 +95,56 @@
   .auth-main { grid-template-columns: minmax(0, 1fr); }
   .auth-mascot { display: none; }
 }
+
+/* The avatar needs a real box: <Canvas> fills its parent, and the grid cell
+   that suited a 300px mascot would collapse it to nothing. */
+.auth-mascot.has-avatar {
+  /* Centred in its grid column. With an explicit width and no justify-self a
+     grid item aligns to the column START, which left the figure sitting well
+     off-centre in the open half of the page. */
+  justify-self: center;
+  width: min(420px, 100%);
+  aspect-ratio: 4 / 5;
+  border-radius: var(--r-xl);
+  /* NOT hidden. The thought bubbles and the learner label sit deliberately
+     outside this box, and clipping here sliced them off — the left-hand
+     bubble lost its first few characters. The canvas carries its own rounding
+     (avatar.css), so nothing needs a clip at this level. */
+  overflow: visible;
+  background: radial-gradient(60% 55% at 50% 32%, color-mix(in srgb, var(--aurora-violet) 30%, transparent), transparent 72%);
+}
+
+.auth-mascot.has-avatar .avatar-stage { position: absolute; inset: 0; }
+.auth-mascot.has-avatar { position: relative; }
+
+/* The learner label, above the model's head. Wider than the frame so the
+   particles have room to render at a legible size. */
+.auth-learner {
+  position: absolute;
+  top: -78px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(340px, 90vw);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  margin: 0;
+  pointer-events: none;
+}
+
+.auth-learner-name { width: 100%; }
+
+.auth-learner-role {
+  font-size: var(--t-xs);
+  font-weight: 750;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent-cool);
+  text-shadow: 0 0 16px color-mix(in srgb, var(--aurora-cyan) 60%, transparent);
+}
+
+@media (max-width: 1180px) {
+  .auth-learner { top: -64px; width: min(280px, 86vw); }
+}

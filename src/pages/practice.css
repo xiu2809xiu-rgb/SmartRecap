@@ -296,3 +296,44 @@
   .practice-tabs,
   .practice-nav { display: none !important; }
 }
+
+/* Coding help. Sits between the score and the individual checks: after you
+   know how many failed, before you read which. */
+.practice-help { margin: 12px 0 4px; }
+
+.practice-help-body {
+  padding: 13px 15px;
+  border-radius: var(--r);
+  background: var(--tint);
+  border: 1px solid color-mix(in srgb, var(--accent-cool) 26%, transparent);
+}
+
+.practice-help-body > p { font-size: var(--t-sm); line-height: 1.62; color: var(--ink-2); white-space: pre-wrap; }
+
+.practice-help-model {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-4);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.practice-help-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--glass-line);
+  font-size: var(--t-xs) !important;
+  color: var(--ink-4) !important;
+}
+
+.practice-help-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: var(--t-xs);
+  color: var(--bad);
+}

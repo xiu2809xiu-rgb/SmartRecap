@@ -62,11 +62,29 @@ function loadScript() {
  * already declared intent by clicking — a chooser is the honest response to
  * that, and it works in browsers that block third-party cookies.
  */
+/**
+ * Google rejects an unregistered origin inside its own popup window, with
+ * `Error 400: origin_mismatch`. The app never sees it — no callback fires, so
+ * there is nothing to catch and nothing to explain. The best we can do is say,
+ * once and early, exactly which origin has to be registered, so the next person
+ * who hits it has the answer in the console rather than in a Chinese-language
+ * Google error page.
+ */
+function warnAboutOrigin() {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return;
+  console.info(
+    `[SmartRecap] Google sign-in will only work if this exact origin is listed under ` +
+      `"Authorised JavaScript origins" for client ${GOOGLE_CLIENT_ID.slice(0, 24)}… — ` +
+      `current origin: ${window.location.origin}`,
+  );
+}
+
 export async function requestGoogleCredential() {
   if (!isGoogleConfigured) {
     throw new Error('Google sign-in is not configured for this deployment.');
   }
 
+  warnAboutOrigin();
   const google = await loadScript();
 
   return new Promise((resolve, reject) => {

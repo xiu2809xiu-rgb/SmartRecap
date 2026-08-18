@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     openai_chat_model: str = "gpt-4.1-mini"
     # Must match VITE_GOOGLE_CLIENT_ID on the frontend exactly: the token's
     # audience is checked against it, so a mismatch rejects every sign-in.
+    # NVIDIA NIM. Powers the coding help in the practice panel
+    # (qwen2.5-coder-32b-instruct) and is the declared generation failover.
+    nvidia_api_key: SecretStr = SecretStr("")
     google_client_id: str = ""
     demo_mode: bool = False
     cors_origins: str = "http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:3000,http://localhost:3000"
