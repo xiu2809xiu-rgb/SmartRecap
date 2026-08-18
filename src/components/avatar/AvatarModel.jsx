@@ -29,7 +29,7 @@ const TARGET_HEIGHT = 1.55;
 // first clip to leave the bind pose, short enough that the reveal is not a wait.
 const SETTLE_FRAMES = 24;
 
-export default function AvatarModel({ url, onReady }) {
+export default function AvatarModel({ url, onReady, onClip }) {
   const inner = useRef();
   const { scene, animations } = useGLTF(url);
 
@@ -143,10 +143,13 @@ export default function AvatarModel({ url, onReady }) {
 
     next.reset();
     next.setLoop(THREE.LoopRepeat, Infinity);
-    if (active.current && active.current !== next) next.crossFadeFrom(active.current, FADE_SECONDS, false).play();
+    if (active.current && next !== active.current) next.crossFadeFrom(active.current, FADE_SECONDS, false).play();
     else next.fadeIn(FADE_SECONDS).play();
     active.current = next;
-  }, [actions, names, index]);
+    // Told to the page, not drawn here: the thought that goes with this clip
+    // is DOM text, so it can be selected, translated and styled with the rest.
+    onClip?.(index % names.length);
+  }, [actions, names, index, onClip]);
 
   // Advance when the running clip completes a loop. `loop` fires per
   // repetition, which is the natural seam to change on — cutting mid-motion

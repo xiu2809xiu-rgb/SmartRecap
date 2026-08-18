@@ -1,0 +1,96 @@
+/* Bubbles sit BESIDE the figure, alternating sides, never over it.
+   The default offsets keep them inside the frame's top corners; the auth page
+   overrides them below to use the open space either side of the model. */
+.thought {
+  position: absolute;
+  top: 4%;
+  width: min(230px, 58%);
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    opacity 420ms var(--ease),
+    transform 520ms var(--spring);
+}
+
+.thought.is-right {
+  right: 0;
+  transform: translate(8px, 10px) scale(0.96);
+  transform-origin: bottom left;
+}
+
+.thought.is-left {
+  left: 0;
+  transform: translate(-8px, 10px) scale(0.96);
+  transform-origin: bottom right;
+}
+
+.thought.is-in {
+  opacity: 1;
+  transform: translate(0, 0) scale(1);
+}
+
+.thought-body {
+  position: relative;
+  margin: 0;
+  padding: 13px 16px;
+  font-size: var(--t-sm);
+  line-height: 1.5;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ground-raised) 90%, transparent);
+  border: 1px solid var(--glass-line-strong);
+  box-shadow: var(--shadow-panel), 0 0 34px -14px var(--aurora-violet);
+  backdrop-filter: blur(10px);
+}
+
+/* The squared-off corner is the one nearest the figure, so the shape leans
+   toward whoever is thinking. */
+.thought.is-right .thought-body { border-radius: 18px 18px 18px 6px; }
+.thought.is-left .thought-body { border-radius: 18px 18px 6px 18px; }
+
+/* The tail: two dots shrinking toward the model, on the facing edge. */
+.thought-dot {
+  position: absolute;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ground-raised) 90%, transparent);
+  border: 1px solid var(--glass-line-strong);
+  backdrop-filter: blur(10px);
+}
+
+.thought-dot-1 { width: 11px; height: 11px; bottom: -14px; }
+.thought-dot-2 { width: 6px; height: 6px; bottom: -26px; }
+
+.thought.is-right .thought-dot-1 { left: 8px; }
+.thought.is-right .thought-dot-2 { left: 0; }
+.thought.is-left .thought-dot-1 { right: 8px; }
+.thought.is-left .thought-dot-2 { right: 0; }
+
+/* Reduced motion: present and readable, with no entrance. */
+.thought.is-still { transform: none; transition: opacity 0.01ms; }
+
+/* ------------------------------------------------------------- auth page */
+
+/* Now that the frame is centred in its column the space either side is close
+   to balanced — measured left gap 172px (1280) to 490px (1920), right gap a
+   steady ~190px before the sign-in card. So both sides hang outward by a
+   similar amount, sized so the bubble clears the figure's widest reach
+   (measured: the figure spans 9.8%-84.5% of the frame across all clips)
+   without ever crossing the viewport edge or the card. */
+.auth-mascot.has-avatar .thought {
+  width: min(230px, 42%);
+  /* Measured across 26 samples of every clip: the figure's topmost pixel
+     ranges from 4.4% to 32.8% of the frame height, so anything below about 4%
+     can be reached by a raised hand. Sitting just above the frame keeps the
+     bubble level with or above the head in every pose. */
+  top: -2%;
+}
+
+.auth-mascot.has-avatar .thought.is-left { left: -36%; }
+.auth-mascot.has-avatar .thought.is-right { right: -40%; }
+
+/* One column below this — the avatar is hidden entirely (auth.css:96), so
+   there is nothing to position around. */
+@media (max-width: 900px) {
+  .thought { width: min(200px, 58%); top: 2%; }
+  .thought-body { font-size: var(--t-xs); padding: 11px 13px; }
+}

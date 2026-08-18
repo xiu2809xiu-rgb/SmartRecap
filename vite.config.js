@@ -4,6 +4,17 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   server: {
+    // Pinned, and strict on purpose.
+    //
+    // Vite's default is to walk to the next free port when 5173 is taken. That
+    // is friendly until you use Google sign-in: the OAuth client authorises
+    // specific JavaScript origins, so a silent move to :5174 produces
+    // "Error 400: origin_mismatch" inside Google's own popup, where the app
+    // cannot see it or explain it. Failing loudly with "Port 5173 is already
+    // in use" is a far better trade — that message tells you exactly what to
+    // do, and it takes ten seconds.
+    port: 5173,
+    strictPort: true,
     proxy: {
       '/api': 'http://127.0.0.1:8000',
       '/ws': { target: 'ws://127.0.0.1:8000', ws: true },

@@ -995,6 +995,16 @@ export const mockApi = {
   },
 
   practice: {
+    async helpAvailable() {
+      await sleep(80);
+      return { available: false };
+    },
+    async explain() {
+      // Demo mode calls no model. Inventing an explanation of why a student's
+      // code failed would be the one kind of wrong answer this app exists to
+      // prevent.
+      throw Object.assign(new Error('Coding help needs a live backend.'), { status: 501 });
+    },
     /**
      * Demo mode calls no model, so these are written by hand — but written to
      * the same contract the real generator has to meet. They are about the
