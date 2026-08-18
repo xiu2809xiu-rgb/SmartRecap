@@ -117,7 +117,7 @@ export function Claim({ id, citations = [], confidence = 'grounded', children })
           </button>
         ))}
         {unsupported && (
-          <span className="cite cite-missing" title="No source chunk matched this line">
+          <span className="cite cite-missing" title="Nothing in your file backs this line up">
             Unsupported
           </span>
         )}
@@ -144,7 +144,7 @@ export function SourceCard({ chunk }) {
     <article ref={ref} className={`source-card ${isLit ? 'is-lit' : ''}`} id={`src-${chunk.id}`}>
       <header className="source-head">
         <span className="source-label">{chunk.label}</span>
-        {chunkById.has(chunk.id) && <span className="source-kind">extracted text</span>}
+        {chunkById.has(chunk.id) && <span className="source-kind">from your file</span>}
       </header>
       <p className="source-text">{chunk.text}</p>
     </article>

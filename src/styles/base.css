@@ -34,6 +34,13 @@ button { cursor: pointer; border: 0; background: none; }
 button:disabled { cursor: not-allowed; opacity: 0.45; }
 img, svg, canvas { display: block; max-width: 100%; }
 
+/* ElectricBorder sizes its canvas 60px larger than the box it traces, then
+   centres it — the glow has to spill outside the border to be visible. The
+   global `max-width: 100%` above clamps that canvas to its positioned
+   container instead, which halves it and collapses the traced border into two
+   vertical lines running down the middle of the card. */
+.eb-canvas { max-width: none; }
+
 /* Tabular figures wherever one number is compared against another. */
 .num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
 

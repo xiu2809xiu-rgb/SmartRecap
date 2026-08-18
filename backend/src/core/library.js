@@ -8,7 +8,7 @@ import { badRequest, notFound } from '../lib/http.js';
  */
 
 /** Strips DynamoDB keys and the S3 path so storage internals never ship. */
-export const publicMaterial = ({ pk, sk, expiresAt, s3Key, ...rest }) => rest;
+export const publicMaterial = ({ pk, sk, expiresAt, s3Key, shareToken, ...rest }) => rest;
 
 export async function loadMaterial(userId, materialId) {
   const item = await getItem(keys.material(userId, materialId));
@@ -68,9 +68,12 @@ export async function saveCards(userId, materialId, cards) {
 /* ------------------------------------------------------------------ share */
 
 export async function createShare(userId, materialId, publicOrigin = '') {
-  await loadMaterial(userId, materialId);
+  const material = await loadMaterial(userId, materialId);
   const token = newId('s').replace('s_', '');
   await putItem({ ...keys.share(token), userId, materialId, createdAt: new Date().toISOString() });
+  // Kept on the material so that moving a guest's library onto a real account
+  // can repoint the share record too, instead of leaving a dead link.
+  await putItem({ ...material, shareToken: token });
   return { token, url: `${publicOrigin}/s/${token}` };
 }
 

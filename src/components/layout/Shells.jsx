@@ -45,8 +45,7 @@ function DemoBanner() {
     <div className="demo-banner" role="note">
       <Icon name="science" size={16} />
       <span>
-        Demo mode — no AI backend connected. Recaps shown are the bundled sample; set <code>VITE_API_BASE_URL</code> to
-        generate real ones.
+        Demo mode — every recap here is the same bundled sample, not one written from your own file.
       </span>
     </div>
   );

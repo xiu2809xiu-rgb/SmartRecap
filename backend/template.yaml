@@ -44,6 +44,14 @@ Parameters:
     Default: 'meta/llama-3.3-70b-instruct'
     Description: Model id to request from NVIDIA NIM.
 
+  GoogleClientId:
+    Type: String
+    Default: ''
+    Description: >
+      OAuth 2.0 Web client id for Google sign-in. Must match the frontend's
+      VITE_GOOGLE_CLIENT_ID — the server verifies the token audience against it.
+      Leave blank to disable Google sign-in.
+
   JwtSecret:
     Type: String
     NoEcho: true
@@ -78,6 +86,7 @@ Globals:
         OPENROUTER_MODEL: !Ref OpenRouterModel
         NVIDIA_API_KEY: !Ref NvidiaApiKey
         NVIDIA_MODEL: !Ref NvidiaModel
+        GOOGLE_CLIENT_ID: !Ref GoogleClientId
   Api:
     Cors:
       AllowMethods: "'GET,POST,PUT,PATCH,DELETE,OPTIONS'"

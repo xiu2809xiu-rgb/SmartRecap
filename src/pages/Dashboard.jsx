@@ -122,7 +122,7 @@ export default function Dashboard() {
           label="Reading time saved"
           value={<CountUp to={Math.round(stats.minutesSaved)} duration={1.4} />}
           unit="min"
-          hint="Deck reading time minus recap reading time"
+          hint="Rough estimate, at about 1.5 minutes a page"
         />
       </section>
 
@@ -237,7 +237,7 @@ export default function Dashboard() {
       >
         <p>
           <strong>{confirmDelete?.title}</strong> and its recap, quiz, flashcards and attempt history will be removed.
-          The original file is deleted from S3 too. This cannot be undone.
+          The file you uploaded is deleted too. This cannot be undone.
         </p>
       </Modal>
     </div>

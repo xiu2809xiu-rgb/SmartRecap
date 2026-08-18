@@ -148,8 +148,8 @@ export default function Processing() {
 
               <p className="processing-note">
                 <Icon name="info" size={15} />
-                You can leave this page — processing runs in Lambda and the recap will be in your library when it
-                finishes.
+                You can leave this page. It keeps going in the background, and your recap will be waiting in your
+                library when it is done.
               </p>
             </>
           )}

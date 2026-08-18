@@ -37,19 +37,19 @@ const STEPS = [
   {
     n: '01',
     title: 'Drop in the deck',
-    body: 'PDF, PowerPoint, Word or a photo of handwritten notes. The file goes straight to S3 with a presigned URL — it never passes through a server we run.',
+    body: 'PDF, PowerPoint, Word, or a photo of handwritten notes. It is stored privately, and if there is no selectable text SmartRecap reads the words off the page for you.',
     icon: 'upload_file',
   },
   {
     n: '02',
-    title: 'Text is split, not summarised yet',
-    body: 'Every slide and page becomes a numbered chunk. That numbering is what makes citation possible later — you cannot cite what you did not keep track of.',
+    title: 'Every slide is kept separate',
+    body: 'Slide 12 stays slide 12. Keeping that numbering is the whole trick — you cannot point back at where something came from if you threw away where it came from.',
     icon: 'content_cut',
   },
   {
     n: '03',
-    title: 'The model writes against the chunks',
-    body: 'The recap and the quiz come back as constrained JSON where every claim carries chunk ids. Anything that cites nothing is dropped before you ever see it.',
+    title: 'Every line has to name its slide',
+    body: 'The AI writes your recap and quiz against those numbered slides, and has to say which one each point came from. Anything it cannot attach to a slide is dropped before you see it.',
     icon: 'fact_check',
   },
 ];
@@ -71,13 +71,13 @@ const BENTO = [
     color: '#150c26',
     label: 'Recall',
     title: 'Spaced repetition',
-    description: 'Key terms and missed questions become flashcards on an SM-2 schedule, so revision spreads across the term.',
+    description: 'Key terms and missed questions become flashcards that come back at widening intervals, so revision spreads across the term instead of the night before.',
   },
   {
     color: '#150c26',
     label: 'Grounding',
     title: 'Nothing uncited ships',
-    description: 'Claims the model could not trace to a chunk are listed separately as dropped, with the reason.',
+    description: 'Anything the AI could not trace back to one of your slides is listed separately as dropped, with the reason it did not hold up.',
   },
   {
     color: '#150c26',
@@ -166,7 +166,7 @@ export default function Landing() {
             </h1>
 
             <BlurText
-              text="SmartRecap turns your slides and notes into a structured recap and a quiz that checks you read it. Every line of the recap points back at the slide it came from — and anything the model could not trace to your material is dropped before it reaches you."
+              text="SmartRecap turns your slides and notes into a structured recap and a quiz that checks you read it. Every line of the recap points back at the slide it came from — and anything the AI could not trace to your material is dropped before it reaches you."
               className="lede hero-lede"
               animateBy="words"
               delay={12}
@@ -328,24 +328,25 @@ export default function Landing() {
               <Icon name="rule" size={22} />
               <h3>Dropped, and shown as dropped</h3>
               <p>
-                The sample deck produced two claims the model could not ground. They are listed at the end of the recap
-                with the reason, not deleted silently — knowing what the AI wanted to say and could not is useful.
+                The sample deck produced two claims that no slide backed up. They are listed at the end of the recap
+                with the reason rather than quietly deleted — knowing what the AI wanted to say and could not is
+                worth seeing.
               </p>
             </SpotlightCard>
             <SpotlightCard className="ground-card" spotlightColor="rgba(0, 240, 255, 0.18)">
               <Icon name="quiz" size={22} />
               <h3>Unverifiable questions do not score</h3>
               <p>
-                A quiz item whose answer is not settled by the material is excluded from your percentage. Your score
-                measures whether you learned the deck, not whether you guessed the model.
+                A question your material does not clearly answer is still shown and explained, but it does not count.
+                Your score measures whether you learned the deck, not whether you guessed what the AI meant.
               </p>
             </SpotlightCard>
             <SpotlightCard className="ground-card" spotlightColor="rgba(93, 52, 208, 0.24)">
               <Icon name="swap_horiz" size={22} />
-              <h3>Two providers, automatic failover</h3>
+              <h3>It keeps working when one AI is busy</h3>
               <p>
-                Requests go to OpenRouter first and fall through to NVIDIA NIM on rate-limit or timeout. Both run on
-                free tiers, so a busy demo day does not cost anything or stop working.
+                SmartRecap talks to two independent AI services. If the first is rate-limited or slow, it switches to
+                the second automatically. You get your recap either way, and it stays free.
               </p>
             </SpotlightCard>
           </div>
@@ -375,11 +376,10 @@ export default function Landing() {
       <section id="stack" className="section stack">
         <div className="shell">
           <p className="eyebrow">Built on</p>
-          <h2 className="section-title">Serverless on AWS, models from outside it</h2>
+          <h2 className="section-title">Built on AWS</h2>
           <p className="lede stack-lede">
-            Everything stateful lives in AWS — S3 for the uploads, DynamoDB for recaps and attempts, Lambda behind API
-            Gateway, Cognito for identity, Textract when a scan has no text layer and Polly for read-aloud. Generation
-            runs on external free-tier models, called only from Lambda so no key ever reaches the browser.
+            Your uploads, recaps and progress all live in AWS. Recaps are written by external free-tier AI models,
+            called only from the server — no key ever reaches your browser, and your file never leaves storage.
           </p>
           <div className="stack-loop">
             <LogoLoop

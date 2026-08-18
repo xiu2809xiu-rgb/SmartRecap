@@ -19,7 +19,7 @@ import './auth.css';
  * without inventing credentials, and a sign-in problem should never be able to
  * block a live demo.
  */
-export default function AuthLayout({ title, subtitle, children, footer, mascotState = 'wave' }) {
+export default function AuthLayout({ title, subtitle, children, footer, methods, mascotState = 'wave' }) {
   const { guest } = useAuth();
   const { allowEffects } = usePrefs();
   const navigate = useNavigate();
@@ -51,8 +51,20 @@ export default function AuthLayout({ title, subtitle, children, footer, mascotSt
 
       {children}
 
+      {/* Google and face sign-in sit above the guest option: they are ways of
+          being *you*, whereas guest is a way of skipping that. Grouping them
+          together would suggest they are the same kind of choice. */}
+      {methods && (
+        <>
+          <div className="auth-divider">
+            <span>or</span>
+          </div>
+          {methods}
+        </>
+      )}
+
       <div className="auth-divider">
-        <span>or</span>
+        <span>{methods ? 'in a hurry?' : 'or'}</span>
       </div>
 
       <button className="btn btn-ghost auth-guest" onClick={onGuest} disabled={busy}>
@@ -89,8 +101,12 @@ export default function AuthLayout({ title, subtitle, children, footer, mascotSt
         <div className="auth-mascot">
           <Mascot state={mascotState} size={300} caption />
         </div>
+        {/* ElectricBorder's `chaos` is the displacement amplitude, not a style
+            knob. Past roughly 0.2 the noise pushes the traced border far enough
+            inward that it crosses the card and reads as a crack through the
+            content — which is exactly what 0.42 was doing here. */}
         {allowEffects ? (
-          <ElectricBorder color="#a78bfa" speed={0.8} chaos={0.42} borderRadius={26} className="auth-border">
+          <ElectricBorder color="#a78bfa" speed={0.7} chaos={0.14} borderRadius={26} className="auth-border">
             {card}
           </ElectricBorder>
         ) : (

@@ -129,7 +129,7 @@ export default function Flashcards() {
             <p>
               {done > 0
                 ? `You reviewed ${done} ${done === 1 ? 'card' : 'cards'}. The next ones come back on their own schedule — that spacing is what moves them into long-term memory.`
-                : 'Every card in this deck is scheduled for a later day. Come back when they are due, or take the quiz to find weak spots now.'}
+                : 'Nothing in this deck is due yet. Come back when it is, or take the quiz to find weak spots now.'}
             </p>
             <div className="row wrap gap-2 center">
               <Link to={`/app/material/${id}/quiz`} className="btn btn-primary">
@@ -219,8 +219,8 @@ export default function Flashcards() {
             </div>
 
             <p className="fc-note">
-              Intervals follow SM-2: cards you get right stretch further apart each time, and a miss brings one back in
-              the same session with a lasting ease penalty.
+              Cards you get right come back less and less often. Ones you miss come back sooner, and again later
+              today. Spacing them out like this is what moves them into long-term memory.
             </p>
           </>
         )}

@@ -121,7 +121,7 @@ export default function Recap() {
                   <Icon name="science" size={16} />
                   {material.sample
                     ? 'Sample material bundled with SmartRecap so the app has something to show before your first upload.'
-                    : 'Generated in demo mode — this is the sample recap, not model output from your file.'}
+                    : 'Made in demo mode — this is the sample recap, not one written from your own file.'}
                 </p>
               )}
 
@@ -195,9 +195,9 @@ export default function Recap() {
                     Dropped from this recap
                   </h2>
                   <p className="dropped-lede">
-                    The model produced these, but nothing in your upload supports them, so they are not part of the
-                    recap above. They are shown because knowing what the AI wanted to claim is more useful than a silent
-                    deletion.
+                    The AI wrote these, but nothing in your file backs them up, so they are not part of the recap
+                    above. They are shown rather than quietly deleted — knowing what the AI wanted to claim and could
+                    not support is worth seeing.
                   </p>
                   <ul className="dropped-list">
                     {recap.ungrounded.map((u, i) => (
@@ -210,37 +210,31 @@ export default function Recap() {
                 </section>
               )}
 
+              {/* Transparency a student can act on: which AI wrote this, how much
+                  of their file it actually read, and what it cost them. Token
+                  counts and provider routing are ours to care about, not theirs
+                  — those stay in the logs. */}
               {material.provider && (
                 <section className="provenance">
-                  <h2>How this was made</h2>
+                  <h2>How this recap was made</h2>
                   <dl>
                     <div>
-                      <dt>Provider</dt>
-                      <dd>{material.provider.name}</dd>
-                    </div>
-                    <div>
-                      <dt>Model</dt>
+                      <dt>Written by</dt>
                       <dd className="mono">{material.provider.model}</dd>
                     </div>
                     <div>
-                      <dt>Generation time</dt>
+                      <dt>Time taken</dt>
                       <dd className="num">
                         {material.provider.latencyMs ? formatDuration(material.provider.latencyMs) : '—'}
                       </dd>
                     </div>
                     <div>
-                      <dt>Tokens</dt>
-                      <dd className="num">
-                        {material.provider.tokensIn.toLocaleString()} in / {material.provider.tokensOut.toLocaleString()} out
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Cost</dt>
-                      <dd className="num">${material.provider.costUsd.toFixed(2)}</dd>
-                    </div>
-                    <div>
-                      <dt>Source chunks</dt>
+                      <dt>Passages read from your file</dt>
                       <dd className="num">{chunks.length}</dd>
+                    </div>
+                    <div>
+                      <dt>Cost to you</dt>
+                      <dd>{material.provider.costUsd > 0 ? `$${material.provider.costUsd.toFixed(2)}` : 'Free'}</dd>
                     </div>
                   </dl>
                 </section>
@@ -298,13 +292,13 @@ export default function Recap() {
           >
             <Icon name="print" size={22} />
             <strong>Print or PDF</strong>
-            <span>Uses your browser's print dialogue. The source rail is laid out as footnotes.</span>
+            <span>Uses your browser's print dialogue. Sources are laid out as footnotes.</span>
           </button>
 
           <div className="export-option is-static">
             <Icon name="link" size={22} />
             <strong>Share a read-only link</strong>
-            <span>Anyone with the link sees the recap and the sources. They cannot see your quiz scores.</span>
+            <span>Anyone with the link can read the recap and its sources. They cannot see your quiz scores.</span>
             {share ? (
               <div className="share-row">
                 <input className="input" readOnly value={share.url} onFocus={(e) => e.target.select()} />
