@@ -7,6 +7,7 @@ import {
   NavProgressProvider,
   PageTransition,
   RouteProgress,
+  RouteSweep,
   useSuspenseProgress,
 } from './components/PageTransition.jsx';
 import { MascotBadge } from './mascot/Mascot.jsx';
@@ -51,15 +52,12 @@ function RouteFallback() {
   useSuspenseProgress();
   return (
     <div className="route-fallback" role="status" aria-live="polite">
-      <MascotBadge size={104} state="thinking" />
+      <div className="route-fallback-orbit">
+        <MascotBadge size={96} state="thinking" />
+      </div>
       <div className="route-fallback-copy">
         <strong>One moment</strong>
         <span>Getting that page ready</span>
-      </div>
-      <div className="route-fallback-dots" aria-hidden="true">
-        <i />
-        <i />
-        <i />
       </div>
     </div>
   );
@@ -73,6 +71,7 @@ export default function App() {
     <>
       <ScrollToTop />
       <RouteProgress />
+      <RouteSweep />
       {/* Routes are given an explicit location so AnimatePresence sees a stable
           key per page rather than re-keying on every render. */}
       <PageTransition>

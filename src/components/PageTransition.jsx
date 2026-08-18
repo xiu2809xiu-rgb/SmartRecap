@@ -7,20 +7,20 @@ import './pagetransition.css';
 /**
  * Moving between pages.
  *
- * Three pieces, because a route change has three different waits hiding in it
- * and one animation cannot cover all of them:
+ * A route change hides three different waits, and one animation cannot cover
+ * all of them:
  *
- *   1. `RouteProgress` — the bar across the top. It runs whenever a navigation
- *      is in flight, including the lazy chunk fetch, which is the only part
- *      that can actually take a noticeable amount of time.
- *   2. `PageTransition` — the enter animation on the new page.
- *   3. `RouteFallback` — the branded hold for a chunk that is genuinely slow.
+ *   1. `RouteSweep` — the signature. Aurora bands rake across the viewport on
+ *      every navigation. This is the bit you notice.
+ *   2. `RouteProgress` — the bar across the top, for when a lazy chunk is
+ *      actually still downloading.
+ *   3. `PageTransition` — the arriving page's own entrance, timed to land in
+ *      the gap the sweep opens.
  *
- * The deliberate choice here is **enter-only**. `AnimatePresence mode="wait"`
- * looks lovely in a demo and costs you the exit duration on every single
- * navigation — the app feels slower the more you use it. Fading the outgoing
- * page out while the incoming one is already arriving means the click feels
- * instant and the motion is still smooth.
+ * The sweep is `pointer-events: none` and the incoming page is interactive
+ * underneath it from the first frame, so none of this costs the user time. That
+ * is the difference between a transition and a loading screen: a transition
+ * covers work that is already finished.
  */
 
 /* ------------------------------------------------------------------ context */
@@ -62,6 +62,110 @@ export function useSuspenseProgress() {
   }, []);
 }
 
+/* -------------------------------------------------------------- the sweep */
+
+// Violet leads, magenta carries the weight, cyan trails. Staggering them is
+// what makes it read as one raking gesture rather than three parallel bars.
+const BANDS = ['is-violet', 'is-magenta', 'is-cyan'];
+
+// Longest band duration plus its delay, from pagetransition.css. The sweep
+// unmounts on this timer rather than on an exit animation.
+const SWEEP_MS = 840;
+
+/**
+ * Driven by CSS keyframes and a timeout rather than AnimatePresence.
+ *
+ * The first version used `<AnimatePresence>` with an `exit`, and the bands
+ * never unmounted — every navigation stacked three more onto the DOM (measured:
+ * twelve after four navigations, still climbing). A transition that leaks nodes
+ * on every click is worse than no transition.
+ *
+ * A mount/unmount pair on an explicit timer cannot leak: the elements exist for
+ * exactly as long as the keyframes run. Restarting is a key change, which is
+ * also what makes a rapid second navigation cut the first sweep short instead
+ * of queueing behind it.
+ */
+export function RouteSweep() {
+  const { pathname } = useLocation();
+  const { reduced } = usePrefs();
+  const [run, setRun] = useState(0);
+  const [active, setActive] = useState(false);
+  const first = useRef(true);
+  const timer = useRef(0);
+  // The path a click has already swept for. React commits the matching
+  // `useLocation()` update up to a second later, and without this the same
+  // navigation sweeps twice — once on the click, once on the commit.
+  const claimed = useRef(null);
+
+  const fire = useCallback((forPath) => {
+    if (forPath) claimed.current = forPath;
+    setRun((n) => n + 1);
+    setActive(true);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setActive(false), SWEEP_MS);
+  }, []);
+
+  /**
+   * Fired from the click, not from the committed route.
+   *
+   * React Router wraps navigation in a transition, so `useLocation()` does not
+   * update until React commits the new tree — measured at ~800ms after the
+   * click on a route whose page mounts a lazy boundary. Waiting for that put a
+   * dead pause between the click and any feedback, which is precisely the gap
+   * this animation exists to fill.
+   */
+  useEffect(() => {
+    if (reduced) return undefined;
+
+    const onClick = (e) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const link = e.target.closest?.('a[href]');
+      if (!link) return;
+
+      const href = link.getAttribute('href');
+      // Internal, in-app, and actually going somewhere else.
+      if (!href?.startsWith('/') || link.target === '_blank' || link.hasAttribute('download')) return;
+      const target = href.split('?')[0].split('#')[0];
+      if (target === window.location.pathname) return;
+
+      fire(target);
+    };
+
+    // Capture phase: the router's own handler stops propagation on some links.
+    document.addEventListener('click', onClick, true);
+    return () => document.removeEventListener('click', onClick, true);
+  }, [fire, reduced]);
+
+  // Still covers programmatic navigation — finishing a quiz, signing in, the
+  // pipeline redirecting to a finished recap — where there is no link click.
+  useEffect(() => {
+    if (first.current) {
+      // No sweep on first paint: arriving at a page you asked for directly
+      // should not look like you navigated within the app.
+      first.current = false;
+      return;
+    }
+    // A click already swept for this destination; this is the late commit.
+    if (claimed.current === pathname) {
+      claimed.current = null;
+      return;
+    }
+    fire();
+  }, [pathname, fire]);
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  if (reduced || !active) return null;
+
+  return (
+    <div className="route-sweep" aria-hidden="true">
+      {BANDS.map((tone, i) => (
+        <span key={`${tone}-${run}`} className={`sweep-band ${tone}`} style={{ animationDelay: `${i * 70}ms` }} />
+      ))}
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------- the bar */
 
 export function RouteProgress() {
@@ -82,9 +186,9 @@ export function RouteProgress() {
     if (busy) {
       setVisible(true);
       setWidth(0);
-      // Two steps rather than a CSS animation to 90%: a fast jump to 35% makes
-      // the click feel acknowledged, then a slow crawl signals "still working"
-      // without ever implying it knows the real progress. It does not.
+      // Two steps rather than one long CSS animation to 90%: a fast jump to 35%
+      // makes the click feel acknowledged, then a slow crawl signals "still
+      // working" without ever implying it knows the real progress. It does not.
       timers.current.push(setTimeout(() => setWidth(35), 20));
       timers.current.push(setTimeout(() => setWidth(72), 320));
       timers.current.push(setTimeout(() => setWidth(88), 1200));
@@ -112,18 +216,20 @@ export function RouteProgress() {
 
   return (
     <div className="route-progress" role="status" aria-label="Loading the page">
-      <span className="route-progress-bar" style={{ width: `${width}%` }} />
+      <span className="route-progress-bar" style={{ width: `${width}%` }}>
+        <i className="route-progress-shimmer" />
+      </span>
       <span className="route-progress-glow" style={{ left: `${width}%` }} />
     </div>
   );
 }
 
-/* ------------------------------------------------------------ the transition */
+/* ------------------------------------------------------------ the entrance */
 
 const ENTER = {
-  initial: { opacity: 0, y: 14, filter: 'blur(6px)' },
-  animate: { opacity: 1, y: 0, filter: 'blur(0px)' },
-  exit: { opacity: 0, y: -8, filter: 'blur(4px)' },
+  initial: { opacity: 0, y: 26, scale: 0.985, filter: 'blur(10px)' },
+  animate: { opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' },
+  exit: { opacity: 0, y: -14, scale: 0.995, filter: 'blur(8px)' },
 };
 
 const STILL = { initial: false, animate: {}, exit: {} };
@@ -150,9 +256,12 @@ export function PageTransition({ children }) {
           reduced
             ? { duration: 0 }
             : {
-                duration: isStudy ? 0.34 : 0.26,
-                ease: [0.22, 0.61, 0.36, 1],
-                filter: { duration: isStudy ? 0.28 : 0.2 },
+                // Delayed just enough that the page lands as the first band
+                // clears it, rather than racing the sweep.
+                duration: isStudy ? 0.48 : 0.42,
+                delay: 0.1,
+                ease: [0.16, 0.84, 0.34, 1],
+                filter: { duration: 0.34, delay: 0.1 },
               }
         }
       >

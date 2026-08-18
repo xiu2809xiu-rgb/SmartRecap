@@ -2,6 +2,90 @@
    Route transitions
    ======================================================================== */
 
+/* ---------------------------------------------------------------- the sweep */
+
+.route-sweep {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  overflow: hidden;
+  pointer-events: none;
+  /* The bands blend with each other, not with the page behind them — without
+     isolation, `screen` would also lift the whole app underneath. */
+  isolation: isolate;
+}
+
+.sweep-band {
+  position: absolute;
+  top: -25%;
+  left: 0;
+  width: 62%;
+  height: 150%;
+  /* Raked and over-tall so the diagonal still covers the corners at any aspect
+     ratio. A vertical band reads as a wipe; an angled one reads as a gesture.
+     The rotation lives inside the keyframes rather than as a separate `rotate`
+     property, so there is exactly one animated transform per element. */
+  mix-blend-mode: screen;
+  will-change: transform;
+  transform: translateX(-130%) rotate(8deg);
+  animation: sweep-across 700ms cubic-bezier(0.7, 0, 0.28, 1) both;
+}
+
+@keyframes sweep-across {
+  from { transform: translateX(-130%) rotate(8deg); }
+  to   { transform: translateX(230%) rotate(8deg); }
+}
+
+/* The soft leading and trailing edges are gradients rather than `filter: blur`.
+   Blurring a viewport-sized element every frame is the difference between this
+   running at 60fps and it stuttering on a laptop GPU. */
+.sweep-band.is-violet {
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgba(93, 52, 208, 0.16) 22%,
+    rgba(124, 77, 255, 0.55) 52%,
+    rgba(93, 52, 208, 0.16) 78%,
+    transparent 100%
+  );
+}
+
+.sweep-band.is-magenta {
+  width: 48%;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgba(255, 0, 110, 0.2) 20%,
+    rgba(255, 45, 138, 0.62) 50%,
+    rgba(255, 0, 110, 0.2) 80%,
+    transparent 100%
+  );
+}
+
+.sweep-band.is-cyan {
+  width: 34%;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgba(0, 240, 255, 0.18) 18%,
+    rgba(140, 252, 255, 0.82) 50%,
+    rgba(0, 240, 255, 0.18) 82%,
+    transparent 100%
+  );
+  /* A hairline on the cyan band's centre — the detail that makes the sweep
+     read as light passing rather than a coloured rectangle sliding. */
+  box-shadow: 0 0 60px 8px rgba(0, 240, 255, 0.35);
+}
+
+/* On the light study surface `screen` would wash the bands out to nothing, so
+   they switch to multiply and drop to a tint. */
+[data-surface='study'] .sweep-band {
+  mix-blend-mode: multiply;
+  opacity: 0.5;
+}
+
+/* ------------------------------------------------------------------ the bar */
+
 .route-progress {
   position: fixed;
   top: 0;
@@ -15,12 +99,28 @@
 
 .route-progress-bar {
   display: block;
+  position: relative;
   height: 100%;
   border-radius: 0 3px 3px 0;
+  overflow: hidden;
   background: linear-gradient(90deg, var(--aurora-violet), var(--accent-hot) 55%, var(--aurora-cyan));
   box-shadow: 0 0 12px rgba(255, 0, 110, 0.7);
   /* Eased so the crawl decelerates: a linear creep reads as a stall. */
   transition: width 420ms cubic-bezier(0.16, 0.84, 0.44, 1);
+}
+
+/* A highlight travelling along the filled portion, so the bar still looks alive
+   during the slow crawl between 72% and 88%. */
+.route-progress-shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.85), transparent);
+  transform: translateX(-100%);
+  animation: progress-shimmer 1.1s ease-in-out infinite;
+}
+
+@keyframes progress-shimmer {
+  to { transform: translateX(100%); }
 }
 
 /* The bright head of the bar, which is what actually reads as motion. */
@@ -41,9 +141,7 @@
   opacity: 0.9;
 }
 
-[data-surface='study'] .route-progress {
-  background: rgba(109, 79, 224, 0.14);
-}
+[data-surface='study'] .route-progress { background: rgba(109, 79, 224, 0.14); }
 
 .page-transition {
   /* `will-change` on a wrapper that animates on every route change is worth the
@@ -58,11 +156,49 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 18px;
+  gap: 22px;
   min-height: 62vh;
   padding: 40px 20px;
   text-align: center;
 }
+
+/* The mascot sits inside a rotating conic ring, with a second counter-rotating
+   ring behind it — the same "working" language as Rec's own orbit. */
+.route-fallback-orbit {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 150px;
+  height: 150px;
+}
+
+.route-fallback-orbit::before,
+.route-fallback-orbit::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  /* A conic gradient masked to a ring: one element, no SVG, GPU-composited. */
+  background: conic-gradient(from 0deg, transparent 0deg, var(--accent) 90deg, var(--accent-hot) 190deg, var(--aurora-cyan) 280deg, transparent 340deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+}
+
+.route-fallback-orbit::before {
+  inset: 0;
+  animation: orbit-spin 2.4s linear infinite;
+}
+
+.route-fallback-orbit::after {
+  inset: 16px;
+  opacity: 0.45;
+  animation: orbit-spin 3.6s linear infinite reverse;
+}
+
+@keyframes orbit-spin {
+  to { transform: rotate(1turn); }
+}
+
+.route-fallback-orbit .mascot { position: relative; z-index: 1; }
 
 .route-fallback-copy {
   display: flex;
@@ -81,30 +217,16 @@
   color: var(--ink-4);
 }
 
-/* Three dots that fill in sequence — enough to say "working" and nothing more. */
-.route-fallback-dots {
-  display: flex;
-  gap: 7px;
-}
-
-.route-fallback-dots i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent);
-  animation: fallback-pulse 1.15s ease-in-out infinite;
-}
-
-.route-fallback-dots i:nth-child(2) { animation-delay: 0.16s; }
-.route-fallback-dots i:nth-child(3) { animation-delay: 0.32s; }
-
-@keyframes fallback-pulse {
-  0%, 70%, 100% { opacity: 0.25; transform: scale(0.75); }
-  35% { opacity: 1; transform: scale(1); }
-}
+/* ------------------------------------------------------------ reduced motion */
 
 @media (prefers-reduced-motion: reduce) {
-  .route-fallback-dots i { animation: none; opacity: 0.7; }
+  .route-sweep { display: none; }
+  .route-progress-shimmer { animation: none; opacity: 0.3; }
+  .route-fallback-orbit::before,
+  .route-fallback-orbit::after { animation: none; }
 }
 
-[data-motion='reduced'] .route-fallback-dots i { animation: none; opacity: 0.7; }
+[data-motion='reduced'] .route-sweep { display: none; }
+[data-motion='reduced'] .route-progress-shimmer { animation: none; opacity: 0.3; }
+[data-motion='reduced'] .route-fallback-orbit::before,
+[data-motion='reduced'] .route-fallback-orbit::after { animation: none; }
