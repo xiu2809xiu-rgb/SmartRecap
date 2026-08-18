@@ -21,3 +21,6 @@ Thumbs.db
 backend/.aws-sam/
 backend/samconfig.toml
 backend/node_modules/
+backend/.venv/
+**/__pycache__/
+*.py[cod]

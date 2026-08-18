@@ -27,7 +27,18 @@ function read() {
   } catch {
     /* fall through to a fresh store */
   }
-  return { user: null, materials: [SAMPLE_MATERIAL], attempts: [], flashcards: {}, shares: {}, faceEnrolled: false, binders: [], sources: {} };
+  return {
+    user: null,
+    materials: [SAMPLE_MATERIAL],
+    attempts: [],
+    flashcards: {},
+    shares: {},
+    faceEnrolled: false,
+    binders: [],
+    sources: {},
+    lobbies: [],
+    forumPosts: [],
+  };
 }
 
 function write(db) {
@@ -40,10 +51,30 @@ function write(db) {
 }
 
 let db = read();
-// A store persisted before binders existed will be missing these keys.
+// Stores persisted before newer feature areas existed will be missing keys.
 db.binders ??= [];
 db.sources ??= {};
+db.lobbies ??= [];
+db.forumPosts ??= [];
+db.faceEnrolled ??= false;
+db.materials = db.materials.map((material) => {
+  if (!material.quiz?.questions?.length || material.quiz.id) return material;
+  return {
+    ...material,
+    quiz: {
+      ...material.quiz,
+      id: `quiz-${material.id}`,
+      materialId: material.id,
+      status: 'ready',
+      generationStatus: 'ready',
+      difficulty: 'medium',
+      questionCount: material.quiz.questions.length,
+      providers: [{ name: 'Demo mode', model: 'sample questions' }],
+    },
+  };
+});
 const jobs = new Map();
+const lobbyTokens = new Map();
 
 const persist = () => write(db);
 
@@ -81,19 +112,13 @@ function judgeShortAnswerDemo(question, studentAnswer) {
 
 /** Mirrors `backend/src/handlers/process.js` so the UI shows the real pipeline. */
 export const PIPELINE_STAGES = [
-  { id: 'upload', label: 'Uploading your file', detail: 'Stored privately — only you can open it', ms: 900 },
-  { id: 'extract', label: 'Reading the text', detail: 'Keeping track of which slide each part came from', ms: 1600 },
-  { id: 'chunk', label: 'Sorting it by slide', detail: 'So every point can link back to where it came from', ms: 700 },
-  { id: 'recap', label: 'Writing your recap', detail: 'Every point has to name the slide it came from', ms: 4200 },
-  { id: 'quiz', label: 'Writing your quiz', detail: 'Every answer traced back to your material', ms: 3200 },
-  { id: 'ground', label: 'Checking every claim', detail: 'Anything that cannot be traced is dropped', ms: 1400 },
-  {
-    id: 'translate',
-    label: 'Translating what passed the check',
-    detail: 'The citations stay pointed at your original slides',
-    ms: 2200,
-  },
-  { id: 'store', label: 'Saving to your library', detail: 'Recap, quiz and sources', ms: 600 },
+  { id: 'upload', label: 'Reading the uploaded file', detail: 'Validated by the local Python backend', ms: 900 },
+  { id: 'extract', label: 'Extracting text and images', detail: 'Native text first, adaptive OCR for scanned pages', ms: 1600 },
+  { id: 'chunk', label: 'Segmenting into citable chunks', detail: 'Page and slide locations preserved', ms: 700 },
+  { id: 'recap', label: 'Generating structured notes', detail: 'A polished recap is created before any quiz', ms: 4200 },
+  { id: 'ground', label: 'Verifying claims against source', detail: 'Unsupported evidence is rejected', ms: 1400 },
+  { id: 'translate', label: 'Translating verified notes', detail: 'Citations remain linked to the original source wording', ms: 2200 },
+  { id: 'store', label: 'Finalising your notes', detail: 'Recap and source index are saved', ms: 600 },
 ];
 
 async function runJob(jobId, material) {
@@ -191,6 +216,23 @@ function attributeSampleRecap(readySources) {
   return { recap, quiz, sourcesSummary };
 }
 
+async function passwordHash(value = '') {
+  if (!value) return '';
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map((part) => part.toString(16).padStart(2, '0')).join('');
+}
+
+function lobbyView(lobby) {
+  const view = clone(lobby);
+  delete view._passwordHash;
+  view.players = (view.players || []).map((player) => {
+    delete player._answeredIds;
+    return player;
+  });
+  return view;
+}
+
 export const mockApi = {
   mode: 'demo',
 
@@ -286,6 +328,11 @@ export const mockApi = {
     },
     async remove(id) {
       db.materials = db.materials.filter((m) => m.id !== id);
+      db.attempts = db.attempts.filter((attempt) => attempt.materialId !== id);
+      delete db.flashcards[id];
+      Object.keys(db.shares).forEach((token) => {
+        if (db.shares[token] === id) delete db.shares[token];
+      });
       persist();
     },
     async rename(id, title) {
@@ -328,7 +375,7 @@ export const mockApi = {
         createdAt: new Date().toISOString(),
         chunks: clone(SAMPLE_CHUNKS),
         recap: clone(SAMPLE_MATERIAL.recap),
-        quiz: clone(SAMPLE_MATERIAL.quiz),
+        quiz: { status: 'not_generated', questions: [] },
         provider: { name: 'Demo mode', model: 'no model called', latencyMs: 0, tokensIn: 0, tokensOut: 0, costUsd: 0 },
       };
       db.materials = [material, ...db.materials];
@@ -338,6 +385,7 @@ export const mockApi = {
       jobs.set(jobId, {
         id: jobId,
         materialId,
+        kind: 'recap',
         language,
         status: 'running',
         stage: 'upload',
@@ -357,42 +405,184 @@ export const mockApi = {
     },
   },
 
+  lobbies: {
+    async list() { await sleep(120); return db.lobbies.filter((lobby) => lobby.status === 'open').map(lobbyView); },
+    async get(id) {
+      await sleep(80);
+      const lobby = db.lobbies.find((item) => item.id === id);
+      if (!lobby) throw Object.assign(new Error('Lobby not found'), { status: 404 });
+      return lobbyView(lobby);
+    },
+    async create(payload) {
+      const playerId = makeId('player');
+      const token = makeId('token') + makeId('secure');
+      const visibility = payload.visibility === 'private' ? 'private' : 'public';
+      if (visibility === 'private' && String(payload.password || '').length < 4) throw new Error('Private rooms require a password.');
+      const lobby = {
+        id: makeId('room'), name: payload.name, host_id: playerId,
+        materialId: payload.materialId, quizId: payload.quizId,
+        max_players: payload.max_players || 4, difficulty: payload.difficulty || 'Mixed', status: 'open',
+        visibility, has_password: visibility === 'private', _passwordHash: await passwordHash(payload.password),
+        current_question: 0, total_questions: payload.questionCount || 0,
+        players: [{ id: playerId, name: payload.host_name, score: 0, ready: false, submitted: false, is_host: true, answered: 0, correct: 0, accuracy: 0, last_correct: null }],
+        created_at: new Date().toISOString(),
+      };
+      lobbyTokens.set(playerId, token); db.lobbies.push(lobby); persist();
+      return clone({ lobby: lobbyView(lobby), player_id: playerId, reconnect_token: token });
+    },
+    async join(id, payload) {
+      const lobby = db.lobbies.find((item) => item.id === id && item.status === 'open');
+      if (!lobby) throw Object.assign(new Error('This lobby is no longer open.'), { status: 404 });
+      if (lobby.has_password && await passwordHash(payload.password) !== lobby._passwordHash) throw Object.assign(new Error('That room password is incorrect.'), { status: 403 });
+      const playerId = makeId('player'); const token = makeId('token') + makeId('secure');
+      lobby.players.push({ id: playerId, name: payload.playerName, score: 0, ready: false, submitted: false, is_host: false, answered: 0, correct: 0, accuracy: 0, last_correct: null, _answeredIds: [] });
+      lobbyTokens.set(playerId, token); persist();
+      return clone({ lobby: lobbyView(lobby), player_id: playerId, reconnect_token: token });
+    },
+    async ready(id, payload) {
+      const lobby = db.lobbies.find((item) => item.id === id);
+      const player = lobby?.players.find((item) => item.id === payload.playerId);
+      if (!player || lobbyTokens.get(player.id) !== payload.reconnectToken) throw new Error('Invalid lobby session.');
+      player.ready = payload.ready; persist(); return lobbyView(lobby);
+    },
+    async start(id, payload) {
+      const lobby = db.lobbies.find((item) => item.id === id);
+      if (!lobby || lobby.host_id !== payload.playerId || lobby.players.length < 2 || lobby.players.some((player) => !player.is_host && !player.ready)) throw new Error('The room is not ready to start.');
+      lobby.status = 'playing';
+      lobby.current_question = 0;
+      lobby.players.forEach((player) => Object.assign(player, { score: 0, submitted: false, answered: 0, correct: 0, accuracy: 0, last_correct: null, _answeredIds: [] }));
+      persist(); return lobbyView(lobby);
+    },
+    async answer(id, payload) {
+      const lobby = db.lobbies.find((item) => item.id === id && item.status === 'playing');
+      const player = lobby?.players.find((item) => item.id === payload.playerId);
+      if (!player || lobbyTokens.get(player.id) !== payload.reconnectToken) throw new Error('Invalid lobby session.');
+      player._answeredIds ??= [];
+      if (player._answeredIds.includes(payload.questionId)) throw new Error('That question was already scored.');
+      player._answeredIds.push(payload.questionId);
+      player.answered += 1;
+      player.last_correct = Boolean(payload.correct);
+      if (payload.correct) {
+        player.correct += 1;
+        player.score += 1000 + Math.max(0, 500 - Math.floor(Math.min(payload.responseMs || 0, 30000) / 60));
+      }
+      player.accuracy = Math.round((player.correct / player.answered) * 1000) / 10;
+      lobby.current_question = Math.max(...lobby.players.map((item) => item.answered || 0));
+      persist(); return lobbyView(lobby);
+    },
+    async score(id, payload) {
+      const lobby = db.lobbies.find((item) => item.id === id);
+      const player = lobby?.players.find((item) => item.id === payload.playerId);
+      if (!player || lobbyTokens.get(player.id) !== payload.reconnectToken) throw new Error('Invalid lobby session.');
+      if (player.answered) player.accuracy = payload.score;
+      else { player.score = payload.score; player.accuracy = payload.score; }
+      player.submitted = true;
+      if (lobby.players.every((item) => item.submitted)) lobby.status = 'finished';
+      persist(); return lobbyView(lobby);
+    },
+  },
+
   quiz: {
-    async submit({ materialId, answers, durationMs, questionIds }) {
+    async generate(materialId, { difficulty, questionCount, topics = [], fresh = false }) {
+      const material = db.materials.find((m) => m.id === materialId);
+      if (!material) throw Object.assign(new Error('Material not found'), { status: 404 });
+      const jobId = makeId('job');
+      material.quiz = { ...material.quiz, status: 'generating', generationStatus: 'generating', questions: material.quiz?.questions ?? [] };
+      jobs.set(jobId, { id: jobId, materialId, kind: 'quiz', status: 'running', stage: 'generate', stageLabel: difficulty === 'hard' ? 'Gemini drafting; GPT-5.6 Sol refining; OpenAI auditing' : 'Gemini creating conceptual questions', progress: 5, log: [] });
+      (async () => {
+        const job = jobs.get(jobId);
+        for (const progress of [18, 36, 58, 76, 92]) {
+          await sleep(420);
+          job.progress = progress;
+        }
+        const allQuestions = SAMPLE_MATERIAL.quiz?.questions ?? [];
+        const wanted = new Set(topics.map((topic) => String(topic).toLowerCase()));
+        const sourceQuestions = allQuestions.filter((question) => !wanted.size || wanted.has(String(question.topic).toLowerCase()));
+        const pool = sourceQuestions.length ? sourceQuestions : allQuestions;
+        const questions = Array.from({ length: questionCount }, (_, index) => {
+          const base = clone(pool[index % pool.length]);
+          const prompt = fresh ? `Fresh practice ${index + 1}: ${base.prompt}` : base.prompt;
+          return { ...base, id: `${base.id}-${Date.now()}-${index + 1}`, prompt, difficulty: { easy: 1, medium: 2, hard: 3 }[difficulty] };
+        });
+        const quizId = makeId('quiz');
+        material.quiz = {
+          id: quizId,
+          materialId,
+          status: 'ready',
+          generationStatus: 'ready',
+          difficulty,
+          questionCount,
+          generatedAt: new Date().toISOString(),
+          providers: difficulty === 'hard'
+            ? [{ name: 'Google Gemini', model: 'gemini-2.5-flash' }, { name: 'Azure OpenAI', model: 'gpt-5.6-sol' }, { name: 'OpenAI', model: 'gpt-4.1-mini' }]
+            : [{ name: 'Google Gemini', model: 'gemini-2.5-flash' }],
+          questions,
+        };
+        job.progress = 100;
+        job.stage = 'done';
+        job.status = 'ready';
+        job.stageLabel = 'Quiz ready';
+        job.quizId = quizId;
+        persist();
+      })();
+      persist();
+      return { jobId, materialId, kind: 'quiz' };
+    },
+    async save(materialId, { title, questions }) {
+      const material = db.materials.find((item) => item.id === materialId);
+      if (!material) throw Object.assign(new Error('Material not found'), { status: 404 });
+      if (!title?.trim() || !Array.isArray(questions) || !questions.length || questions.length > 50) throw Object.assign(new Error('Complete the quiz title and questions.'), { status: 422 });
+      const quizId = makeId('quiz');
+      material.quiz = {
+        id: quizId,
+        materialId,
+        title: title.trim(),
+        status: 'ready',
+        generationStatus: 'ready',
+        difficulty: 'manual',
+        questionCount: questions.length,
+        generatedAt: new Date().toISOString(),
+        authoring: 'manual',
+        providers: [{ name: 'Student authored', model: 'manual editor', role: 'author' }],
+        questions: questions.map((question, index) => ({ ...clone(question), id: `q${index + 1}`, difficulty: 2, verified: true, citations: [], authoring: 'manual' })),
+      };
+      persist();
+      return clone(material.quiz);
+    },
+    async submit({ materialId, quizId, questionIds, answers, durationMs }) {
       await sleep(400);
       const material = db.materials.find((m) => m.id === materialId);
       if (!material) throw Object.assign(new Error('Material not found'), { status: 404 });
-
+      if (quizId && material.quiz?.id !== quizId) throw Object.assign(new Error('Quiz version not found'), { status: 404 });
       const allQuestions = material.quiz?.questions ?? [];
-      if (Array.isArray(questionIds)) {
-        if (!questionIds.length) throw Object.assign(new Error('questionIds must contain at least one question.'), { status: 400 });
-        const knownIds = new Set(allQuestions.map((q) => q.id));
-        if (questionIds.some((id) => !knownIds.has(id))) {
-          throw Object.assign(new Error('questionIds contains a question not in this material.'), { status: 400 });
-        }
+      const knownIds = new Set(allQuestions.map((question) => question.id));
+      const scope = questionIds ?? [...knownIds];
+      if (!scope.length || scope.some((questionId) => !knownIds.has(questionId))) {
+        throw Object.assign(new Error('Invalid or empty question scope'), { status: 422 });
       }
-      const requestedIds = Array.isArray(questionIds) ? new Set(questionIds) : null;
-      const questions = allQuestions.filter((q) => !requestedIds || requestedIds.has(q.id));
-      const verifiedQuestions = questions.filter((q) => q.verified);
+      const requested = new Set(scope);
+      const verifiedQuestions = allQuestions.filter((question) => requested.has(question.id) && question.verified);
       const judgements = Object.fromEntries(
         verifiedQuestions
-          .filter((q) => questionType(q) === 'short')
-          .map((q) => [q.id, judgeShortAnswerDemo(q, answers[q.id])]),
+          .filter((question) => questionType(question) === 'short')
+          .map((question) => [question.id, judgeShortAnswerDemo(question, answers[question.id])]),
       );
       const scored = verifiedQuestions.filter(
-        (q) => questionType(q) !== 'short' || judgements[q.id]?.verified === true,
+        (question) => questionType(question) !== 'short' || judgements[question.id]?.verified === true,
       );
-      const isCorrect = (q) =>
-        questionType(q) === 'short' ? judgements[q.id]?.correct === true : objectiveAnswerIsCorrect(q, answers[q.id]);
+      const isCorrect = (question) => questionType(question) === 'short'
+        ? judgements[question.id]?.correct === true
+        : objectiveAnswerIsCorrect(question, answers[question.id]);
       const correct = scored.filter(isCorrect).length;
       const attempt = {
         id: makeId('a'),
         materialId,
+        quizId,
         at: new Date().toISOString(),
         durationMs: Number(durationMs) || 0,
         correct,
         total: scored.length,
-        score: scored.length ? Math.round((correct / scored.length) * 100) : 0,
+        score: Math.round((correct / scored.length) * 100),
         byTopic: Object.entries(
           scored.reduce((acc, q) => {
             acc[q.topic] ??= { correct: 0, total: 0 };
@@ -400,9 +590,13 @@ export const mockApi = {
             if (isCorrect(q)) acc[q.topic].correct += 1;
             return acc;
           }, {}),
-        ).map(([topic, v]) => ({ topic, ...v })),
+        ).map(([topic, value]) => ({ topic, ...value })),
         answers,
         judgements,
+        questions: clone(scored),
+        questionCount: scored.length,
+        difficulty: material.quiz?.difficulty,
+        providers: clone(material.quiz?.providers ?? []),
       };
       db.attempts = [attempt, ...db.attempts];
       persist();
@@ -411,6 +605,43 @@ export const mockApi = {
     async attempts(materialId) {
       await sleep(140);
       return clone(materialId ? db.attempts.filter((a) => a.materialId === materialId) : db.attempts);
+    },
+  },
+
+  forum: {
+    async list() { await sleep(120); return clone(db.forumPosts); },
+    async create(payload) {
+      const material = payload.materialId ? db.materials.find((item) => item.id === payload.materialId) : null;
+      const post = {
+        id: makeId('post'), type: payload.type, title: payload.title, body: payload.body,
+        author: { id: db.user?.id || 'demo-student', name: db.user?.name || 'Student' },
+        materialId: material?.id || null, materialTitle: material?.title || null,
+        createdAt: new Date().toISOString(), likedByMe: false, likeCount: 0, comments: [], commentCount: 0,
+      };
+      db.forumPosts.unshift(post); persist(); return clone(post);
+    },
+    async like(id) {
+      const post = db.forumPosts.find((item) => item.id === id);
+      if (!post) throw Object.assign(new Error('Post not found'), { status: 404 });
+      post.likedByMe = !post.likedByMe;
+      post.likeCount = Math.max(0, (post.likeCount || 0) + (post.likedByMe ? 1 : -1));
+      persist(); return clone(post);
+    },
+    async comment(id, { body }) {
+      const post = db.forumPosts.find((item) => item.id === id);
+      if (!post) throw Object.assign(new Error('Post not found'), { status: 404 });
+      post.comments.push({ id: makeId('comment'), body, author: { id: db.user?.id || 'demo-student', name: db.user?.name || 'Student' }, createdAt: new Date().toISOString() });
+      post.commentCount = post.comments.length;
+      persist(); return clone(post);
+    },
+  },
+
+  illustrations: {
+    async create() {
+      throw Object.assign(new Error('Study illustrations need the live FastAPI backend.'), { status: 503 });
+    },
+    async createFromChat() {
+      throw Object.assign(new Error('Chat visuals need the live FastAPI backend.'), { status: 503 });
     },
   },
 
@@ -694,7 +925,7 @@ export const mockApi = {
 
   /** Test hook — lets Settings reset the demo store. */
   async _reset() {
-    db = { user: db.user, materials: [SAMPLE_MATERIAL], attempts: [], flashcards: {}, shares: {} };
+    db = { user: db.user, materials: [SAMPLE_MATERIAL], attempts: [], flashcards: {}, shares: {}, lobbies: [], forumPosts: [] };
     persist();
   },
 };

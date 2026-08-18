@@ -156,6 +156,8 @@ const APP_LINKS = [
   { to: '/app', label: 'Library', icon: 'grid_view', end: true },
   { to: '/app/binders', label: 'Binders', icon: 'folder' },
   { to: '/app/upload', label: 'New recap', icon: 'add_circle' },
+  { to: '/app/quizzes', label: 'Quizzes', icon: 'quiz' },
+  { to: '/app/forum', label: 'Forum', icon: 'forum' },
   { to: '/app/progress', label: 'Progress', icon: 'insights' },
 ];
 
@@ -277,7 +279,7 @@ export function AppShell() {
  * inverted luminance, because nobody should read 2,000 words of recap as white
  * text on near-black.
  */
-export function StudyShell({ title, subtitle, backTo = '/app', actions, children, wide = false }) {
+export function StudyShell({ title, subtitle, subtitleAccessory, backTo = '/app', actions, children, wide = false }) {
   useSurface('study');
   return (
     <div className="study">
@@ -286,9 +288,14 @@ export function StudyShell({ title, subtitle, backTo = '/app', actions, children
           <Link to={backTo} className="icon-btn" aria-label="Back to library">
             <Icon name="arrow_back" size={20} />
           </Link>
-          <div className="truncate grow">
+          <div className="study-heading grow">
             <h1 className="study-title truncate">{title}</h1>
-            {subtitle && <p className="study-sub truncate">{subtitle}</p>}
+            {(subtitle || subtitleAccessory) && (
+              <div className="study-meta-row">
+                {subtitle && <p className="study-sub truncate">{subtitle}</p>}
+                {subtitleAccessory}
+              </div>
+            )}
           </div>
           <div className="row gap-2 study-actions">{actions}</div>
         </div>

@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api } from '../lib/api.js';
+import { api, apiAssetUrl } from '../lib/api.js';
 import { useStore } from '../lib/store.jsx';
+import { useJobs } from '../lib/jobs.jsx';
+import { enableCompletionNotifications } from '../lib/notifications.js';
 import { usePrefs } from '../lib/prefs.jsx';
 import { StudyShell } from '../components/layout/Shells.jsx';
 import { CitationProvider, Claim, SourceCard, CitationRibbon } from '../components/Citations.jsx';
 import AskPanel from '../components/AskPanel.jsx';
+import NormalNotes from '../components/NormalNotes.jsx';
+import { buildDocumentNotes } from '../lib/documentNotes.js';
 import { Icon, Spinner, Empty, Modal, CopyButton, useToast } from '../components/ui.jsx';
 import { toMarkdown, toAnkiCsv, printRecap } from '../lib/exporters.js';
 import { formatDuration } from '../lib/format.js';
@@ -13,9 +17,16 @@ import { languageLabel, langAttr } from '../lib/languages.js';
 import FadeContent from '../reactbits/FadeContent.jsx';
 import './recap.css';
 
+const QUIZ_LEVELS = [
+  { value: 'easy', title: 'Easy', icon: 'school', body: 'Build confidence with clear concepts and straightforward applications.' },
+  { value: 'medium', title: 'Medium', icon: 'psychology', body: 'Apply ideas, compare concepts, and reason through realistic situations.' },
+  { value: 'hard', title: 'Hard', icon: 'local_fire_department', body: 'Gemini drafts, GPT-5.6 Sol refines, and OpenAI performs the final conceptual-quality audit.' },
+];
+
 export default function Recap() {
   const { id } = useParams();
   const { materialById, upsertMaterial } = useStore();
+  const { registerJob } = useJobs();
   const { reduced } = usePrefs();
   const toast = useToast();
 
@@ -26,7 +37,14 @@ export default function Recap() {
   const [exportOpen, setExportOpen] = useState(false);
   const [share, setShare] = useState(null);
   const [sharing, setSharing] = useState(false);
+  const [quizDifficulty, setQuizDifficulty] = useState('medium');
+  const [quizCount, setQuizCount] = useState(10);
+  const [quizBusy, setQuizBusy] = useState(false);
+  const [imageBusy, setImageBusy] = useState(false);
+  const [viewMode, setViewMode] = useState('recap');
+  const [playMode, setPlayMode] = useState('solo');
   const readerRef = useRef(null);
+  const quizBuilderRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,9 +61,14 @@ export default function Recap() {
     return () => {
       cancelled = true;
     };
-  }, [id, cached, upsertMaterial]);
+  }, [id, upsertMaterial]);
+
+  useEffect(() => {
+    if (cached) setMaterial(cached);
+  }, [cached]);
 
   const chunks = useMemo(() => material?.chunks ?? [], [material]);
+  const documentSections = useMemo(() => buildDocumentNotes(chunks), [chunks]);
 
   if (error) {
     return (
@@ -78,14 +101,13 @@ export default function Recap() {
   }
 
   const { recap } = material;
-  // Two different questions. `askedForTranslation` decides whether to explain
-  // anything to the reader; `readsAsTranslated` decides the `lang` attribute,
-  // and that one has to follow the text that is actually on screen. Demo mode
-  // calls no model, and a live translation call can fail — in both cases the
-  // words below are still English, and telling a screen reader otherwise would
-  // have it read English aloud in a Chinese voice.
+  // Keep the requested language separate from whether translation actually
+  // completed so assistive technology receives the language on screen.
   const askedForTranslation = !!material.language && material.language !== 'en';
   const readsAsTranslated = askedForTranslation && material.pipeline?.translation?.translated === true;
+  const quiz = material.quiz ?? { status: 'not_generated', questions: [] };
+  const quizReady = quiz.questions?.length > 0 && quiz.status !== 'generating' && quiz.status !== 'failed';
+  const quizGenerating = quiz.status === 'generating' || quiz.generationStatus === 'generating';
 
   const createShare = async () => {
     setSharing(true);
@@ -99,10 +121,69 @@ export default function Recap() {
     }
   };
 
+  const createIllustrations = async () => {
+    setImageBusy(true);
+    try {
+      const illustrations = await api.illustrations.create(material.id, {
+        count: 2,
+        regenerate: Boolean(material.illustrations?.length),
+      });
+      const updated = { ...material, illustrations };
+      setMaterial(updated);
+      upsertMaterial(updated);
+      toast.success('Created source-derived study visuals. Your text notes remain the source of truth.');
+    } catch (error) {
+      toast.error(error.message ?? 'Could not create study visuals.');
+    } finally {
+      setImageBusy(false);
+    }
+  };
+
+  const generateQuiz = async () => {
+    setQuizBusy(true);
+    void enableCompletionNotifications();
+    try {
+      const response = await api.quiz.generate(material.id, {
+        difficulty: quizDifficulty,
+        questionCount: quizCount,
+      });
+      const optimisticQuiz = quizReady
+        ? { ...quiz, generationStatus: 'generating', requestedDifficulty: quizDifficulty }
+        : { status: 'generating', generationStatus: 'generating', questions: [], requestedDifficulty: quizDifficulty };
+      const updated = { ...material, quiz: optimisticQuiz };
+      setMaterial(updated);
+      upsertMaterial(updated);
+      registerJob({
+        id: response.jobId,
+        materialId: material.id,
+        kind: 'quiz',
+        title: material.title,
+        stage: 'queued',
+        stageLabel: quizDifficulty === 'hard' ? 'Gemini drafting; GPT-5.6 Sol refining; OpenAI auditing' : 'Gemini creating conceptual questions',
+        progress: 0,
+      });
+      toast.info('Quiz generation started. Keep studying—we will notify you when it is ready.');
+    } catch (e) {
+      toast.error(e.message ?? 'Could not start quiz generation.');
+    } finally {
+      setQuizBusy(false);
+    }
+  };
+
   return (
     <StudyShell
       title={material.title}
       subtitle={`${material.module} · ${material.pageCount} pages · ${recap.readMinutes} min read`}
+      subtitleAccessory={
+        <div className="study-meta-accessory" aria-label="Notes view">
+          <button type="button" title="Smart Recap view" aria-label="Show Smart Recap view" className={viewMode === 'recap' ? 'is-on' : ''} onClick={() => setViewMode('recap')} aria-pressed={viewMode === 'recap'}>
+            <Icon name="auto_awesome" size={13} /><span className="view-label">Recap</span>
+          </button>
+          <button type="button" title="Normal notes view" aria-label="Show normal notes view" className={viewMode === 'document' ? 'is-on' : ''} onClick={() => setViewMode('document')} aria-pressed={viewMode === 'document'}>
+            <Icon name="article" size={13} /><span className="view-label">Normal notes</span>
+          </button>
+        </div>
+      }
       wide
       actions={
         <>
@@ -114,15 +195,35 @@ export default function Recap() {
             <Icon name="ios_share" size={17} />
             <span className="action-label">Export</span>
           </button>
-          <Link to={`/app/material/${material.id}/quiz`} className="btn btn-primary btn-sm">
-            <Icon name="quiz" size={17} />
-            Quiz me
-          </Link>
+          {quizReady && !quizGenerating ? (
+            <>
+              <Link to={`/app/material/${material.id}/quiz`} className="btn btn-primary btn-sm">
+                <Icon name="person" size={17} />
+                Solo quiz
+              </Link>
+              <Link to={`/app/material/${material.id}/match`} className="btn btn-ghost btn-sm">
+                <Icon name="groups" size={17} />
+                <span className="action-label">Multiplayer</span>
+              </Link>
+            </>
+          ) : (
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => quizBuilderRef.current?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' })}
+              disabled={quizGenerating}
+            >
+              {quizGenerating ? <Spinner size={16} /> : <Icon name="quiz" size={17} />}
+              {quizGenerating ? 'Creating quiz' : 'Create quiz'}
+            </button>
+          )}
         </>
       }
     >
-      <div className={`shell recap-shell ${askOpen ? 'ask-open' : ''}`}>
-        <CitationProvider chunks={chunks}>
+      <div className={`shell recap-shell ${askOpen ? 'ask-open' : ''} ${viewMode === 'document' ? 'is-document-view' : ''}`}>
+        {viewMode === 'document' ? (
+          <NormalNotes material={material} sections={documentSections} />
+        ) : (
+          <CitationProvider chunks={chunks}>
           <div className="reader-grid" ref={readerRef}>
             {/* `lang` so a screen reader switches voice with the recap, and so
                 the browser hyphenates and line-breaks it correctly. The source
@@ -155,43 +256,116 @@ export default function Recap() {
                     <Icon name="bolt" size={19} />
                     The short version
                   </h2>
-                  <p>{recap.summary}</p>
+                  <p className="tldr-summary">{recap.summary}</p>
                 </section>
               </FadeContent>
 
+              <section className="study-visuals" aria-labelledby="study-visuals-title">
+                <header>
+                  <div>
+                    <p className="section-kicker"><Icon name="image" size={16} />Optional visual memory aids</p>
+                    <h2 id="study-visuals-title">Study visuals</h2>
+                  </div>
+                  <button className="btn btn-ghost btn-sm" type="button" onClick={createIllustrations} disabled={imageBusy || api.mode !== 'live'}>
+                    {imageBusy ? <Spinner size={16} /> : <Icon name="auto_awesome" size={17} />}
+                    {material.illustrations?.length ? 'Regenerate visuals' : 'Create visuals'}
+                  </button>
+                </header>
+                {material.illustrations?.length ? (
+                  <div className="study-visual-grid">
+                    {material.illustrations.map((illustration) => (
+                      <figure key={illustration.id}>
+                        <img src={apiAssetUrl(illustration.path)} alt={`Educational illustration for ${illustration.topic}`} loading="lazy" />
+                        <figcaption><strong>{illustration.topic}</strong><span>{illustration.provider} · {illustration.model}</span></figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                ) : (
+                  <p>Generate up to two optional illustrations from sanitized recap concepts. No raw file, filename, citation, or secret is sent to the image provider.</p>
+                )}
+              </section>
+
               <p className="reader-hint">
                 <Icon name="touch_app" size={15} />
-                Hover any line to see the slide it came from.
+                Hover or select a note to reveal its exact source.
               </p>
 
-              {recap.sections.map((section) => (
-                <section key={section.id} className="recap-section">
-                  <h2 className="recap-heading">{section.heading}</h2>
-                  <ul className="claims">
-                    {section.points.map((p) => (
-                      <Claim key={p.id} id={p.id} citations={p.citations} confidence={p.confidence}>
-                        {p.text}
-                      </Claim>
-                    ))}
-                  </ul>
-                </section>
-              ))}
+              {recap.sections
+                .filter((section) => section.id === 'takeaways')
+                .map((section) => (
+                  <section key={section.id} className="recap-section takeaway-section">
+                    <header className="takeaway-head">
+                      <div>
+                        <p className="section-kicker">
+                          <Icon name="stars" size={16} />
+                          Essential ideas
+                        </p>
+                        <h2 className="recap-heading takeaway-heading">{section.heading}</h2>
+                      </div>
+                      <p className="section-lede">The most important concepts to remember from this material.</p>
+                    </header>
+                    <ul className="takeaway-grid">
+                      {section.points.map((p) => (
+                        <Claim key={p.id} id={p.id} citations={p.citations} confidence={p.confidence}>
+                          {p.text}
+                        </Claim>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+
+              {recap.sections
+                .filter((section) => section.id !== 'takeaways')
+                .map((section, index) => (
+                  <section key={section.id} className="recap-section topic-card">
+                    <header className="topic-card-head">
+                      <span className="topic-index" aria-hidden="true">
+                        {String(index + 1).padStart(2, '0')}
+                      </span>
+                      <div className="topic-heading-wrap">
+                        <p className="topic-eyebrow">Study topic</p>
+                        <h2 className="recap-heading">{section.heading}</h2>
+                      </div>
+                      <span className="topic-count">
+                        {section.points.length} {section.points.length === 1 ? 'point' : 'points'}
+                      </span>
+                    </header>
+                    <ul className="claims topic-claims">
+                      {section.points.map((p) => (
+                        <Claim key={p.id} id={p.id} citations={p.citations} confidence={p.confidence}>
+                          {p.text}
+                        </Claim>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
 
               {recap.keyTerms?.length > 0 && (
-                <section className="recap-section">
-                  <h2 className="recap-heading">Key terms</h2>
+                <section className="recap-section terms-section">
+                  <header className="terms-head">
+                    <div>
+                      <p className="section-kicker">
+                        <Icon name="dictionary" size={16} />
+                        Quick reference
+                      </p>
+                      <h2 className="recap-heading">Key terms</h2>
+                    </div>
+                    <p className="section-lede">Core vocabulary, explained in plain language.</p>
+                  </header>
                   <dl className="terms">
                     {recap.keyTerms.map((t) => (
                       <div key={t.term} className="term">
                         <dt>{t.term}</dt>
-                        <dd>
-                          {t.definition}
-                          {t.citations?.map((c) => (
-                            <a key={c} href={`#src-${c}`} className="cite term-cite">
-                              {chunks.find((x) => x.id === c)?.label ?? c}
-                            </a>
-                          ))}
-                        </dd>
+                        <dd>{t.definition}</dd>
+                        {t.citations?.length > 0 && (
+                          <div className="term-sources" aria-label={`Sources for ${t.term}`}>
+                            {t.citations.map((c) => (
+                              <a key={c} href={`#src-${c}`} className="cite term-cite">
+                                {chunks.find((x) => x.id === c)?.label ?? c}
+                              </a>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </dl>
@@ -211,6 +385,96 @@ export default function Recap() {
                   </ul>
                 </section>
               )}
+
+              <section ref={quizBuilderRef} className="recap-section quiz-builder-card" aria-labelledby="quiz-builder-title">
+                <div className="quiz-builder-copy">
+                  <p className="section-kicker">
+                    <Icon name="quiz" size={16} />
+                    Test your understanding
+                  </p>
+                  <h2 id="quiz-builder-title">Create a quiz from these notes</h2>
+                  <p>
+                    Questions focus on applying concepts and reasoning—not remembering slide numbers, page labels, or exact wording.
+                  </p>
+                </div>
+
+                {quizGenerating && (
+                  <div className="quiz-generation-status" role="status">
+                    <Spinner size={17} />
+                    <span>
+                      {quiz.requestedDifficulty === 'hard'
+                        ? 'Gemini is drafting, GPT-5.6 Sol is refining, and OpenAI is auditing your hard quiz.'
+                        : 'Gemini is building your conceptual quiz.'}
+                    </span>
+                  </div>
+                )}
+
+                <div className="difficulty-grid" aria-label="Quiz difficulty">
+                  {QUIZ_LEVELS.map((level) => (
+                    <button
+                      key={level.value}
+                      type="button"
+                      className={`difficulty-card ${quizDifficulty === level.value ? 'is-on' : ''}`}
+                      onClick={() => setQuizDifficulty(level.value)}
+                      aria-pressed={quizDifficulty === level.value}
+                      disabled={quizGenerating || quizBusy}
+                    >
+                      <span className="difficulty-icon"><Icon name={level.icon} size={20} /></span>
+                      <strong>{level.title}</strong>
+                      <span>{level.body}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {quizReady && (
+                  <div className="quiz-play-modes" aria-label="Quiz play mode">
+                    <button type="button" className={playMode === 'solo' ? 'is-on' : ''} onClick={() => setPlayMode('solo')} aria-pressed={playMode === 'solo'}>
+                      <span><Icon name="person" size={20} /></span><strong>Solo quiz</strong><small>Study at your own pace with instant explanations.</small>
+                    </button>
+                    <button type="button" className={playMode === 'match' ? 'is-on' : ''} onClick={() => setPlayMode('match')} aria-pressed={playMode === 'match'}>
+                      <span><Icon name="groups" size={20} /></span><strong>Matchmaking</strong><small>Create or join a live room using this quiz.</small>
+                    </button>
+                  </div>
+                )}
+
+                <div className="quiz-builder-foot">
+                  <div className="quiz-count-picker">
+                    <span>Questions</span>
+                    {[5, 10, 15].map((count) => (
+                      <button
+                        key={count}
+                        type="button"
+                        className={quizCount === count ? 'is-on' : ''}
+                        onClick={() => setQuizCount(count)}
+                        disabled={quizGenerating || quizBusy}
+                        aria-pressed={quizCount === count}
+                      >
+                        {count}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="quiz-builder-actions">
+                    {quizReady && (
+                      <Link to={playMode === 'match' ? `/app/material/${material.id}/match` : `/app/material/${material.id}/quiz`} className="btn btn-ghost">
+                        <Icon name={playMode === 'match' ? 'groups' : 'play_arrow'} size={18} />
+                        {playMode === 'match' ? 'Find a match' : 'Start solo quiz'}
+                      </Link>
+                    )}
+                    <button className="btn btn-primary" onClick={generateQuiz} disabled={quizGenerating || quizBusy}>
+                      {quizGenerating || quizBusy ? <Spinner size={17} /> : <Icon name="auto_awesome" size={18} />}
+                      {quizGenerating ? 'Creating quiz' : quizReady ? 'Generate a new quiz' : 'Generate quiz'}
+                    </button>
+                  </div>
+                </div>
+
+                {quizReady && (
+                  <p className="quiz-ready-meta">
+                    <Icon name="verified" size={16} />
+                    Current quiz: {quiz.questionCount ?? quiz.questions.length} {quiz.difficulty} questions
+                    {quiz.providers?.length ? ` · ${quiz.providers.map((provider) => provider.model).join(' + ')}` : ''}
+                  </p>
+                )}
+              </section>
 
               {recap.ungrounded?.length > 0 && (
                 <section className="recap-section dropped">
@@ -274,7 +538,8 @@ export default function Recap() {
 
             {!reduced && <CitationRibbon containerRef={readerRef} />}
           </div>
-        </CitationProvider>
+          </CitationProvider>
+        )}
 
         <AskPanel material={material} open={askOpen} onClose={() => setAskOpen(false)} />
       </div>

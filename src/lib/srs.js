@@ -61,16 +61,39 @@ export function nextDue(cards, now = Date.now()) {
     .sort((a, b) => (a.srs?.ease ?? 2.5) - (b.srs?.ease ?? 2.5));
 }
 
-/**
- * Turns recap key terms and quiz questions into flashcards. Definitions make
- * better cards than quiz stems, so terms come first.
- */
+function cleanSubject(definition = '') {
+  const text = String(definition).replace(/\s+/g, ' ').trim();
+  const match = text.match(/^(.{3,120}?)\s+(?:is|are|means|refers to|represents|describes|requires|allows|enables)\b/i);
+  if (!match) return '';
+  return match[1].replace(/[,;:]$/, '').trim();
+}
+
+function recallQuestion(term, definition) {
+  const value = String(term || '').trim();
+  if (!/^study concept\s+\d+$/i.test(value) && value) return `What is ${value}?`;
+  const subject = cleanSubject(definition);
+  if (subject) return `How is ${subject.replace(/^The\s+/, 'the ')} defined?`;
+  const clue = String(definition || '').replace(/\s+/g, ' ').trim().slice(0, 110);
+  return clue ? `Which concept explains this idea: “${clue}${clue.length >= 110 ? '…' : ''}”?` : 'What concept does this card explain?';
+}
+
+function uniqueFront(front, seen) {
+  const base = front.trim();
+  let candidate = base;
+  let suffix = 2;
+  while (seen.has(candidate.toLowerCase())) candidate = `${base} (${suffix++})`;
+  seen.add(candidate.toLowerCase());
+  return candidate;
+}
+
+/** Turns grounded definitions and quiz questions into active-recall cards. */
 export function buildFlashcards(material) {
   const cards = [];
+  const seen = new Set();
   for (const term of material.recap?.keyTerms ?? []) {
     cards.push({
       id: `fc_term_${term.term.replace(/\W+/g, '_').toLowerCase()}`,
-      front: term.term,
+      front: uniqueFront(recallQuestion(term.term, term.definition), seen),
       back: term.definition,
       topic: 'Key terms',
       citations: term.citations ?? [],
@@ -88,7 +111,7 @@ export function buildFlashcards(material) {
           : q.options?.[q.answer];
     cards.push({
       id: `fc_${q.id}`,
-      front: q.prompt,
+      front: uniqueFront(q.prompt, seen),
       back: `${answer ?? ''}\n\n${q.explanation}`,
       topic: q.topic,
       citations: q.citations ?? [],
@@ -96,4 +119,12 @@ export function buildFlashcards(material) {
     });
   }
   return cards;
+}
+
+/** Upgrades already-saved generic fallback fronts without resetting SRS progress. */
+export function repairFlashcards(cards, material) {
+  const replacements = new Map(buildFlashcards(material).map((card) => [card.id, card.front]));
+  return cards.map((card) => /^study concept\s+\d+$/i.test(String(card.front || '').trim()) && replacements.has(card.id)
+    ? { ...card, front: replacements.get(card.id) }
+    : card);
 }

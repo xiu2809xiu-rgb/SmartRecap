@@ -1,5 +1,7 @@
 # Deploying to AWS Academy Learner Lab
 
+> **Active 2026 deployment:** the production app now uses the Python FastAPI backend on EC2 and React on Amplify. Follow [`AWS-HACKATHON.md`](AWS-HACKATHON.md). The Lambda/Node instructions below are retained only as a legacy alternative.
+
 Written for the Learner Lab specifically, because the things that go wrong there
 are not the things that go wrong in a normal AWS account.
 

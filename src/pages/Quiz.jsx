@@ -90,6 +90,8 @@ export default function Quiz() {
   const [answers, setAnswers] = useState({});
   const [selected, setSelected] = useState(null);
   const [checked, setChecked] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [matchLobby, setMatchLobby] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [confirmExit, setConfirmExit] = useState(false);
   const [timeLeft, setTimeLeft] = useState(TIME_LIMIT_SECONDS);
@@ -98,6 +100,7 @@ export default function Quiz() {
   const [gamePoints, setGamePoints] = useState(0);
   const startedAt = useRef(null);
   const timeByQuestion = useRef({});
+  const questionStartedAt = useRef(Date.now());
 
   useEffect(() => {
     let cancelled = false;
@@ -114,28 +117,38 @@ export default function Quiz() {
     return () => {
       cancelled = true;
     };
-    // `cached` is intentionally excluded: upsertMaterial() always returns a
-    // new materials array reference, so depending on it here re-triggers this
-    // fetch every time the store updates, in an infinite loop.
+    // `cached` is intentionally excluded: upsertMaterial() updates the store
+    // with a new reference after this request and would otherwise refetch forever.
   }, [id, upsertMaterial]);
+
+  useEffect(() => {
+    if (cached) setMaterial(cached);
+  }, [cached]);
 
   const topicFilter = params.get('topics');
   const typeFilter = params.get('types');
+  const matchId = params.get('match');
   const allQuestions = material?.quiz?.questions ?? [];
+
+  useEffect(() => {
+    if (!matchId) return undefined;
+    let cancelled = false;
+    const refresh = () => api.lobbies.get(matchId).then((value) => !cancelled && setMatchLobby(value)).catch(() => {});
+    refresh();
+    const timer = window.setInterval(refresh, 1200);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [matchId]);
 
   const questions = useMemo(() => {
     let filtered = allQuestions;
     if (topicFilter) {
       const wantedTopics = new Set(topicFilter.split(',').map((topic) => topic.trim().toLowerCase()));
-      const topicMatches = filtered.filter((question) => wantedTopics.has(question.topic.toLowerCase()));
+      const topicMatches = filtered.filter((item) => wantedTopics.has(String(item.topic || 'General').toLowerCase()));
       if (topicMatches.length) filtered = topicMatches;
     }
     if (typeFilter) {
-      // Unlike the topic filter above, this is an explicit opt-in choice from
-      // the quiz-setup screen, not a "retry weak topics" convenience filter —
-      // it must not silently fall back to types the student excluded.
       const wantedTypes = new Set(typeFilter.split(',').map((type) => type.trim().toLowerCase()));
-      filtered = filtered.filter((question) => wantedTypes.has(questionType(question)));
+      filtered = filtered.filter((item) => wantedTypes.has(questionType(item)));
     }
     return filtered;
   }, [allQuestions, topicFilter, typeFilter]);
@@ -163,15 +176,15 @@ export default function Quiz() {
     }
   };
 
-  const check = () => {
-    if (checked || !question) return;
+  const check = async () => {
+    if (checked || checking || !question || !hasSelection(question, selected)) return;
     const answer = normaliseSelection(question, selected);
     setAnswers((current) => ({ ...current, [question.id]: answer }));
     timeByQuestion.current[question.id] = timeLeft;
+    const locallyCorrect = answerIsCorrect(question, answer);
 
     if (questionType(question) !== 'short' && question.verified) {
-      const isCorrect = answerIsCorrect(question, answer);
-      if (isCorrect) {
+      if (locallyCorrect) {
         const earned = Math.round(pointsForAnswer(true, timeLeft) * streakMultiplier(streak));
         setGamePoints((points) => points + earned);
         setStreak((current) => {
@@ -184,6 +197,25 @@ export default function Quiz() {
       }
     }
     setChecked(true);
+
+    if (!matchId || questionType(question) === 'short') return;
+    setChecking(true);
+    try {
+      const session = JSON.parse(localStorage.getItem(`smartrecap.lobby.${matchId}`) || 'null');
+      if (!session) throw new Error('Your lobby session expired. Rejoin the party to score this answer.');
+      const updated = await api.lobbies.answer(matchId, {
+        playerId: session.playerId,
+        reconnectToken: session.reconnectToken,
+        questionId: question.id,
+        correct: locallyCorrect,
+        responseMs: Date.now() - questionStartedAt.current,
+      });
+      setMatchLobby(updated);
+    } catch (matchError) {
+      toast.error(matchError.message ?? 'Your answer was checked, but match points could not be updated.');
+    } finally {
+      setChecking(false);
+    }
   };
 
   const advance = async () => {
@@ -192,6 +224,7 @@ export default function Quiz() {
       setIndex((current) => current + 1);
       setSelected(initialSelection(nextQuestion));
       setChecked(false);
+      questionStartedAt.current = Date.now();
       return;
     }
 
@@ -200,13 +233,29 @@ export default function Quiz() {
     try {
       const attempt = await api.quiz.submit({
         materialId: id,
+        quizId: material.quiz?.id,
         answers: finalAnswers,
         questionIds: questions.map((item) => item.id),
         durationMs: Date.now() - (startedAt.current ?? Date.now()),
       });
+      if (matchId) {
+        try {
+          const session = JSON.parse(localStorage.getItem(`smartrecap.lobby.${matchId}`) || 'null');
+          if (session) {
+            await api.lobbies.score(matchId, {
+              playerId: session.playerId,
+              reconnectToken: session.reconnectToken,
+              attemptId: attempt.id,
+              score: attempt.score,
+            });
+          }
+        } catch (matchError) {
+          toast.error(matchError.message ?? 'Your result was saved, but the match score could not be submitted.');
+        }
+      }
       addAttempt(attempt);
       const stats = finalGameStats(questions, finalAnswers, timeByQuestion.current, attempt.judgements);
-      navigate(`/app/material/${id}/results/${attempt.id}`, { replace: true, state: stats });
+      navigate(`/app/material/${id}/results/${attempt.id}${matchId ? `?match=${encodeURIComponent(matchId)}` : ''}`, { replace: true, state: stats });
     } catch (e) {
       toast.error(e.message ?? 'Could not save your attempt.');
       setSubmitting(false);
@@ -251,6 +300,7 @@ export default function Quiz() {
     const next = new URLSearchParams(params);
     next.set('types', TYPE_OPTIONS.filter((type) => selectedTypes.has(type.id)).map((type) => type.id).join(','));
     startedAt.current = Date.now();
+    questionStartedAt.current = Date.now();
     navigate({ search: `?${next.toString()}` }, { replace: true });
   };
 
@@ -294,16 +344,21 @@ export default function Quiz() {
   }
 
   if (!allQuestions.length) {
+    const generating = material.quiz?.status === 'generating' || material.quiz?.generationStatus === 'generating';
     return (
       <StudyShell title={material.title} backTo={`/app/material/${id}`}>
         <div className="shell">
           <Empty
-            icon="quiz"
-            title="No quiz for this material"
-            body="No questions could be written that your material clearly answers. Uploading a fuller version of the file, or re-running it in Deep revision mode, usually fixes it."
+            icon={generating ? 'hourglass_top' : 'quiz'}
+            title={generating ? 'Your quiz is being created' : 'Create your quiz after studying the notes'}
+            body={
+              generating
+                ? 'You can continue browsing. SmartRecap will notify you when the questions are ready.'
+                : 'Return to the recap to choose Easy, Medium, or Hard difficulty and generate conceptual questions from your material.'
+            }
             action={
               <Link to={`/app/material/${id}`} className="btn btn-primary">
-                Back to the recap
+                {generating ? 'Continue studying' : 'Choose quiz difficulty'}
               </Link>
             }
           />
@@ -371,8 +426,8 @@ export default function Quiz() {
   }
 
   const type = questionType(question);
-  const chunkLabels = (question.citations ?? [])
-    .map((citation) => material.chunks?.find((chunk) => chunk.id === citation)?.label)
+  const citedChunks = (question.citations ?? [])
+    .map((citationId) => material.chunks?.find((chunk) => chunk.id === citationId))
     .filter(Boolean);
   const selectionReady = hasSelection(question, selected);
   const localCorrect = type !== 'short' && answerIsCorrect(question, normaliseSelection(question, selected));
@@ -382,7 +437,7 @@ export default function Quiz() {
   return (
     <StudyShell
       title={material.title}
-      subtitle={topicFilter ? `Retrying: ${topicFilter}` : 'Knowledge check'}
+      subtitle={topicFilter ? `Retrying: ${topicFilter}` : matchId ? `Live match · ${questions.length} shared questions` : `${material.quiz?.difficulty ?? 'Conceptual'} · ${questions.length} questions`}
       backTo={`/app/material/${id}`}
       actions={
         <button className="btn btn-ghost btn-sm" onClick={() => setConfirmExit(true)}>
@@ -392,6 +447,12 @@ export default function Quiz() {
       }
     >
       <div className="shell quiz">
+        {matchId && (
+          <div className="match-quiz-banner">
+            <Icon name="groups" size={18} />
+            <div><strong>Live match</strong><span>Correct answers earn 1,000 points plus a speed bonus. The leaderboard updates every round.</span></div>
+          </div>
+        )}
         <div className="quiz-progress">
           <ProgressBar value={((index + (checked ? 1 : 0)) / questions.length) * 100} label="Quiz progress" />
           <div className="quiz-meter">
@@ -485,12 +546,36 @@ export default function Quiz() {
                 {localCorrect ? 'Correct' : type === 'multi' ? 'That is not the exact set' : `The answer is ${LETTERS[question.answer]}`}
               </p>
               <p>{question.explanation}</p>
-              {chunkLabels.length > 0 && (
+              {citedChunks.length > 0 && (
                 <p className="explain-cites">
-                  From {chunkLabels.map((label) => <span key={label} className="cite">{label}</span>)}
+                  From{' '}
+                  {citedChunks.map((chunk) => (
+                    <span key={chunk.id} className="cite">{chunk.label}</span>
+                  ))}
                 </p>
               )}
             </div>
+          )}
+
+          {checked && matchId && (
+            <section className="round-leaderboard" aria-live="polite">
+              <div className="round-leaderboard-head">
+                <div><span>Round {index + 1}</span><strong>Live leaderboard</strong></div>
+                {checking && <Spinner size={17} />}
+              </div>
+              <ol>
+                {[...(matchLobby?.players || [])]
+                  .sort((left, right) => (right.score || 0) - (left.score || 0))
+                  .map((player, rank) => (
+                    <li key={player.id}>
+                      <span>{rank + 1}</span>
+                      <strong>{player.name}</strong>
+                      <small>{player.answered || 0} answered · {player.accuracy || 0}%</small>
+                      <b>{Number(player.score || 0).toLocaleString()} pts</b>
+                    </li>
+                  ))}
+              </ol>
+            </section>
           )}
 
           <div className="quiz-foot">
@@ -500,15 +585,16 @@ export default function Quiz() {
                 : type === 'short'
                   ? 'Write your answer, then record it'
                   : type === 'multi'
-                    ? 'Press 1–4 to toggle answers, Enter to check'
-                    : 'Press 1–4 to pick, Enter to check'}
+                    ? `Press 1–${Math.min(question.options.length, 9)} to toggle answers, Enter to check`
+                    : `Press 1–${Math.min(question.options.length, 9)} to pick, Enter to check`}
             </p>
             {!checked ? (
-              <button className="btn btn-primary" onClick={check} disabled={!selectionReady}>
+              <button className="btn btn-primary" onClick={check} disabled={!selectionReady || checking}>
+                {checking && <Spinner size={17} />}
                 {type === 'short' ? 'Record answer' : 'Check answer'}
               </button>
             ) : (
-              <button className="btn btn-primary" onClick={advance} disabled={submitting}>
+              <button className="btn btn-primary" onClick={advance} disabled={submitting || checking}>
                 {submitting ? <Spinner size={17} /> : null}
                 {submitting && hasShortQuestions ? 'Grading answers…' : isLast ? 'See results' : 'Next question'}
                 {!isLast && !submitting && <Icon name="arrow_forward" size={18} />}

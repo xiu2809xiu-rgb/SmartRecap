@@ -1,5 +1,7 @@
 # SmartRecap architecture
 
+> **Current deployment architecture:** see [`AWS-HACKATHON.md`](AWS-HACKATHON.md) for the active Amplify + CloudFront + EC2 FastAPI path. The serverless Node architecture below remains a preserved alternative, not the current runtime.
+
 ## The problem
 
 Problem Statement 1 asks for an application where students upload lecture slides

@@ -28,8 +28,11 @@ const Upload = lazy(() => import('./pages/Upload.jsx'));
 const Processing = lazy(() => import('./pages/Processing.jsx'));
 const Recap = lazy(() => import('./pages/Recap.jsx'));
 const Quiz = lazy(() => import('./pages/Quiz.jsx'));
+const Matchmaking = lazy(() => import('./pages/Matchmaking.jsx'));
 const Results = lazy(() => import('./pages/Results.jsx'));
 const Flashcards = lazy(() => import('./pages/Flashcards.jsx'));
+const Quizzes = lazy(() => import('./pages/Quizzes.jsx'));
+const Forum = lazy(() => import('./pages/Forum.jsx'));
 const Progress = lazy(() => import('./pages/Progress.jsx'));
 const Settings = lazy(() => import('./pages/Settings.jsx'));
 const SharedRecap = lazy(() => import('./pages/SharedRecap.jsx'));
@@ -100,17 +103,33 @@ export default function App() {
               <Route path="binders/:id" element={<BinderDetail />} />
               <Route path="upload" element={<Upload />} />
               <Route path="processing/:jobId" element={<Processing />} />
+              <Route path="quizzes" element={<Quizzes />} />
+              <Route path="forum" element={<Forum />} />
               <Route path="progress" element={<Progress />} />
               <Route path="settings" element={<Settings />} />
             </Route>
 
-            {/* Same reasoning as the Material recap route below: the study
-                surface runs its own light chrome outside the app shell. */}
             <Route
               path="/app/binders/:id/recap"
               element={
                 <RequireAuth>
                   <BinderRecap />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/app/material/:id/match"
+              element={
+                <RequireAuth>
+                  <Matchmaking />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/app/material/:id/match/:lobbyId"
+              element={
+                <RequireAuth>
+                  <Matchmaking />
                 </RequireAuth>
               }
             />

@@ -1,0 +1,158 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: SmartRecap FastAPI OCR backend on EC2 with a stable IP and CloudFront HTTPS.
+
+Parameters:
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: vockey
+  InstanceType:
+    Type: String
+    Default: t3.xlarge
+    AllowedValues: [t3.large, t3.xlarge]
+  SshCidr:
+    Type: String
+    Description: Your public IPv4 address as /32. Never use 0.0.0.0/0.
+    AllowedPattern: '^(?:\d{1,3}\.){3}\d{1,3}/32$'
+  InstanceProfileName:
+    Type: String
+    Default: LabInstanceProfile
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+Resources:
+  BackendSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SmartRecap backend HTTP and restricted SSH
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SshCidr
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - {Key: Name, Value: smartrecap-backend-sg}
+
+  SmartRecapBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [PUT]
+            AllowedOrigins: ['*']
+            ExposedHeaders: [ETag]
+            MaxAge: 900
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireHackathonObjects
+            Status: Enabled
+            ExpirationInDays: 7
+      Tags:
+        - {Key: Project, Value: SmartRecap}
+
+  BackendInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref InstanceProfileName
+      SecurityGroupIds: [!GetAtt BackendSecurityGroup.GroupId]
+      MetadataOptions:
+        HttpTokens: required
+        HttpEndpoint: enabled
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: 40
+            Encrypted: true
+            DeleteOnTermination: true
+      Tags:
+        - {Key: Name, Value: smartrecap-fastapi}
+
+  BackendEip:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - {Key: Name, Value: smartrecap-backend-eip}
+
+  BackendEipAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      InstanceId: !Ref BackendInstance
+      AllocationId: !GetAtt BackendEip.AllocationId
+
+  ForwardApiRequest:
+    Type: AWS::CloudFront::OriginRequestPolicy
+    Properties:
+      OriginRequestPolicyConfig:
+        Name: !Sub 'smartrecap-api-${AWS::StackName}'
+        CookiesConfig: {CookieBehavior: all}
+        QueryStringsConfig: {QueryStringBehavior: all}
+        HeadersConfig:
+          HeaderBehavior: allExcept
+          Headers: [Host]
+
+  BackendDistribution:
+    Type: AWS::CloudFront::Distribution
+    DependsOn: BackendEipAssociation
+    Properties:
+      DistributionConfig:
+        Comment: SmartRecap HTTPS gateway to the EC2 FastAPI backend
+        Enabled: true
+        HttpVersion: http2and3
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: ec2-fastapi
+            DomainName: !Sub '${BackendEip}.nip.io'
+            CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: http-only
+              OriginReadTimeout: 60
+              OriginKeepaliveTimeout: 60
+        DefaultCacheBehavior:
+          TargetOriginId: ec2-fastapi
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+          CachedMethods: [GET, HEAD, OPTIONS]
+          Compress: true
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          OriginRequestPolicyId: !Ref ForwardApiRequest
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+      Tags:
+        - {Key: Project, Value: SmartRecap}
+
+Outputs:
+  InstanceId:
+    Value: !Ref BackendInstance
+  ElasticIp:
+    Value: !Ref BackendEip
+  BackendPublicDns:
+    Value: !GetAtt BackendInstance.PublicDnsName
+  CloudFrontDomain:
+    Value: !GetAtt BackendDistribution.DomainName
+  ApiBaseUrl:
+    Value: !Sub 'https://${BackendDistribution.DomainName}/api'
+  StorageBucket:
+    Description: Set this value as S3_BUCKET in /etc/smartrecap.env. The EC2 role needs GetObject and PutObject access.
+    Value: !Ref SmartRecapBucket
+  HealthUrl:
+    Value: !Sub 'https://${BackendDistribution.DomainName}/api/health'

@@ -1,0 +1,1 @@
+"""SmartRecap backend package."""

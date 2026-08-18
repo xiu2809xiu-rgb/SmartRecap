@@ -6,7 +6,9 @@ anything the model could not trace to the source is dropped before the student
 sees it.
 
 Built for the Nanyang Polytechnic Cloud Computing Club AWS hackathon,
-**Problem Statement 1: Automated Class Recap Generator.**
+**Problem Statement 1: Automated Class Recap Generator.** The active cloud path
+uses **AWS Amplify Hosting** for React and **Amazon EC2 `t3.xlarge`** for the
+FastAPI/OCR/AI backend; see [`docs/AWS-HACKATHON.md`](docs/AWS-HACKATHON.md).
 
 ---
 
@@ -29,36 +31,44 @@ settle are shown, explained, and excluded from your score.
 
 ## Running it
 
-```bash
+Start the active FastAPI backend from the repository root:
+
+```powershell
+backend\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
+```
+
+Then start Vite in another terminal:
+
+```powershell
 npm install
 npm run dev
 ```
 
-Opens on <http://localhost:5173>. No AWS session needed — the frontend runs
-against a local demo backend with a bundled sample deck, and says so on screen
-rather than passing sample content off as model output.
+Open <http://localhost:5173>. Vite proxies `/api` and `/ws` to FastAPI. To use
+the bundled offline sample instead, set `VITE_USE_MOCK_API=true`; mock mode is
+explicit and never presented as real AI output.
 
-To generate real recaps, deploy the backend — `docs/EC2-DEPLOYMENT.md` for the
-EC2 path, `docs/AWS-DEPLOYMENT.md` for serverless — then point the frontend at
-it:
+For production, follow `docs/AWS-HACKATHON.md`. The Amplify build must use the
+CloudFormation `ApiBaseUrl`, including its `/api` suffix:
 
-```bash
-echo "VITE_API_BASE_URL=http://your-api-host" > .env.local
+```dotenv
+VITE_API_BASE_URL=https://your-cloudfront-domain/api
+VITE_USE_MOCK_API=false
 ```
 
 Production build:
 
-```bash
-npm run build     # → dist/
+```powershell
+npm run build
 ```
 
 ---
 
 ## What it does
 
-**Upload** — PDF, PowerPoint, Word, plain text, or a photo of handwritten notes.
-The file goes straight to a private S3 bucket with a presigned URL; it never
-passes through a server. If there is no text layer, Amazon Textract reads it.
+**Upload and extraction** — PDF, PowerPoint, Word, plain text, and supported
+images are uploaded to FastAPI. Native text is used first; RapidOCR/PaddleOCR
+runs only for image-based or low-text pages, with strict page and time budgets.
 
 **Recap** — two depths. *Last-minute cram* is the eight things likely to be on
 the paper. *Deep revision* keeps the worked reasoning and the edge cases. Both

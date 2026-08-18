@@ -2,7 +2,9 @@ import { useCallback, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useStore } from '../lib/store.jsx';
-import { useToast, Icon, Segmented } from '../components/ui.jsx';
+import { useJobs } from '../lib/jobs.jsx';
+import { enableCompletionNotifications } from '../lib/notifications.js';
+import { useToast, Icon } from '../components/ui.jsx';
 import { usePrefs } from '../lib/prefs.jsx';
 import Mascot from '../mascot/Mascot.jsx';
 import { FILE_TYPES, fileTypeOf, formatBytes } from '../lib/format.js';
@@ -12,7 +14,7 @@ import '../reactbits/Stepper.css';
 import './upload.css';
 
 const MAX_BYTES = 25 * 1024 * 1024;
-const ACCEPT = '.pdf,.pptx,.ppt,.docx,.doc,.txt,.md,.png,.jpg,.jpeg,.webp';
+const ACCEPT = '.pdf,.pptx,.docx,.txt,.md,.png,.jpg,.jpeg';
 
 const MODES = [
   {
@@ -25,33 +27,20 @@ const MODES = [
     value: 'deep',
     title: 'Deep revision',
     icon: 'psychology',
-    body: 'Keeps the worked reasoning, the definitions and the edge cases. Longer, and the one to use when you are learning the topic rather than refreshing it.',
+    body: 'Keeps the worked reasoning, definitions and edge cases. Scanned pages use the heavier PaddleOCR path, and synthesis uses the strongest configured model.',
   },
 ];
-
-const DIFFICULTIES = [
-  { value: 'gentle', label: 'Gentle' },
-  { value: 'balanced', label: 'Balanced' },
-  { value: 'challenge', label: 'Challenge' },
-];
-
-const DIFFICULTY_HINTS = {
-  gentle: 'Definitions and stated facts. Use this on a first pass through a topic.',
-  balanced: 'A mix of recall, applying an idea, and joining two parts of the material.',
-  challenge: 'Mostly reasoning across the material, with distractors that catch a half-memory.',
-};
 
 export default function Upload() {
   const navigate = useNavigate();
   const toast = useToast();
   const { upsertMaterial } = useStore();
+  const { registerJob } = useJobs();
   const { allowMascot } = usePrefs();
 
   const [file, setFile] = useState(null);
   const [mode, setMode] = useState('deep');
   const [moduleName, setModuleName] = useState('');
-  const [quizLength, setQuizLength] = useState(10);
-  const [difficulty, setDifficulty] = useState('balanced');
   const [language, setLanguage] = useState('en');
   const [dragging, setDragging] = useState(false);
   const [step, setStep] = useState(1);
@@ -106,6 +95,7 @@ export default function Upload() {
       setError('Choose a file first.');
       return;
     }
+    void enableCompletionNotifications();
     setBusy(true);
     setError(null);
     try {
@@ -122,9 +112,18 @@ export default function Upload() {
         fileName: file.name,
         mode,
         module: moduleName || 'Unfiled',
-        quizLength,
-        difficulty,
         language,
+      });
+
+      registerJob({
+        id: jobId,
+        materialId,
+        kind: 'recap',
+        title: file.name.replace(/\.[^.]+$/, ''),
+        language,
+        stage: 'upload',
+        stageLabel: 'Reading uploaded file',
+        progress: 2,
       });
 
       upsertMaterial({
@@ -135,7 +134,6 @@ export default function Upload() {
         sizeBytes: file.size,
         module: moduleName || 'Unfiled',
         mode,
-        difficulty,
         language,
         status: 'processing',
         createdAt: new Date().toISOString(),
@@ -158,8 +156,8 @@ export default function Upload() {
           <p className="eyebrow">New recap</p>
           <h1 className="upload-title">What are we working through?</h1>
           <p className="lede">
-            Slides, notes, a scanned handout, or a photo of what you wrote in the lecture. If it is a scan or a
-            photo, SmartRecap reads the text off it for you.
+            Slides, notes, a scanned handout, or a photo of what you wrote in the lecture. Native text is extracted first;
+            scanned pages automatically use local OCR, with PaddleOCR preferred in Deep revision mode.
           </p>
         </div>
         {allowMascot && <Mascot state={file ? 'reading' : 'wave'} size={170} shadow={false} />}
@@ -254,8 +252,8 @@ export default function Upload() {
 
             <p className="upload-privacy">
               <Icon name="lock" size={15} />
-              Your file is stored privately — only you can open it. Only the text inside is read; the file itself is
-              never handed to the AI.
+              Your file is stored privately. SmartRecap extracts text locally first, then sends only the extracted
+              content needed for grounded AI synthesis. Deep mode may take several minutes for large scans.
             </p>
           </Step>
 
@@ -296,53 +294,28 @@ export default function Upload() {
               <p className="field-hint">Used to group your library and to keep mastery scores separate per subject.</p>
             </div>
 
-            <div className="field upload-field">
-              <label>Quiz length</label>
-              <Segmented
-                options={[
-                  { value: 5, label: '5 questions' },
-                  { value: 10, label: '10 questions' },
-                  { value: 15, label: '15 questions' },
-                ]}
-                value={quizLength}
-                onChange={setQuizLength}
-                label="Quiz length"
-              />
-              <p className="field-hint">
-                Questions your material does not clearly answer are still shown and explained, but they do not count
-                toward your score — so the scored total can come out slightly lower.
-              </p>
-            </div>
+            <p className="field-hint upload-quiz-later">
+              <Icon name="quiz" size={16} />
+              Your notes are created first. Once they are ready, you can generate an Easy, Medium, or Hard conceptual
+              quiz from the recap.
+            </p>
 
             <div className="field upload-field">
-              <label>Quiz difficulty</label>
-              <Segmented
-                options={DIFFICULTIES}
-                value={difficulty}
-                onChange={setDifficulty}
-                label="Quiz difficulty"
-              />
-              <p className="field-hint">{DIFFICULTY_HINTS[difficulty]}</p>
-            </div>
-
-            <div className="field upload-field">
-              <label htmlFor="language">Read the recap in</label>
+              <label htmlFor="language">Preferred recap language</label>
               <select
                 id="language"
                 className="input"
                 value={language}
-                onChange={(e) => setLanguage(e.target.value)}
+                onChange={(event) => setLanguage(event.target.value)}
               >
-                {LANGUAGES.map((l) => (
-                  <option key={l.code} value={l.code}>
-                    {l.endonym ? `${l.endonym} — ${l.label}` : l.label}
+                {LANGUAGES.map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.endonym ? `${item.endonym} — ${item.label}` : item.label}
                   </option>
                 ))}
               </select>
               <p className="field-hint">
-                {language === 'en'
-                  ? 'Your material is read and checked in its own language.'
-                  : 'Your recap is written and checked against your slides first, then translated — so the citations still point at the original wording. Technical terms stay as your material writes them, because that is what the exam will use.'}
+                If translation is unavailable, SmartRecap keeps the verified English recap and tells you clearly instead of mislabelling it.
               </p>
             </div>
 
@@ -362,15 +335,12 @@ export default function Upload() {
                   <dd>{moduleName || 'Unfiled'}</dd>
                 </div>
                 <div>
-                  <dt>Quiz</dt>
-                  <dd>
-                    <span className="num">{quizLength}</span> questions,{' '}
-                    {DIFFICULTIES.find((d) => d.value === difficulty).label.toLowerCase()}
-                  </dd>
+                  <dt>Next step</dt>
+                  <dd>Choose quiz difficulty after your notes are ready</dd>
                 </div>
                 <div>
                   <dt>Language</dt>
-                  <dd>{LANGUAGES.find((l) => l.code === language).endonym ?? 'English'}</dd>
+                  <dd>{LANGUAGES.find((item) => item.code === language)?.endonym ?? 'English'}</dd>
                 </div>
               </dl>
             </div>

@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useStore, studyStats } from '../lib/store.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { usePrefs } from '../lib/prefs.jsx';
-import { Icon, Empty, Segmented, Spinner, Modal } from '../components/ui.jsx';
+import { Icon, Empty, Segmented, Spinner, Modal, useToast } from '../components/ui.jsx';
 import { StatTile } from '../components/charts/Charts.jsx';
 import Mascot from '../mascot/Mascot.jsx';
 import { FILE_TYPES, formatBytes, relativeDay } from '../lib/format.js';
@@ -24,9 +24,11 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { allowMascot } = usePrefs();
   const navigate = useNavigate();
+  const toast = useToast();
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('recent');
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const stats = useMemo(() => studyStats(materials, attempts), [materials, attempts]);
 
@@ -140,8 +142,12 @@ export default function Dashboard() {
               </p>
               <div className="row wrap gap-2 resume-actions">
                 <Link to={`/app/material/${resume.id}/quiz`} className="btn btn-primary btn-sm">
-                  <Icon name="quiz" size={17} />
-                  {bestScore.has(resume.id) ? 'Retry the quiz' : 'Take the quiz'}
+                  <Icon name="person" size={17} />
+                  {bestScore.has(resume.id) ? 'Retry solo' : 'Solo quiz'}
+                </Link>
+                <Link to={`/app/material/${resume.id}/match`} className="btn btn-ghost btn-sm">
+                  <Icon name="groups" size={17} />
+                  Multiplayer
                 </Link>
                 <Link to={`/app/material/${resume.id}`} className="btn btn-ghost btn-sm">
                   <Icon name="menu_book" size={17} />
@@ -220,17 +226,28 @@ export default function Dashboard() {
         title="Delete this material?"
         footer={
           <>
-            <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDelete(null)}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDelete(null)} disabled={deleting}>
               Cancel
             </button>
             <button
               className="btn btn-primary btn-sm"
+              disabled={deleting}
               onClick={async () => {
-                await removeMaterial(confirmDelete.id);
-                setConfirmDelete(null);
+                if (!confirmDelete) return;
+                setDeleting(true);
+                try {
+                  await removeMaterial(confirmDelete.id);
+                  toast.success(`Deleted ${confirmDelete.title}.`);
+                  setConfirmDelete(null);
+                } catch (error) {
+                  toast.error(error.message ?? 'Could not delete that material.');
+                } finally {
+                  setDeleting(false);
+                }
               }}
             >
-              Delete permanently
+              {deleting ? <Spinner size={16} /> : <Icon name="delete" size={16} />}
+              {deleting ? 'Deleting' : 'Delete permanently'}
             </button>
           </>
         }
@@ -287,9 +304,13 @@ function MaterialCard({ material, score, attempts, onDelete, onOpen }) {
           <Icon name="menu_book" size={16} />
           Recap
         </button>
-        <Link to={`/app/material/${material.id}/quiz`} className="btn btn-ghost btn-sm">
-          <Icon name="quiz" size={16} />
-          Quiz
+        <Link to={`/app/material/${material.id}/quiz`} className="btn btn-primary btn-sm">
+          <Icon name="person" size={16} />
+          Solo quiz
+        </Link>
+        <Link to={`/app/material/${material.id}/match`} className="btn btn-ghost btn-sm">
+          <Icon name="groups" size={16} />
+          Multiplayer
         </Link>
         <Link to={`/app/material/${material.id}/flashcards`} className="btn btn-ghost btn-sm">
           <Icon name="style" size={16} />
