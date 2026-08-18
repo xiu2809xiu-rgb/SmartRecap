@@ -12,13 +12,18 @@ import './thought-bubble.css';
  * It is `aria-hidden`. The thoughts are decoration — flavour on a login screen
  * — and announcing a new one every few seconds would be a far worse experience
  * than silence for anyone using a screen reader.
+ *
+ * `side` alternates per clip so consecutive thoughts appear on opposite sides
+ * of the figure. Anchoring every one to the same corner meant the bubble sat on
+ * the model's shoulder in any pose that reached that way; alternating also
+ * reads as a train of thought rather than a fixed label.
  */
 
 // Long enough to read a sentence, short enough that the bubble is not still
 // there when the pose that prompted it has finished.
 const HOLD_MS = 4200;
 
-export default function ThoughtBubble({ text }) {
+export default function ThoughtBubble({ text, side = 'right' }) {
   const { reduced } = usePrefs();
   const [shown, setShown] = useState(null);
   const [visible, setVisible] = useState(false);
@@ -45,11 +50,13 @@ export default function ThoughtBubble({ text }) {
 
   return (
     <div
-      className={`thought ${visible ? 'is-in' : ''} ${reduced ? 'is-still' : ''}`}
+      className={`thought is-${side} ${visible ? 'is-in' : ''} ${reduced ? 'is-still' : ''}`}
       aria-hidden="true"
     >
       {/* Two trailing dots, scaled down toward the figure — the shorthand that
-          makes a rounded rectangle read as a thought rather than as a tooltip. */}
+          makes a rounded rectangle read as a thought rather than as a tooltip.
+          They sit on whichever edge faces the model, so the tail always points
+          back at whoever is thinking. */}
       <span className="thought-dot thought-dot-2" />
       <span className="thought-dot thought-dot-1" />
       <p className="thought-body">{shown}</p>

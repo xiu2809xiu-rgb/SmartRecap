@@ -1,76 +1,111 @@
-/* Sits above the figure's head, toward the side the copy is not on, so it
-   fills the empty upper half of the frame rather than covering the model. */
+/* Bubbles sit BESIDE the figure, alternating sides, never over it.
+   The default offsets keep them inside the frame's top corners; the auth page
+   overrides them below to use the open space either side of the model. */
 .thought {
   position: absolute;
-  top: 2%;
-  right: 2%;
-  width: min(230px, 62%);
+  top: 4%;
+  width: min(230px, 58%);
   z-index: 2;
   pointer-events: none;
   opacity: 0;
-  transform: translateY(10px) scale(0.96);
-  transform-origin: bottom left;
   transition:
     opacity 420ms var(--ease),
     transform 520ms var(--spring);
 }
 
+.thought.is-right {
+  right: 0;
+  transform: translate(8px, 10px) scale(0.96);
+  transform-origin: bottom left;
+}
+
+.thought.is-left {
+  left: 0;
+  transform: translate(-8px, 10px) scale(0.96);
+  transform-origin: bottom right;
+}
+
 .thought.is-in {
   opacity: 1;
-  transform: translateY(0) scale(1);
+  transform: translate(0, 0) scale(1);
 }
 
 .thought-body {
   position: relative;
   margin: 0;
   padding: 13px 16px;
-  border-radius: 18px 18px 18px 6px;
   font-size: var(--t-sm);
   line-height: 1.5;
   color: var(--ink);
-  background: color-mix(in srgb, var(--ground-raised) 88%, transparent);
+  background: color-mix(in srgb, var(--ground-raised) 90%, transparent);
   border: 1px solid var(--glass-line-strong);
   box-shadow: var(--shadow-panel), 0 0 34px -14px var(--aurora-violet);
   backdrop-filter: blur(10px);
 }
 
-/* The trailing dots. Positioned below-left of the bubble, shrinking toward the
-   figure, which is what separates a thought from a speech balloon. */
+/* The squared-off corner is the one nearest the figure, so the shape leans
+   toward whoever is thinking. */
+.thought.is-right .thought-body { border-radius: 18px 18px 18px 6px; }
+.thought.is-left .thought-body { border-radius: 18px 18px 6px 18px; }
+
+/* The tail: two dots shrinking toward the model, on the facing edge. */
 .thought-dot {
   position: absolute;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--ground-raised) 88%, transparent);
+  background: color-mix(in srgb, var(--ground-raised) 90%, transparent);
   border: 1px solid var(--glass-line-strong);
   backdrop-filter: blur(10px);
 }
 
-.thought-dot-1 {
-  width: 11px;
-  height: 11px;
-  bottom: -14px;
-  left: 6px;
+.thought-dot-1 { width: 11px; height: 11px; bottom: -14px; }
+.thought-dot-2 { width: 6px; height: 6px; bottom: -26px; }
+
+.thought.is-right .thought-dot-1 { left: 8px; }
+.thought.is-right .thought-dot-2 { left: 0; }
+.thought.is-left .thought-dot-1 { right: 8px; }
+.thought.is-left .thought-dot-2 { right: 0; }
+
+/* Reduced motion: present and readable, with no entrance. */
+.thought.is-still { transform: none; transition: opacity 0.01ms; }
+
+/* ------------------------------------------------------------- auth page */
+
+/* The sign-in screen has open space around the figure, so the bubbles move out
+   into it. The two sides get different offsets because the space is not
+   symmetric — measured at three widths, the gap to the LEFT of the frame runs
+   from 60px (at 1280) to 380px (at 1920), while the gap on the RIGHT, between
+   the frame and the sign-in card, is a steady ~300px. A single symmetric
+   offset therefore either wastes the right-hand room or pushes the left-hand
+   bubble off the edge of the screen, which is what -46% on both did. */
+.auth-mascot.has-avatar { overflow: visible; }
+
+.auth-mascot.has-avatar .thought {
+  width: min(250px, 46%);
+  top: 12%;
 }
 
-.thought-dot-2 {
-  width: 6px;
-  height: 6px;
-  bottom: -26px;
-  left: -2px;
+.auth-mascot.has-avatar .thought.is-right { right: -46%; }
+
+@media (min-width: 1400px) {
+  .auth-mascot.has-avatar .thought.is-left { left: -24%; }
 }
 
-/* Reduced motion: present and readable, with no entrance. The transition is
-   already clamped globally, so this only removes the offset it would snap
-   through. */
-.thought.is-still {
-  transform: none;
-  transition: opacity 0.01ms;
+/* 1180-1400: the gap to the left of the frame narrows to about 60px, so the
+   bubble hangs out by as much as fits and shrinks to stay off the figure.
+   Measured by reading the WebGL buffer under the bubble: at -12% and 40% wide
+   it covers no model pixels, where tucking it flush into the corner covered
+   15% of the figure. */
+@media (min-width: 1181px) and (max-width: 1399px) {
+  .auth-mascot.has-avatar .thought { width: min(190px, 40%); }
+  .auth-mascot.has-avatar .thought.is-left { left: -12%; }
+}
+
+@media (max-width: 1180px) {
+  .auth-mascot.has-avatar .thought { width: min(220px, 52%); top: 4%; }
+  .auth-mascot.has-avatar .thought.is-right { right: 0; }
 }
 
 @media (max-width: 900px) {
-  .thought {
-    width: min(200px, 70%);
-    top: 4%;
-    right: 2%;
-  }
+  .thought { width: min(200px, 58%); top: 2%; }
   .thought-body { font-size: var(--t-xs); padding: 11px 13px; }
 }

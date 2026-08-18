@@ -33,7 +33,9 @@ export default function AvatarStage({ url, thoughts = true }) {
 
   return (
     <div className={`avatar-stage ${ready ? 'is-ready' : ''}`}>
-      {thoughts && ready && clip !== null && <ThoughtBubble text={thoughtFor(clip)} />}
+      {thoughts && ready && clip !== null && (
+        <ThoughtBubble text={thoughtFor(clip)} side={clip % 2 === 0 ? 'left' : 'right'} />
+      )}
       {/* The model is large, and the canvas element exists long before there is
           anything in it. Without this the frame is simply blank for as long as
           the download takes, which reads as broken rather than as loading. */}
