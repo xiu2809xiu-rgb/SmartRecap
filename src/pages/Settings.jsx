@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { usePrefs } from '../lib/prefs.jsx';
+import { usePrefs, THEMES, FONT_SIZES } from '../lib/prefs.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { useStore } from '../lib/store.jsx';
 import { api, isDemo } from '../lib/api.js';
@@ -9,6 +9,53 @@ import Mascot from '../mascot/Mascot.jsx';
 import FaceEnrolment from '../components/auth/FaceEnrolment.jsx';
 import '../components/auth/auth-methods.css';
 import './settings.css';
+
+/**
+ * Settings.
+ *
+ * Laid out as a settings menu rather than a column of essays: every preference
+ * is one row — name, one line of explanation, control on the right, always in
+ * the same place. The explanations stay because few of these choices are
+ * self-evident, but they are one line each now.
+ */
+
+/** One preference. The control sits in its own column so rows line up. */
+function Row({ title, hint, children, stacked = false }) {
+  return (
+    <div className={`setting-row ${stacked ? 'is-stacked' : ''}`}>
+      <div className="setting-copy">
+        <strong>{title}</strong>
+        {hint && <span>{hint}</span>}
+      </div>
+      <div className="setting-control">{children}</div>
+    </div>
+  );
+}
+
+function Section({ title, icon, children }) {
+  return (
+    <section className="panel settings-card">
+      <header className="settings-card-head">
+        <span className="settings-card-icon">
+          <Icon name={icon} size={18} />
+        </span>
+        <h2>{title}</h2>
+      </header>
+      <div className="setting-rows">{children}</div>
+    </section>
+  );
+}
+
+function Toggle({ checked, onChange, disabled, label }) {
+  return (
+    <label className={`toggle ${disabled ? 'is-disabled' : ''}`}>
+      <input type="checkbox" checked={checked && !disabled} onChange={onChange} disabled={disabled} aria-label={label} />
+      <span className="toggle-track" aria-hidden="true">
+        <span className="toggle-thumb" />
+      </span>
+    </label>
+  );
+}
 
 export default function Settings() {
   const prefs = usePrefs();
@@ -25,7 +72,7 @@ export default function Settings() {
           <p className="eyebrow">Settings</p>
           <h1 className="settings-title">Make it work the way you study</h1>
         </div>
-        <Mascot state={prefs.allowMascot ? 'idle' : 'idle'} size={140} shadow={false} />
+        <Mascot state="idle" size={140} shadow={false} />
       </header>
 
       {isGuest && (
@@ -46,64 +93,46 @@ export default function Settings() {
         </section>
       )}
 
-      <FaceEnrolment isGuest={isGuest} />
-
-      {/* ------------------------------------------------------ motion ---- */}
-      <section className="panel settings-card">
-        <div className="settings-row">
-          <div>
-            <h2>Motion and effects</h2>
-            <p>
-              SmartRecap uses animated backgrounds and a 3D assistant. On <strong>Reduced</strong> they are switched
-              off completely rather than just slowed down, which is easier on your eyes and on your battery. Your
-              device's own reduced-motion setting picks the default.
-            </p>
+      {/* ---------------------------------------------------- appearance -- */}
+      <Section title="Appearance" icon="palette">
+        <Row title="Theme" hint="Where SmartRecap uses dark and where it uses light." stacked>
+          <div className="theme-grid" role="radiogroup" aria-label="Theme">
+            {THEMES.map((t) => (
+              <button
+                key={t.value}
+                type="button"
+                role="radio"
+                aria-checked={prefs.theme === t.value}
+                className={`theme-card ${prefs.theme === t.value ? 'is-on' : ''}`}
+                onClick={() => prefs.set({ theme: t.value })}
+              >
+                <span className="theme-swatch" aria-hidden="true">
+                  {t.swatch.map((c, i) => (
+                    <i key={i} style={{ background: c }} />
+                  ))}
+                </span>
+                <strong>{t.label}</strong>
+                <span>{t.hint}</span>
+                {prefs.theme === t.value && (
+                  <span className="theme-tick">
+                    <Icon name="check" size={13} />
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
+        </Row>
+
+        <Row title="Text size" hint="Scales the text without shrinking the buttons around it.">
           <Segmented
-            label="Motion"
-            value={prefs.motion}
-            onChange={(v) => prefs.set({ motion: v })}
-            options={[
-              { value: 'full', label: 'Full', icon: 'animation' },
-              { value: 'reduced', label: 'Reduced', icon: 'motion_photos_off' },
-            ]}
+            label="Text size"
+            value={prefs.fontSize}
+            onChange={(v) => prefs.set({ fontSize: v })}
+            options={FONT_SIZES.map((f) => ({ value: f.value, label: f.label }))}
           />
-        </div>
+        </Row>
 
-        <Toggle
-          label="Animated backgrounds"
-          hint="The moving colour and light behind each screen."
-          checked={prefs.effects}
-          disabled={prefs.reduced}
-          onChange={() => prefs.toggle('effects')}
-        />
-
-        <Toggle
-          label="Show Rec, the 3D assistant"
-          hint="Rec reacts to what SmartRecap is doing and to your quiz results."
-          checked={prefs.mascot}
-          disabled={prefs.reduced}
-          onChange={() => prefs.toggle('mascot')}
-        />
-
-        {prefs.reduced && (
-          <p className="settings-note">
-            <Icon name="info" size={15} />
-            Reduced motion is on, so both switches above are held off regardless of their position.
-          </p>
-        )}
-      </section>
-
-      {/* ------------------------------------------------------ reading --- */}
-      <section className="panel settings-card">
-        <div className="settings-row">
-          <div>
-            <h2>Reading</h2>
-            <p>
-              Recaps are shown on a light background at a comfortable reading width. If a different typeface is
-              easier for you to read, switch it here — it applies everywhere.
-            </p>
-          </div>
+        <Row title="Reading typeface" hint="Atkinson Hyperlegible is designed for low-vision reading.">
           <Segmented
             label="Reading typeface"
             value={prefs.readingFont}
@@ -113,16 +142,61 @@ export default function Settings() {
               { value: 'hyperlegible', label: 'Hyperlegible' },
             ]}
           />
-        </div>
+        </Row>
+
         <p className="settings-sample" data-sample>
           Third Normal Form requires 2NF plus the removal of transitive dependencies: a non-key attribute must not
           depend on another non-key attribute.
         </p>
-      </section>
+      </Section>
+
+      {/* -------------------------------------------------------- motion -- */}
+      <Section title="Motion" icon="animation">
+        <Row
+          title="Animation"
+          hint="On Reduced, animated backgrounds and the 3D assistant switch off completely rather than just slowing down."
+        >
+          <Segmented
+            label="Motion"
+            value={prefs.motion}
+            onChange={(v) => prefs.set({ motion: v })}
+            options={[
+              { value: 'full', label: 'Full' },
+              { value: 'reduced', label: 'Reduced' },
+            ]}
+          />
+        </Row>
+
+        <Row title="Animated backgrounds" hint="The moving colour and light behind each screen.">
+          <Toggle
+            checked={prefs.effects}
+            disabled={prefs.reduced}
+            onChange={() => prefs.toggle('effects')}
+            label="Animated backgrounds"
+          />
+        </Row>
+
+        <Row title="Show Rec, the 3D assistant" hint="Rec reacts to what SmartRecap is doing and to your quiz results.">
+          <Toggle
+            checked={prefs.mascot}
+            disabled={prefs.reduced}
+            onChange={() => prefs.toggle('mascot')}
+            label="Show Rec"
+          />
+        </Row>
+
+        {prefs.reduced && (
+          <p className="settings-note">
+            <Icon name="info" size={15} />
+            Reduced motion is on, so both switches above are held off regardless of their position.
+          </p>
+        )}
+      </Section>
+
+      <FaceEnrolment isGuest={isGuest} />
 
       {/* ------------------------------------------------------- account -- */}
-      <section className="panel settings-card">
-        <h2>Account</h2>
+      <Section title="Account" icon="person">
         <dl className="settings-dl">
           <div>
             <dt>Name</dt>
@@ -134,13 +208,14 @@ export default function Settings() {
           </div>
           <div>
             <dt>Signed in with</dt>
-            <dd>{isGuest ? 'Guest session' : 'Email and password'}</dd>
+            <dd>{isGuest ? 'Guest session' : user?.provider === 'google' ? 'Google' : 'Email and password'}</dd>
           </div>
           <div>
             <dt>Materials stored</dt>
             <dd className="num">{materials.length}</dd>
           </div>
         </dl>
+
         <div className="row wrap gap-2 settings-actions">
           <button
             className="btn btn-ghost btn-sm"
@@ -151,6 +226,16 @@ export default function Settings() {
           >
             <Icon name="refresh" size={16} />
             Reload library
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              prefs.reset();
+              toast.success('Appearance reset to defaults.');
+            }}
+          >
+            <Icon name="settings_backup_restore" size={16} />
+            Reset appearance
           </button>
           <button
             className="btn btn-ghost btn-sm"
@@ -169,11 +254,10 @@ export default function Settings() {
             </button>
           )}
         </div>
-      </section>
+      </Section>
 
       {/* ------------------------------------------------------- privacy -- */}
-      <section className="panel settings-card">
-        <h2>Your files and your privacy</h2>
+      <Section title="Your files and your privacy" icon="lock">
         <ul className="settings-facts">
           <li>
             <Icon name="lock" size={18} />
@@ -214,7 +298,7 @@ export default function Settings() {
             </div>
           </li>
         </ul>
-      </section>
+      </Section>
 
       <Modal
         open={confirmReset}
@@ -245,20 +329,5 @@ export default function Settings() {
         </p>
       </Modal>
     </div>
-  );
-}
-
-function Toggle({ label, hint, checked, onChange, disabled }) {
-  return (
-    <label className={`toggle ${disabled ? 'is-disabled' : ''}`}>
-      <span className="toggle-copy">
-        <strong>{label}</strong>
-        <span>{hint}</span>
-      </span>
-      <input type="checkbox" checked={checked && !disabled} onChange={onChange} disabled={disabled} />
-      <span className="toggle-track" aria-hidden="true">
-        <span className="toggle-thumb" />
-      </span>
-    </label>
   );
 }

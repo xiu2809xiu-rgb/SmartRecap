@@ -76,7 +76,7 @@
   padding: 0 14px;
   height: 42px;
   border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--tint);
   border: 1px solid var(--glass-line);
   color: var(--ink-3);
   transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);

@@ -51,7 +51,7 @@
   font-size: 0.95em;
   padding: 1px 5px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--tint-2);
 }
 
 /* -------------------------------------------------------------- Face ---- */
@@ -64,7 +64,7 @@
   width: 100%;
   padding: 13px 20px;
   border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--tint);
   border: 1px solid var(--glass-line);
   color: var(--ink);
   font-size: var(--t-sm);

@@ -42,7 +42,7 @@
 .upload-stepper .step-indicator-inner,
 .upload-stepper .step-number { color: var(--ink); }
 
-.upload-stepper .step-default { background: rgba(255, 255, 255, 0.08) !important; }
+.upload-stepper .step-default { background: var(--tint-2) !important; }
 .upload-stepper .step-active { background: var(--accent) !important; color: #0b0616 !important; }
 .upload-stepper .step-complete { background: var(--accent-cool) !important; color: #08222a !important; }
 .upload-stepper .step-connector { background: var(--glass-line) !important; }
@@ -73,7 +73,7 @@
   padding: 28px;
   border-radius: var(--r-lg);
   border: 2px dashed var(--glass-line-strong);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--tint);
   text-align: center;
   cursor: pointer;
   transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease), transform var(--dur) var(--spring);
@@ -142,7 +142,7 @@
   text-align: left;
   border-radius: var(--r-lg);
   border: 1px solid var(--glass-line);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--tint);
   transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease), transform var(--dur) var(--spring);
 }
 
@@ -180,7 +180,7 @@
 .upload-summary {
   padding: 20px;
   border-radius: var(--r-lg);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--tint);
   border: 1px solid var(--glass-line);
 }
 
@@ -194,3 +194,18 @@
   .upload-head { flex-direction: column; align-items: flex-start; }
   .upload-head .mascot { display: none; }
 }
+
+/* Says why Continue is disabled. A dead button with no explanation is the
+   thing people click twice and then give up on. */
+.upload-hint {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 14px;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* A step that validation has not unlocked yet. */
+.upload-stepper .step-indicator.is-locked { cursor: not-allowed; }

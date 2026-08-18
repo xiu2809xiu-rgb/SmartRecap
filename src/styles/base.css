@@ -193,21 +193,24 @@ img, svg, canvas { display: block; max-width: 100%; }
 }
 
 .btn-ghost {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--tint);
   border: 1px solid var(--glass-line);
   color: var(--ink);
 }
 .btn-ghost:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--tint-3);
   border-color: var(--glass-line-strong);
 }
 
-[data-surface="study"] .btn-ghost {
+[data-surface="study"]:not([data-theme="midnight"]) .btn-ghost,
+[data-theme="daylight"] .btn-ghost {
   background: #fff;
   border-color: var(--glass-line);
   color: var(--ink);
 }
-[data-surface="study"] .btn-ghost:hover:not(:disabled) { background: var(--ground-sunken); }
+
+[data-surface="study"]:not([data-theme="midnight"]) .btn-ghost:hover:not(:disabled),
+[data-theme="daylight"] .btn-ghost:hover:not(:disabled) { background: var(--ground-sunken); }
 
 .btn-sm { padding: 9px 16px; font-size: var(--t-xs); }
 .btn-lg { padding: 17px 34px; font-size: 1.0625rem; }
@@ -224,7 +227,7 @@ img, svg, canvas { display: block; max-width: 100%; }
   width: 100%;
   padding: 13px 16px;
   border-radius: var(--r-sm);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--tint);
   border: 1px solid var(--glass-line);
   color: var(--ink);
   transition:
@@ -236,12 +239,15 @@ img, svg, canvas { display: block; max-width: 100%; }
 .input:focus {
   outline: none;
   border-color: var(--accent);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--tint-2);
   box-shadow: 0 0 0 4px rgba(167, 139, 250, 0.16);
 }
 
-[data-surface="study"] .input { background: #fff; }
-[data-surface="study"] .input:focus {
+[data-surface="study"]:not([data-theme="midnight"]) .input,
+[data-theme="daylight"] .input { background: #fff; }
+
+[data-surface="study"]:not([data-theme="midnight"]) .input:focus,
+[data-theme="daylight"] .input:focus {
   background: #fff;
   box-shadow: 0 0 0 4px rgba(109, 79, 224, 0.13);
 }
@@ -274,7 +280,7 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
   font-size: var(--t-xs);
   font-weight: 650;
   border: 1px solid var(--glass-line);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--tint);
   color: var(--ink-2);
 }
 .chip-good { color: var(--good); background: var(--good-bg); border-color: color-mix(in srgb, var(--good) 34%, transparent); }

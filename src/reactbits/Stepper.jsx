@@ -18,6 +18,9 @@ export default function Stepper({
   nextButtonText = 'Continue',
   disableStepIndicators = false,
   renderStepIndicator,
+  // SmartRecap additions — see the notes on each below.
+  canProceed,
+  advanceOnComplete = true,
   ...rest
 }) {
   const [currentStep, setCurrentStep] = useState(initialStep);
@@ -26,6 +29,26 @@ export default function Stepper({
   const totalSteps = stepsArray.length;
   const isCompleted = currentStep > totalSteps;
   const isLastStep = currentStep === totalSteps;
+
+  /**
+   * SmartRecap change: a step can only be left once the caller says it is done.
+   *
+   * Upstream, the step indicators call `updateStep(clicked)` for any step, so
+   * they are free jump targets — you can click straight to step 3 and skip
+   * every requirement in between. Disabling the Continue button does nothing
+   * about that; it just makes the gate look like it exists.
+   *
+   * `canProceed(step)` returns whether `step` is satisfied. Backward navigation
+   * is always allowed — revisiting a finished step is harmless.
+   */
+  const stepIsSatisfied = step => (typeof canProceed === 'function' ? !!canProceed(step) : true);
+
+  /** The furthest step reachable right now: stop at the first unsatisfied one. */
+  const furthestReachable = () => {
+    let step = 1;
+    while (step <= totalSteps && stepIsSatisfied(step)) step += 1;
+    return Math.min(step, totalSteps);
+  };
 
   const updateStep = newStep => {
     setCurrentStep(newStep);
@@ -44,15 +67,37 @@ export default function Stepper({
   };
 
   const handleNext = () => {
-    if (!isLastStep) {
-      setDirection(1);
-      updateStep(currentStep + 1);
-    }
+    if (isLastStep || !stepIsSatisfied(currentStep)) return;
+    setDirection(1);
+    updateStep(currentStep + 1);
   };
 
+  /**
+   * SmartRecap change: `advanceOnComplete={false}` runs the callback without
+   * moving past the last step.
+   *
+   * Upstream always advances to `totalSteps + 1`, where `isCompleted` hides the
+   * footer AND renders `stepsArray[currentStep - 1]`, which is undefined. That
+   * state has no content and no buttons. It is invisible when the callback
+   * navigates away, and a dead end the moment it does not — a failed submit
+   * strands the user on an empty panel with no way back.
+   */
   const handleComplete = () => {
+    if (!stepIsSatisfied(currentStep)) return;
+    if (!advanceOnComplete) {
+      onFinalStepCompleted();
+      return;
+    }
     setDirection(1);
     updateStep(totalSteps + 1);
+  };
+
+  /** Indicator clicks: back freely, forward only as far as validation allows. */
+  const requestStep = clicked => {
+    if (clicked === currentStep) return;
+    if (clicked > currentStep && clicked > furthestReachable()) return;
+    setDirection(clicked > currentStep ? 1 : -1);
+    updateStep(clicked);
   };
 
   return (
@@ -68,20 +113,18 @@ export default function Stepper({
                   renderStepIndicator({
                     step: stepNumber,
                     currentStep,
-                    onStepClick: clicked => {
-                      setDirection(clicked > currentStep ? 1 : -1);
-                      updateStep(clicked);
-                    }
+                    onStepClick: requestStep
                   })
                 ) : (
                   <StepIndicator
                     step={stepNumber}
                     disableStepIndicators={disableStepIndicators}
+                    // Locked when it sits beyond what validation currently
+                    // allows, so it reads as unavailable rather than silently
+                    // ignoring the click.
+                    locked={stepNumber > currentStep && stepNumber > furthestReachable()}
                     currentStep={currentStep}
-                    onClickStep={clicked => {
-                      setDirection(clicked > currentStep ? 1 : -1);
-                      updateStep(clicked);
-                    }}
+                    onClickStep={requestStep}
                   />
                 )}
                 {isNotLastStep && <StepConnector isComplete={currentStep > stepNumber} />}
@@ -185,15 +228,23 @@ export function Step({ children }) {
   return <div className="step-default">{children}</div>;
 }
 
-function StepIndicator({ step, currentStep, onClickStep, disableStepIndicators }) {
+function StepIndicator({ step, currentStep, onClickStep, disableStepIndicators, locked = false }) {
   const status = currentStep === step ? 'active' : currentStep < step ? 'inactive' : 'complete';
+  const unavailable = disableStepIndicators || locked;
 
   const handleClick = () => {
-    if (step !== currentStep && !disableStepIndicators) onClickStep(step);
+    if (step !== currentStep && !unavailable) onClickStep(step);
   };
 
   return (
-    <motion.div onClick={handleClick} className="step-indicator" style={disableStepIndicators ? { pointerEvents: 'none', opacity: 0.5 } : {}} animate={status} initial={false}>
+    <motion.div
+      onClick={handleClick}
+      className={`step-indicator ${locked ? 'is-locked' : ''}`}
+      style={unavailable ? { pointerEvents: 'none', opacity: disableStepIndicators ? 0.5 : 0.65 } : {}}
+      aria-disabled={unavailable || undefined}
+      animate={status}
+      initial={false}
+    >
       <motion.div
         variants={{
           inactive: { scale: 1, backgroundColor: '#222', color: '#a3a3a3' },

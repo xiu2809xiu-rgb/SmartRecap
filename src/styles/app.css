@@ -137,7 +137,7 @@
   transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
 }
 
-.app-link:hover { color: var(--ink); background: rgba(255, 255, 255, 0.05); }
+.app-link:hover { color: var(--ink); background: var(--tint); }
 
 .app-link.is-on {
   color: var(--ink);
@@ -193,7 +193,7 @@
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 
-.menu-item:hover { background: rgba(255, 255, 255, 0.07); color: var(--ink); }
+.menu-item:hover { background: var(--tint-2); color: var(--ink); }
 .menu-item-accent { color: var(--accent-cool); }
 
 .demo-banner {
@@ -300,7 +300,9 @@
   position: sticky;
   top: 0;
   z-index: 40;
-  background: rgba(246, 244, 251, 0.86);
+  /* Follows the palette rather than assuming the reader is light — midnight
+     keeps this surface dark. */
+  background: color-mix(in srgb, var(--ground) 86%, transparent);
   backdrop-filter: blur(18px) saturate(1.4);
   -webkit-backdrop-filter: blur(18px) saturate(1.4);
   border-bottom: 1px solid var(--glass-line);
@@ -622,7 +624,7 @@
   width: 13px;
   height: 13px;
   border-radius: 3px;
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--tint);
   padding: 0;
   transition: transform var(--dur-fast) var(--spring);
 }
@@ -649,13 +651,14 @@
 .progressbar {
   height: 7px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.09);
+  background: var(--tint-2);
   overflow: hidden;
 }
 
 /* rgba white is invisible on the study surface, where an empty track still has
    to read as a track. */
-[data-surface='study'] .progressbar { background: var(--seq-0); box-shadow: inset 0 0 0 1px var(--glass-line); }
+[data-surface='study']:not([data-theme='midnight']) .progressbar,
+[data-theme='daylight'] .progressbar { background: var(--seq-0); box-shadow: inset 0 0 0 1px var(--glass-line); }
 
 .progressbar > span {
   display: block;
@@ -754,7 +757,7 @@
   padding: 4px;
   gap: 3px;
   border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--tint);
   border: 1px solid var(--glass-line);
 }
 
@@ -778,5 +781,58 @@
   box-shadow: 0 6px 16px -6px rgba(255, 0, 110, 0.6);
 }
 
-[data-surface='study'] .segmented { background: #fff; }
-[data-surface='study'] .segmented button.is-on { color: #fff; }
+[data-surface='study']:not([data-theme='midnight']) .segmented,
+[data-theme='daylight'] .segmented { background: #fff; }
+
+[data-surface='study']:not([data-theme='midnight']) .segmented button.is-on,
+[data-theme='daylight'] .segmented button.is-on { color: #fff; }
+
+/* ===========================================================================
+   Daylight theme — the solid dark chrome colours.
+
+   Tints and palette tokens flip on their own; these are the handful of places
+   that were written as an explicit dark colour because they sit above the
+   glass layer and needed to be opaque.
+   ======================================================================== */
+
+[data-theme='daylight'] .topbar.is-scrolled,
+[data-theme='daylight'] .topbar.is-app {
+  background: rgba(246, 244, 251, 0.82);
+  border-bottom-color: var(--glass-line);
+}
+
+[data-theme='daylight'] .backdrop-static {
+  background:
+    radial-gradient(58% 46% at 14% 8%, rgba(93, 52, 208, 0.16), transparent 62%),
+    radial-gradient(46% 40% at 88% 18%, rgba(255, 0, 110, 0.1), transparent 64%),
+    radial-gradient(64% 52% at 52% 96%, rgba(0, 152, 176, 0.1), transparent 66%),
+    var(--ground);
+}
+
+/* The mesh is built from additive light, so on a light ground it reads as a
+   grey smear. Dropped well back rather than recoloured. */
+[data-theme='daylight'] .backdrop-live { opacity: 0.28; }
+[data-theme='daylight'] .backdrop-quiet .backdrop-live { opacity: 0.12; }
+
+[data-theme='daylight'] .site-foot { background: rgba(235, 230, 247, 0.72); }
+[data-theme='daylight'] .tabbar { background: rgba(246, 244, 251, 0.95); }
+
+[data-theme='daylight'] .toast {
+  background: rgba(255, 255, 255, 0.97);
+  color: var(--ink);
+}
+
+[data-theme='daylight'] .demo-banner {
+  color: #7a4f00;
+  background: rgba(251, 191, 36, 0.18);
+  border-top-color: rgba(180, 130, 0, 0.3);
+}
+
+[data-theme='daylight'] .demo-banner code { background: rgba(24, 16, 46, 0.08); }
+[data-theme='daylight'] .avatar { box-shadow: 0 0 0 1px rgba(24, 16, 46, 0.12); }
+[data-theme='daylight'] .search input::-webkit-search-cancel-button { filter: none; }
+
+/* GooeyNav's blob is black blended with `mix-blend-mode: lighten`, which only
+   disappears against a dark backdrop. The pill stays dark in every theme —
+   the alternative is a black rectangle sitting in the middle of the nav. */
+[data-theme='daylight'] .marketing-nav { background: #0e0722; }

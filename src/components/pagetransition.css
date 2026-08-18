@@ -79,7 +79,8 @@
 
 /* On the light study surface `screen` would wash the bands out to nothing, so
    they switch to multiply and drop to a tint. */
-[data-surface='study'] .sweep-band {
+[data-surface='study']:not([data-theme='midnight']) .sweep-band,
+[data-theme='daylight'] .sweep-band {
   mix-blend-mode: multiply;
   opacity: 0.5;
 }
@@ -141,7 +142,8 @@
   opacity: 0.9;
 }
 
-[data-surface='study'] .route-progress { background: rgba(109, 79, 224, 0.14); }
+[data-surface='study']:not([data-theme='midnight']) .route-progress,
+[data-theme='daylight'] .route-progress { background: rgba(109, 79, 224, 0.14); }
 
 .page-transition {
   /* `will-change` on a wrapper that animates on every route change is worth the
