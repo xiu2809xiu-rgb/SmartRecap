@@ -22,3 +22,7 @@ torch==2.7.1
 torchvision==0.22.1
 pix2text==1.1.6
 boto3==1.42.97
+# Verifies Google ID tokens against Google's JWKS. `requests` is the transport
+# google-auth uses; `cryptography` is its RSA backend.
+google-auth==2.56.3
+requests==2.32.5

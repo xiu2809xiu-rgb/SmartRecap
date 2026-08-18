@@ -96,6 +96,12 @@ img, svg, canvas { display: block; max-width: 100%; }
   }
 }
 
+/* The media query above turns off smooth scrolling; the user's own Reduced
+   setting has to do the same. Without this line, choosing Reduced in Settings
+   killed every animation but left anchor links gliding — the one motion that
+   most reliably causes trouble for someone who asked for less of it. */
+html[data-motion="reduced"] { scroll-behavior: auto; }
+
 [data-motion="reduced"] *,
 [data-motion="reduced"] *::before,
 [data-motion="reduced"] *::after {

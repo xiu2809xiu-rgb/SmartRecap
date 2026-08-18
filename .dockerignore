@@ -1,0 +1,38 @@
+# Build context for backend/Dockerfile, which is built from the repo root.
+#
+# Deny everything, re-include the backend directory, then re-exclude the parts
+# of it that must not ship. The `!backend` line matters: excluding `*` prunes
+# the directory itself, and a later `!backend/app/**` cannot always re-include
+# a path whose parent was already excluded — which would produce an image with
+# no application code in it.
+*
+!backend
+
+# Secrets. The reason this file leads with a deny-all: a stray .env copied into
+# a layer stays recoverable from the image even if a later step deletes it.
+backend/.env
+backend/.env.*
+!backend/.env.example
+backend/**/*.pem
+backend/**/*.key
+
+# Not needed at runtime, and .venv in particular is a large pile of
+# host-specific absolute paths that would shadow the image's own venv.
+backend/.venv/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/**/*.pyo
+
+# The Node/serverless backend, kept in-tree as the alternative architecture.
+backend/src/
+backend/test/
+backend/package.json
+backend/package-lock.json
+backend/node_modules/
+backend/template.yaml
+backend/samconfig.toml
+backend/.aws-sam/
+
+# Provisioning and docs — deployed by other means, not baked into the image.
+backend/infra/
+backend/PYTHON_BACKEND.md

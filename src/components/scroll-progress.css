@@ -1,0 +1,13 @@
+/* Sits above the sticky topbar (z-index 40 in app.css) so it is never covered,
+   and is thin enough not to read as a UI element competing for attention. */
+.scroll-progress {
+  position: fixed;
+  inset-inline: 0;
+  top: 0;
+  height: 3px;
+  z-index: 60;
+  transform-origin: 0 50%;
+  background: linear-gradient(90deg, var(--aurora-violet), var(--accent-hot) 55%, var(--aurora-cyan));
+  box-shadow: 0 0 14px -2px var(--accent-hot);
+  pointer-events: none;
+}
