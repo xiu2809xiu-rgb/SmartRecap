@@ -1,5 +1,5 @@
 import { complete } from './provider.js';
-import { recapPrompt, quizPrompt, askPrompt, repairPrompt } from './prompts.js';
+import { recapPrompt, quizPrompt, askPrompt, judgeShortAnswerPrompt, repairPrompt } from './prompts.js';
 import { groundRecap, groundQuiz, groundAnswer } from './ground.js';
 import { upstream } from '../lib/http.js';
 
@@ -79,12 +79,58 @@ function validateQuiz(obj) {
   if (!obj || typeof obj !== 'object') return ['Response was not a JSON object.'];
   if (!Array.isArray(obj.questions) || obj.questions.length === 0) return ['"questions" must be a non-empty array.'];
   const errors = [];
+  const ids = new Set();
   obj.questions.forEach((q, i) => {
+    const type = q?.type ?? 'single';
+    if (!isNonEmptyString(q?.id)) {
+      errors.push(`questions[${i}].id must be a non-empty string.`);
+    } else if (ids.has(q.id)) {
+      errors.push(`questions[${i}].id must be unique.`);
+    } else {
+      ids.add(q.id);
+    }
+    if (!['single', 'multi', 'short'].includes(type)) {
+      errors.push(`questions[${i}].type must be "single", "multi" or "short".`);
+    }
     if (!isNonEmptyString(q?.prompt)) errors.push(`questions[${i}].prompt must be a non-empty string.`);
-    if (!Array.isArray(q?.options) || q.options.length !== 4) errors.push(`questions[${i}].options must have exactly 4 entries.`);
-    if (!Number.isInteger(q?.answer)) errors.push(`questions[${i}].answer must be an integer index.`);
     if (!Array.isArray(q?.citations)) errors.push(`questions[${i}].citations must be an array.`);
+
+    if (type === 'short') {
+      if (q.options != null) errors.push(`questions[${i}].options must be omitted for short questions.`);
+      if (!isNonEmptyString(q?.modelAnswer)) errors.push(`questions[${i}].modelAnswer must be a non-empty string.`);
+      if (!isNonEmptyString(q?.rubric)) errors.push(`questions[${i}].rubric must be a non-empty string.`);
+      return;
+    }
+
+    if (!Array.isArray(q?.options) || q.options.length !== 4) {
+      errors.push(`questions[${i}].options must have exactly 4 entries.`);
+      return;
+    }
+
+    if (type === 'multi') {
+      const answer = q?.answer;
+      const unique = Array.isArray(answer) ? new Set(answer) : new Set();
+      if (
+        !Array.isArray(answer) ||
+        answer.length < 2 ||
+        answer.length >= q.options.length ||
+        unique.size !== answer.length ||
+        answer.some((index) => !Number.isInteger(index) || index < 0 || index >= q.options.length)
+      ) {
+        errors.push(`questions[${i}].answer must contain 2 or 3 unique valid option indices.`);
+      }
+    } else if (!Number.isInteger(q?.answer) || q.answer < 0 || q.answer >= q.options.length) {
+      errors.push(`questions[${i}].answer must be a valid integer index.`);
+    }
   });
+  return errors;
+}
+
+function validateShortAnswerJudgement(obj) {
+  const errors = [];
+  if (!obj || typeof obj !== 'object') return ['Response was not a JSON object.'];
+  if (typeof obj.correct !== 'boolean') errors.push('"correct" must be a boolean.');
+  if (!isNonEmptyString(obj.feedback)) errors.push('"feedback" must be a non-empty string.');
   return errors;
 }
 
@@ -156,6 +202,17 @@ export async function generateQuiz({ chunks, count, moduleName, onAttempt }) {
   });
   const { quiz, report } = groundQuiz(data, chunks);
   return { quiz, meta, report: { ...report, repaired } };
+}
+
+export async function judgeShortAnswer({ prompt, modelAnswer, rubric, studentAnswer, onAttempt }) {
+  const { data } = await generateValidated({
+    messages: judgeShortAnswerPrompt({ prompt, modelAnswer, rubric, studentAnswer }),
+    validate: validateShortAnswerJudgement,
+    maxTokens: 450,
+    temperature: 0,
+    onAttempt,
+  });
+  return { correct: data.correct, feedback: data.feedback.trim() };
 }
 
 export async function answerQuestion({ chunks, question, history }) {
