@@ -182,6 +182,22 @@ npm run dev
 
 The amber "Demo mode" banner disappears once the frontend can reach the API.
 
+### If you host the built frontend somewhere
+
+`npm run build` emits `dist/`, which includes **`dist/pyodide/` — about 13 MB**
+of WebAssembly for the practice panel. Copy the whole directory; the practice
+page degrades to JavaScript-only if those files are missing, but Python
+exercises will not run.
+
+Whatever serves it must send `.wasm` as `application/wasm`, or the browser
+falls back to a slower non-streaming compile and may refuse it outright. nginx
+on Amazon Linux 2023 already has this in `/etc/nginx/mime.types`; check with:
+
+```bash
+curl -sI http://<your-host>/pyodide/pyodide.asm.wasm | grep -i content-type
+# want: content-type: application/wasm
+```
+
 > **Mixed content:** if you later host the frontend over HTTPS, the browser will
 > block calls to a plain-HTTP API. Either keep both on HTTP for the demo, or put
 > a certificate on the instance. Do not discover this an hour before judging.

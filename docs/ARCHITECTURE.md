@@ -174,6 +174,112 @@ visible in one interaction.
 
 ---
 
+## Practice: running code in the browser
+
+For programming and DSA modules a recap is only half of revising — the other
+half is writing the thing. `/app/material/:id/practice` puts the exercise brief
+and the slide it came from on the left, and an editor on the right.
+
+### Run and Check are separate controls
+
+The page does two different things and they are two different buttons.
+
+- **Run** executes what is in the editor and shows the output. It never grades
+  anything.
+- **Check answer** runs the exercise's tests.
+
+An earlier version had one button doing both. Typing `print(21)` to see what
+happened answered with *"0 of 3 tests passing"* and three NameErrors — a tool
+telling someone they are wrong for experimenting. Exploring and being marked
+are different intentions and now look different.
+
+Two consequences of the same principle:
+
+- A **Playground** tab has no tests at all and needs no backend, so it works
+  even when exercise generation is unavailable. It keeps a separate draft per
+  language.
+- When the code simply does not define the function yet, the page says so in
+  one sentence instead of printing one near-identical NameError per test. Not
+  having written it is where you start, not an error.
+
+**The exercises come from the student's own material and cite it.** Same
+contract as everything else: `ai/prompts.js`'s `practicePrompt` requires a
+`citations` array, and `groundPractice` drops any exercise whose citation does
+not resolve or does not share the cited slide's distinctive vocabulary. A
+binary-search exercise pointed at the hash-table slide is removed. This is what
+separates it from an embedded playground: a lecture on binary search gets a
+binary search to write, not FizzBuzz.
+
+**"This material does not teach programming" is an expected answer.** Most
+uploads are not code. Two independent checks have to agree before a student is
+offered exercises:
+
+1. `looks_like_code` — a local regex pass with weighted signals, run *before*
+   any model call so a history deck never costs a request. Literal syntax
+   (`def foo(`, `SELECT ... FROM`) counts double, because nothing else writes
+   like that; vocabulary ("algorithm", "recursion") counts single, because any
+   subject might use it, and scores per *distinct* term so a lecture naming
+   both "linked list" and "hash table" qualifies without showing code. Words
+   with everyday senses — "stack", "queue", "class", "return" — are not signals
+   at all, or a timetable would qualify.
+2. The model, which is told that declining is correct and expected.
+
+This lives in **both** backends and must stay in step: `backend/app/ai_service.py`
+for the FastAPI host that is currently deployed, and `backend/src/core/practice.js`
+for the Node host kept as the serverless alternative. `backend/test/practice.test.mjs`
+pins the Node behaviour.
+
+The result is cached on the material either way. "No" is a result, and
+re-deciding it on every visit would cost a request to reach the same answer.
+
+### Execution model
+
+Code runs **entirely in the browser**, in a Web Worker.
+
+- **Python** — Pyodide, self-hosted from `public/pyodide/`. `npm i` puts it in
+  `node_modules`; `scripts/copy-pyodide.mjs` copies the five files the runtime
+  actually loads into `public/` on `predev`/`prebuild`. It is gitignored: 13 MB
+  of build output that changes only when the dependency version does.
+- **JavaScript** — a direct `eval` inside a generated function, so a test can
+  call whatever the student declared. No download at all.
+
+Nothing is sent to a server. That is right for a study tool on its own merits,
+and it also means the feature costs nothing to operate and cannot be taken down
+by a Learner Lab session expiring mid-demo.
+
+**Server-side execution was considered and rejected.** Judge0 on the EC2 box, a
+container sandbox, Lambda — all of them mean accepting arbitrary code from the
+internet onto infrastructure we cannot properly isolate inside a Learner Lab,
+on a four-hour session, days before a deadline. The blast radius of getting it
+wrong is the whole AWS account. WASM in a worker has none of that exposure and
+works offline.
+
+The cost is language coverage: Python and JavaScript only. Java and C would
+need a server runner, and the page says so rather than pretending otherwise.
+
+### Why the timeout lives on the main thread
+
+A student learning loops writes an infinite loop. That is normal, and the page
+has to survive it. `while True:` inside the interpreter never yields, so the
+worker cannot time itself out — only something outside it can. `useRunner.js`
+holds the timer and calls `terminate()`, which is the only thing that reliably
+stops running WASM.
+
+Terminating means Pyodide reloads on the next Python run. That is the right
+trade: a page you have to reload to recover from your own mistake is a page
+students stop using. Verified end to end in headless Chrome — loop killed at
+10.1s, the next run passed 3 of 3.
+
+### Tests are expression/expected pairs
+
+`{ "call": "binary_search([1,3,5], 5)", "expect": "2" }`. One protocol checks
+both languages, and neither needs a test framework shipped to the browser.
+`groundPractice` throws out any exercise whose tests do not call the function
+the starter defines — those can never pass, so the student would be debugging
+our bug rather than their code.
+
+---
+
 ## Multi-language recaps, and why translation runs last
 
 A student can ask to read their recap in Chinese, Malay or Tamil. The obvious

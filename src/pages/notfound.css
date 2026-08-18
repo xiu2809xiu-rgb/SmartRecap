@@ -1,5 +1,6 @@
 .notfound { position: relative; min-height: 100vh; display: flex; flex-direction: column; }
 .notfound-bar { height: 76px; display: flex; align-items: center; flex-shrink: 0; }
+
 .notfound-main {
   flex: 1;
   display: flex;
@@ -7,8 +8,94 @@
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: 12px;
+  gap: 10px;
   padding-bottom: 80px;
 }
-.notfound-main h1 { font-size: var(--t-display); }
-.notfound-main .lede { margin-bottom: 14px; }
+
+/* ------------------------------------------------------------------ hero */
+
+.notfound-hero {
+  position: relative;
+  width: min(640px, 88vw);
+  margin-bottom: 4px;
+}
+
+/* The canvas inherits its typeface from here — ParticleText measures the font
+   that actually loaded rather than assuming one. */
+.particle-text {
+  display: block;
+  width: 100%;
+  font-family: var(--font);
+  /* The global `canvas { max-width: 100% }` rule would otherwise fight the
+     explicit pixel height the component sets from its own measurement. */
+  max-width: none;
+}
+
+/* Rec stands clear of the scatter, not in front of it. The offset is one
+   mascot-width past the hero's edge so it cannot land on a glyph, and it is
+   dropped entirely once the viewport is too narrow to hold both. */
+.notfound-mascot {
+  position: absolute;
+  right: -205px;
+  bottom: -30px;
+  pointer-events: none;
+}
+
+@media (max-width: 1150px) {
+  .notfound-mascot { display: none; }
+}
+
+/* ------------------------------------------------------------------ copy */
+
+.notfound-title { font-size: var(--t-display); }
+.notfound-lede { max-width: 46ch; margin-bottom: 10px; }
+
+/* ------------------------------------------------- the unresolved citation */
+
+/* Reads as the same object as a dropped claim in the reader: a warning-toned
+   card that says what was wanted and why it is not here. */
+.notfound-drop {
+  width: min(560px, 92vw);
+  text-align: left;
+  padding: 16px 20px 18px;
+  margin-bottom: 12px;
+  border-radius: var(--r-lg);
+  background: var(--warn-bg);
+  border: 1px solid color-mix(in srgb, var(--warn) 34%, transparent);
+}
+
+.notfound-drop-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--t-xs);
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  color: var(--warn);
+  margin-bottom: 10px;
+}
+
+.notfound-path { margin-bottom: 9px; }
+
+.notfound-path code {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  padding: 4px 11px;
+  border-radius: var(--r-pill);
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+}
+
+.notfound-reason { font-size: var(--t-sm); color: var(--ink-2); line-height: 1.6; }
+
+.notfound-actions { margin-top: 6px; }
+
+@media (max-width: 640px) {
+  .notfound-drop { text-align: center; }
+  .notfound-drop-head { justify-content: center; }
+}

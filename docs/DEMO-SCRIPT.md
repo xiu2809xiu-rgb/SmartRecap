@@ -118,13 +118,23 @@ Pick **one**. Do not list them all.
 - **Recap in four languages** — Chinese, Malay or Tamil, translated *after*
   grounding so the citations still point at the original slides *(strongest if a
   judge asks who else could use this)*
+- **Practice** — write and run real code against exercises taken from your own
+  lecture, in the browser *(strongest for a technical judge, and the most
+  visually convincing thing we have after the ribbon)*
+
+> **If you demo Practice, run it once during the pre-flight.** The first Python
+> run downloads the runtime. After that it is cached and instant, but a cold
+> first run on conference wifi is not what you want on stage. The JavaScript
+> exercise needs no download at all — use that one if you are unsure.
 
 ### 2:40 — Close on the constraint
 
-> "Bedrock is blocked in Learner Lab, so generation runs on OpenRouter with
-> automatic failover to NVIDIA NIM — both free tiers, called only from the
-> server. The AWS AI in our pipeline is Textract for OCR and Polly for
-> read-aloud. Everything stateful is S3, DynamoDB and Cognito."
+> "The bonus is for meaningful use of AI, so here is ours: the model is one
+> stage of seven, and the other six exist to make its output checkable. The
+> points it wrote that failed the check are the ones you just saw listed.
+> Generation runs on OpenRouter with automatic failover to NVIDIA
+> NIM, called only from the server. Textract reads scans, Polly reads recaps
+> aloud, and everything stateful is S3, DynamoDB and Cognito."
 
 If you have a spare 15 seconds, open `/architecture` and let the live status
 panel finish the sentence for you.
@@ -141,9 +151,12 @@ panel finish the sentence for you.
 > one lets through. Anything that fails is dropped and shown as dropped.
 
 **"Why not Bedrock?"**
-> It is not available in AWS Academy Learner Lab. We use Textract and Polly for
-> the AWS AI in the pipeline, and external free-tier models for generation,
-> called only from the server so no key reaches the browser.
+> It is not available in AWS Academy Learner Lab, and the organisers relaxed the
+> bonus criteria to meaningful use of AI rather than a specific AWS service.
+> Generation runs on OpenRouter with failover to NVIDIA NIM, called only from
+> the server so no key reaches the browser. Textract and Polly are the AWS AI in
+> the pipeline. Do not get drawn into a vendor conversation — the interesting
+> part is what we do with the output, not where it came from.
 
 **"What if the file is a scan, or nearly empty?"**
 > Under 40 characters a page we treat it as a scan and send it to Textract. If
@@ -157,6 +170,20 @@ panel finish the sentence for you.
 > to an English slide, which shares no vocabulary — the check would have deleted
 > everything, or passed everything while reporting that it had checked. Key
 > terms stay in the original language, because that is what the exam paper uses.
+
+**"Where does the student's code run? Is that not dangerous?"**
+> Entirely in their own browser, in a Web Worker — Pyodide for Python,
+> JavaScript natively. Nothing is sent to us. We deliberately did not build a
+> server-side runner: accepting arbitrary code onto a Learner Lab instance we
+> cannot properly isolate, days before a deadline, risks the whole AWS account
+> for no benefit a student would notice. The trade is that we support Python
+> and JavaScript, not Java or C, and the page says so.
+
+**"How do you stop an infinite loop hanging the page?"**
+> The worker is killed from the main thread after ten seconds. The interpreter
+> never yields inside a `while True`, so nothing inside it can time itself out —
+> terminating from outside is the only thing that works. The next run starts a
+> fresh worker.
 
 **"Is this just a wrapper around an LLM?"**
 > The model is one of six stages. Extraction preserves slide numbers, chunking

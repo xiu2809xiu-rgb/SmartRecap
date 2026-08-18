@@ -172,6 +172,74 @@ ${renderChunks(chunks)}`,
   ];
 }
 
+/**
+ * Coding exercises drawn from the student's own material.
+ *
+ * The rule that makes this different from a generic code playground is the
+ * same one as everywhere else: an exercise must be about something the upload
+ * actually teaches, and must cite where. A lecture on binary search gets a
+ * binary search to write; it does not get FizzBuzz because FizzBuzz is what
+ * coding exercises usually are.
+ *
+ * Tests are expression/expected pairs rather than a test harness in the target
+ * language, so one runner can check Python and JavaScript with the same code
+ * and neither language needs a test framework shipped to the browser.
+ */
+export function practicePrompt({ chunks, count, moduleName, language }) {
+  return [
+    {
+      role: 'system',
+      content: `You write short programming exercises for students, drawn strictly from their own lecture material. An exercise about something the material does not teach is worse than no exercise, so you are expected to decline when the material is not about programming. You reply with JSON only, no prose around it, no markdown fences.`,
+    },
+    {
+      role: 'user',
+      content: `Write up to ${count} short coding exercises based on the material below${moduleName ? ` for the module "${moduleName}"` : ''}.
+
+First decide whether this material teaches programming at all. If it does not — if it is history, marketing, biology, or any subject where writing code would not help the student revise it — return {"applicable": false, "reason": "one sentence", "exercises": []} and nothing else. Declining is a correct answer and is expected most of the time.
+
+${CITATION_RULES}
+
+Exercise rules:
+- Each exercise must practise something the material actually teaches, and cite the chunks that teach it.
+- "language" must be "python" or "javascript". Prefer whichever the material itself uses. If it uses neither, choose "python".
+- "starter" is the code the student begins with: the function signature, a docstring or comment stating the task, and a body that does nothing useful yet. Never include the solution.
+- The student's job is to make the named function work. Name it in "entry".
+- "tests" is 2 to 4 pairs. "call" is a single expression calling their function; "expect" is what that expression should evaluate to, written as source in the same language (for example "6", "[1, 2, 3]", "'abc'", "True"). Keep values small and exact — no floating point, no dictionaries whose order could vary, no randomness, no current time.
+- Every test must pass against a correct solution. Work each one through before writing it.
+- "hint" is one sentence that points at the idea without giving the code.
+- No file access, no network, no input(), no installing packages. Standard library only.
+${language && language !== 'en' ? `- Write "title", "brief" and "hint" in ${language}. Keep all code, identifiers and test expressions exactly as they are.\n` : ''}
+Return exactly this JSON shape:
+{
+  "applicable": true,
+  "exercises": [
+    {
+      "id": "e1",
+      "title": "Short imperative title",
+      "concept": "The topic label from the material",
+      "language": "python",
+      "entry": "binary_search",
+      "brief": "One or two sentences saying what the function must do.",
+      "starter": "def binary_search(values, target):\\n    \\"\\"\\"Return the index of target, or -1.\\"\\"\\"\\n    pass\\n",
+      "tests": [
+        { "call": "binary_search([1, 3, 5, 7], 5)", "expect": "2" },
+        { "call": "binary_search([1, 3, 5, 7], 4)", "expect": "-1" }
+      ],
+      "hint": "One sentence pointing at the idea.",
+      "citations": ["c4"]
+    }
+  ]
+}
+
+Use sequential ids e1, e2, ... Return fewer than ${count} exercises rather than padding with ones the material does not support.
+
+MATERIAL:
+
+${renderChunks(chunks)}`,
+    },
+  ];
+}
+
 export function judgeShortAnswerPrompt({ prompt, modelAnswer, rubric, studentAnswer }) {
   return [
     {

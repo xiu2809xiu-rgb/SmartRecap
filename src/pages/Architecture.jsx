@@ -193,11 +193,32 @@ export default function Architecture() {
           <h2 className="arch-notes-title">Decisions worth asking about</h2>
           <div className="arch-note-grid">
             <article>
-              <h3>Why not Bedrock</h3>
+              <h3>Which models, and where they run</h3>
               <p>
-                Bedrock is blocked in AWS Academy Learner Lab. Generation runs on OpenRouter with automatic failover
-                to NVIDIA NIM — both free tiers, both called only from the server, so no key ever reaches the browser.
-                The AWS AI in the pipeline is Textract, which does the OCR, and Polly, which reads a recap aloud.
+                Generation runs on OpenRouter with automatic failover to NVIDIA NIM — both free tiers, both called
+                only from the server, so no key ever reaches the browser. Bedrock is not available in AWS Academy
+                Learner Lab. The AWS AI in the pipeline is Textract, which reads text off a scan or a photo of
+                handwritten notes, and Polly, which reads a finished recap aloud.
+              </p>
+            </article>
+            <article>
+              <h3>What the AI is actually for</h3>
+              <p>
+                Not summarising — any model does that. The work is in what happens to the output afterwards: every
+                claim must name the chunk it came from, resolve to a real one, and share that chunk's distinctive
+                vocabulary. Whatever fails is shown to the student with the reason rather than quietly deleted, and
+                every recap records how many points it kept and how many it dropped. The model is one stage of seven;
+                the other six exist to make its output checkable.
+              </p>
+            </article>
+            <article>
+              <h3>Why student code never reaches our server</h3>
+              <p>
+                The practice panel runs Python through WebAssembly and JavaScript natively, both inside a Web Worker
+                in the student&rsquo;s own browser. A server-side runner would mean accepting arbitrary code from the
+                internet onto a Learner Lab instance we cannot properly isolate — the blast radius of getting that
+                wrong is the entire AWS account. This has none of that exposure, costs nothing to operate, and keeps
+                working when the lab session ends. The trade is Python and JavaScript only.
               </p>
             </article>
             <article>

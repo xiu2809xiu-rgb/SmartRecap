@@ -1,0 +1,399 @@
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { api } from '../lib/api.js';
+import { useStore } from '../lib/store.jsx';
+import { StudyShell } from '../components/layout/Shells.jsx';
+import { Icon, Spinner, useToast, Segmented } from '../components/ui.jsx';
+import useRunner from '../practice/useRunner.js';
+import './practice.css';
+
+// CodeMirror is not on the critical path for any other screen, and a student
+// who never opens practice should never download it.
+const CodeEditor = lazy(() => import('../practice/CodeEditor.jsx'));
+
+/**
+ * Practice: write code beside the lecture it came from, and run it.
+ *
+ * The page has two distinct jobs and they are deliberately separate controls.
+ *
+ *   Run          — execute what is in the editor and show the output. Always
+ *                  available, never grades anything, and is what you reach for
+ *                  when you are exploring or debugging.
+ *   Check answer — grade against the exercise's tests.
+ *
+ * An earlier version had one button that did both, and typing `print(21)` to
+ * see what happened answered with "0 of 3 tests passing" and three NameErrors.
+ * That is a tool telling someone they are wrong for experimenting. Running code
+ * and being marked on it are different intentions, so they are different
+ * buttons with different results underneath them.
+ *
+ * The Playground tab exists for the same reason: sometimes you just want to try
+ * something. It has no tests, and it needs no backend, so it keeps working even
+ * when exercise generation is unavailable.
+ */
+
+const PLAYGROUND_ID = '__playground';
+
+const PLAYGROUND_STARTER = {
+  python: '# Write anything here and press Run.\nprint("hello")\n',
+  javascript: '// Write anything here and press Run.\nconsole.log("hello");\n',
+};
+
+/**
+ * Did the code simply not define the function the tests call?
+ *
+ * That is the state you are in before you have written anything, so answering
+ * it with one row per test — each a near-identical NameError — is noise at the
+ * exact moment a student is least sure what is going on. One sentence saying
+ * what to do next is worth more than three stack traces saying the same thing.
+ */
+function entryMissing(tests, entry) {
+  if (!tests?.length || !entry) return false;
+  return tests.every(
+    (t) => !t.pass && typeof t.actual === 'string' && t.actual.includes(entry) && /not defined/i.test(t.actual),
+  );
+}
+
+export default function Practice() {
+  const { id } = useParams();
+  const { materialById } = useStore();
+  const toast = useToast();
+  const { run, state } = useRunner();
+
+  const [material, setMaterial] = useState(materialById(id) ?? null);
+  const [practice, setPractice] = useState(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [activeId, setActiveId] = useState(PLAYGROUND_ID);
+  const [playLang, setPlayLang] = useState('python');
+  // Keyed by tab so moving between exercises never discards your work.
+  const [drafts, setDrafts] = useState({});
+  const [output, setOutput] = useState({});
+  const [checks, setChecks] = useState({});
+  const [showHint, setShowHint] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [full, set] = await Promise.allSettled([api.materials.get(id), api.practice.get(id)]);
+      if (cancelled) return;
+      if (full.status === 'fulfilled') setMaterial(full.value);
+      if (set.status === 'fulfilled') {
+        setPractice(set.value);
+        // Land on the first exercise when there is one — the graded path is the
+        // point of the page. The playground stays one click away.
+        if (set.value?.exercises?.length) setActiveId(set.value.exercises[0].id);
+      } else {
+        // Exercise generation being unavailable must not take the editor with
+        // it. The playground needs no backend at all.
+        setPractice({ exercises: [], applicable: false });
+        setLoadFailed(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  const exercises = practice?.exercises ?? [];
+  const isPlayground = activeId === PLAYGROUND_ID;
+  const exercise = isPlayground ? null : (exercises.find((e) => e.id === activeId) ?? null);
+
+  const language = isPlayground ? playLang : (exercise?.language ?? 'python');
+  // The playground keeps a draft per language, so switching to JavaScript and
+  // back does not throw away the Python you were part-way through.
+  const draftKey = isPlayground ? `${PLAYGROUND_ID}:${playLang}` : activeId;
+  const starter = isPlayground ? PLAYGROUND_STARTER[playLang] : (exercise?.starter ?? '');
+  const code = drafts[draftKey] ?? starter;
+
+  const result = output[draftKey] ?? null;
+  const check = checks[draftKey] ?? null;
+
+  const sources = useMemo(() => {
+    if (!exercise || !material?.chunks) return [];
+    return exercise.citations.map((c) => material.chunks.find((chunk) => chunk.id === c)).filter(Boolean);
+  }, [exercise, material]);
+
+  const busy = state.status === 'running';
+
+  const clear = useCallback(() => {
+    setOutput((prev) => ({ ...prev, [draftKey]: null }));
+    setChecks((prev) => ({ ...prev, [draftKey]: null }));
+  }, [draftKey]);
+
+  /** Run without grading. This is the one that always has to work. */
+  const onRun = useCallback(async () => {
+    clear();
+    const outcome = await run({ language, code, tests: [] });
+    setOutput((prev) => ({ ...prev, [draftKey]: outcome }));
+  }, [clear, draftKey, language, code, run]);
+
+  /** Run and grade. Only offered on an exercise. */
+  const onCheck = useCallback(async () => {
+    if (!exercise) return;
+    clear();
+    const outcome = await run({ language, code, tests: exercise.tests });
+    setOutput((prev) => ({ ...prev, [draftKey]: outcome }));
+    setChecks((prev) => ({ ...prev, [draftKey]: outcome }));
+    if (outcome.ok && outcome.tests.length && outcome.tests.every((t) => t.pass)) {
+      toast.success('All checks passed.');
+    }
+  }, [clear, draftKey, language, code, exercise, run, toast]);
+
+  const onReset = () => {
+    setDrafts((prev) => ({ ...prev, [draftKey]: starter }));
+    clear();
+  };
+
+  const selectTab = (nextId) => {
+    setActiveId(nextId);
+    setShowHint(false);
+  };
+
+  const solved = (e) => checks[e.id]?.tests?.length && checks[e.id].tests.every((t) => t.pass);
+
+  if (!practice) {
+    return (
+      <StudyShell title="Practice" backTo={`/app/material/${id}`}>
+        <div className="shell practice-loading" role="status">
+          <Spinner size={22} />
+          <span>Opening the editor…</span>
+        </div>
+      </StudyShell>
+    );
+  }
+
+  const passed = check?.tests?.filter((t) => t.pass).length ?? 0;
+  const missingEntry = exercise && entryMissing(check?.tests, exercise.entry);
+
+  return (
+    <StudyShell
+      title={material?.title ?? 'Practice'}
+      subtitle={isPlayground ? 'Playground — nothing here is marked' : exercise?.concept}
+      backTo={`/app/material/${id}`}
+      wide
+      actions={
+        <Link to={`/app/material/${id}`} className="btn btn-ghost btn-sm">
+          <Icon name="article" size={17} />
+          <span className="action-label">Recap</span>
+        </Link>
+      }
+    >
+      <div className="shell practice">
+        <div className="practice-grid">
+          {/* ------------------------------------------------------ brief */}
+          <div className="practice-brief">
+            <nav className="practice-tabs" aria-label="Practice">
+              <button
+                type="button"
+                className={`practice-tab ${isPlayground ? 'is-on' : ''}`}
+                onClick={() => selectTab(PLAYGROUND_ID)}
+                aria-current={isPlayground}
+              >
+                <Icon name="terminal" size={16} />
+                <span className="truncate">Playground</span>
+              </button>
+              {exercises.map((e, i) => (
+                <button
+                  key={e.id}
+                  type="button"
+                  className={`practice-tab ${e.id === activeId ? 'is-on' : ''} ${solved(e) ? 'is-done' : ''}`}
+                  onClick={() => selectTab(e.id)}
+                  aria-current={e.id === activeId}
+                >
+                  {solved(e) ? (
+                    <Icon name="check_circle" size={15} fill />
+                  ) : (
+                    <span className="practice-tab-num num">{i + 1}</span>
+                  )}
+                  <span className="truncate">{e.title}</span>
+                </button>
+              ))}
+            </nav>
+
+            <h1 className="practice-title">{isPlayground ? 'Playground' : exercise?.title}</h1>
+            <p className="practice-lede">
+              {isPlayground
+                ? 'A blank editor that runs Python or JavaScript. Nothing here is marked — use it to try an idea, or to test one piece of an exercise on its own.'
+                : exercise?.brief}
+            </p>
+
+            {isPlayground && (
+              <div className="field practice-langpick">
+                <label>Language</label>
+                <Segmented
+                  options={[
+                    { value: 'python', label: 'Python' },
+                    { value: 'javascript', label: 'JavaScript' },
+                  ]}
+                  value={playLang}
+                  onChange={setPlayLang}
+                  label="Language"
+                />
+              </div>
+            )}
+
+            {!isPlayground && sources.length > 0 && (
+              <div className="practice-sources">
+                <p className="practice-sources-head">
+                  <Icon name="link" size={15} />
+                  From your material
+                </p>
+                {sources.map((chunk) => (
+                  <article key={chunk.id} className="practice-source">
+                    <span className="cite">{chunk.label}</span>
+                    <p>{chunk.text.slice(0, 320)}</p>
+                  </article>
+                ))}
+              </div>
+            )}
+
+            {!isPlayground && exercise?.hint && (
+              <div className="practice-hint">
+                {showHint ? (
+                  <p>
+                    <Icon name="lightbulb" size={16} />
+                    {exercise.hint}
+                  </p>
+                ) : (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowHint(true)}>
+                    <Icon name="lightbulb" size={16} />
+                    Show a hint
+                  </button>
+                )}
+              </div>
+            )}
+
+            {isPlayground && !exercises.length && (
+              <p className="practice-note">
+                <Icon name="info" size={15} />
+                {loadFailed
+                  ? 'Exercises for this material could not be loaded, so only the playground is here. The editor still runs normally.'
+                  : (practice.reason ??
+                    'This material does not teach programming, so there are no exercises for it — but the playground still works.')}
+              </p>
+            )}
+          </div>
+
+          {/* ----------------------------------------------------- editor */}
+          <div className="practice-work">
+            <div className="practice-bar">
+              <span className="chip practice-lang">{language === 'javascript' ? 'JavaScript' : 'Python'}</span>
+              <div className="practice-bar-actions">
+                <button type="button" className="btn btn-ghost btn-sm" onClick={onReset} disabled={busy}>
+                  <Icon name="refresh" size={16} />
+                  Reset
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${exercise ? 'btn-ghost' : 'btn-primary'}`}
+                  onClick={onRun}
+                  disabled={busy}
+                >
+                  {busy ? <Spinner size={16} /> : <Icon name="play_arrow" size={18} fill />}
+                  {busy ? (state.phase === 'loading-runtime' ? 'Starting Python…' : 'Running…') : 'Run'}
+                </button>
+                {exercise && (
+                  <button type="button" className="btn btn-primary btn-sm" onClick={onCheck} disabled={busy}>
+                    <Icon name="checklist" size={17} />
+                    Check answer
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="practice-editor">
+              <Suspense
+                fallback={
+                  <div className="practice-editor-loading" role="status">
+                    <Spinner size={20} />
+                    <span>Loading the editor…</span>
+                  </div>
+                }
+              >
+                <CodeEditor
+                  value={code}
+                  language={language}
+                  onChange={(next) => setDrafts((prev) => ({ ...prev, [draftKey]: next }))}
+                />
+              </Suspense>
+            </div>
+
+            <div className="practice-output" aria-live="polite">
+              {!result && !busy && (
+                <p className="practice-output-idle">
+                  <Icon name="terminal" size={15} />
+                  {exercise
+                    ? 'Press Run to see what your code prints, or Check answer to mark it against the exercise. Nothing you write leaves your browser.'
+                    : 'Press Run to see what your code prints. Nothing you write leaves your browser.'}
+                </p>
+              )}
+
+              {result && (
+                <>
+                  <p className="practice-panel-head">Output</p>
+                  {result.error ? (
+                    <p className={`practice-error ${result.timedOut ? 'is-timeout' : ''}`}>
+                      <Icon name={result.timedOut ? 'timer_off' : 'error'} size={15} />
+                      {result.error}
+                    </p>
+                  ) : result.stdout ? (
+                    <pre className="practice-stdout">{result.stdout}</pre>
+                  ) : (
+                    <p className="practice-output-empty">
+                      Your code ran without errors and printed nothing. Use{' '}
+                      <code>{language === 'javascript' ? 'console.log(…)' : 'print(…)'}</code> to show a value.
+                    </p>
+                  )}
+                </>
+              )}
+
+              {check && !check.error && (
+                <div className="practice-checks">
+                  {missingEntry ? (
+                    <p className="practice-todo">
+                      <Icon name="edit_note" size={16} />
+                      <span>
+                        Your code does not define <code>{exercise.entry}</code> yet. Write that function, then choose
+                        Check answer.
+                      </span>
+                    </p>
+                  ) : (
+                    <>
+                      <p className="practice-panel-head">
+                        Checks
+                        <span className={passed === check.tests.length ? 'is-pass' : 'is-fail'}>
+                          <Icon
+                            name={passed === check.tests.length ? 'check_circle' : 'radio_button_unchecked'}
+                            size={15}
+                            fill
+                          />
+                          {passed} of {check.tests.length} passing
+                        </span>
+                      </p>
+                      <ul className="practice-tests">
+                        {check.tests.map((t, i) => (
+                          <li key={i} className={t.pass ? 'is-pass' : 'is-fail'}>
+                            <code className="practice-test-call">{t.call}</code>
+                            <span className="practice-test-detail">
+                              {t.pass ? (
+                                <>gave {t.actual}</>
+                              ) : (
+                                <>
+                                  expected <b>{t.expect}</b>, got <b>{t.actual}</b>
+                                </>
+                              )}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </StudyShell>
+  );
+}

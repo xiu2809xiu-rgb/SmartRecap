@@ -10,6 +10,7 @@ import * as face from '../core/face.js';
 import { health } from '../core/health.js';
 import * as binders from '../core/binders.js';
 import * as sources from '../core/sources.js';
+import * as practice from '../core/practice.js';
 
 /**
  * Lambda adapter.
@@ -127,6 +128,12 @@ const ROUTES = [
 
   ['POST', /^\/ask$/, async (e) => json(200, await study.ask(requireUser(e).id, parseBody(e)))],
   ['POST', /^\/tts$/, async (e) => json(200, await study.textToSpeech(requireUser(e).id, parseBody(e)))],
+  [
+    'GET',
+    /^\/materials\/([^/]+)\/practice$/,
+    async (e, [id]) =>
+      json(200, await practice.getPractice(requireUser(e).id, id, { refresh: e.queryStringParameters?.refresh === '1' })),
+  ],
 ];
 
 export const handler = withErrors(async (event) => {

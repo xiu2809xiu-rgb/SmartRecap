@@ -1,0 +1,298 @@
+.practice { padding-block: clamp(22px, 3.5vw, 36px) 70px; max-width: 1500px; }
+
+.practice-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: center;
+  padding-block: 140px;
+  color: var(--ink-3);
+}
+
+/* Brief on the left, editor on the right — the layout the whole feature is
+   for. It collapses to one column earlier than the reader does, because an
+   editor needs more width to stay usable than prose does. */
+.practice-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 400px) minmax(0, 1fr);
+  gap: 26px;
+  align-items: start;
+}
+
+/* --------------------------------------------------------------- brief */
+
+.practice-brief { position: sticky; top: 84px; display: flex; flex-direction: column; gap: 14px; }
+
+.practice-tabs { display: flex; flex-direction: column; gap: 4px; }
+
+.practice-tab {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  border-radius: var(--r);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--ink-3);
+  text-align: left;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.practice-tab:hover { background: var(--tint); color: var(--ink); }
+.practice-tab.is-on { background: var(--tint-2); color: var(--ink); }
+.practice-tab.is-done { color: var(--good); }
+
+.practice-tab-num {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  background: var(--tint-2);
+}
+
+.practice-tab.is-on .practice-tab-num {
+  color: #fff;
+  background: linear-gradient(140deg, var(--aurora-violet), var(--accent-hot));
+}
+
+.practice-title { font-size: var(--t-h3); }
+.practice-lede { font-size: var(--t-body); color: var(--ink-2); line-height: 1.62; }
+
+.practice-sources { display: flex; flex-direction: column; gap: 8px; }
+
+.practice-sources-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--t-xs);
+  font-weight: 700;
+  color: var(--ink-4);
+}
+
+.practice-source {
+  padding: 12px 14px;
+  border-radius: var(--r);
+  background: var(--glass);
+  border: 1px solid var(--glass-line);
+}
+
+.practice-source p { font-size: var(--t-xs); color: var(--ink-3); line-height: 1.55; margin-top: 8px; }
+
+.practice-hint p {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: var(--t-sm);
+  line-height: 1.6;
+  color: var(--ink-2);
+  padding: 12px 14px;
+  border-radius: var(--r);
+  background: var(--warn-bg);
+  border: 1px solid color-mix(in srgb, var(--warn) 26%, transparent);
+}
+
+/* -------------------------------------------------------------- editor */
+
+.practice-work {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: var(--ground-raised);
+  border: 1px solid var(--glass-line);
+}
+
+.practice-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px 10px 14px;
+  border-bottom: 1px solid var(--glass-line);
+}
+
+.practice-lang {
+  color: var(--accent-cool);
+  border-color: color-mix(in srgb, var(--accent-cool) 34%, transparent);
+  background: color-mix(in srgb, var(--accent-cool) 10%, transparent);
+}
+
+.practice-bar-actions { display: flex; align-items: center; gap: 8px; }
+
+/* A fixed height rather than a growing one: the output panel below has to stay
+   on screen while you edit, or you scroll away from your own test results. */
+.practice-editor { height: clamp(280px, 46vh, 460px); position: relative; }
+
+.code-editor { height: 100%; }
+
+.practice-editor-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: var(--t-sm);
+  color: var(--ink-3);
+  background: var(--ground-sunken);
+}
+
+/* -------------------------------------------------------------- output */
+
+.practice-output {
+  padding: 13px 16px 16px;
+  border-top: 1px solid var(--glass-line);
+  background: var(--ground-sunken);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* Every panel says what it is. The old version showed a bare box of stdout
+   with no heading, so it was not obvious that it was your output at all. */
+.practice-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: var(--t-xs);
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  color: var(--ink-4);
+  margin-bottom: 8px;
+}
+
+.practice-panel-head span { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+.practice-panel-head .is-pass { color: var(--good); }
+.practice-panel-head .is-fail { color: var(--ink-3); }
+
+.practice-output-empty { font-size: var(--t-xs); color: var(--ink-4); line-height: 1.55; }
+
+.practice-checks { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--glass-line); }
+
+/* Not an error state. Nothing has gone wrong when you have not written the
+   function yet — that is just where you are. */
+.practice-todo {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: var(--t-sm);
+  line-height: 1.6;
+  color: var(--ink-2);
+  padding: 12px 14px;
+  border-radius: var(--r);
+  background: var(--tint);
+  border: 1px solid var(--glass-line);
+}
+
+.practice-todo code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--tint-2);
+  color: var(--accent);
+}
+
+.practice-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: var(--t-xs);
+  line-height: 1.55;
+  color: var(--ink-4);
+}
+
+.practice-langpick { gap: 7px; }
+
+.practice-output-idle,
+.practice-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: var(--t-xs);
+  line-height: 1.55;
+  color: var(--ink-4);
+}
+
+.practice-error { color: var(--bad); font-weight: 600; }
+.practice-error.is-timeout { color: var(--warn); }
+
+.practice-stdout {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--tint);
+  border: 1px solid var(--glass-line);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+.practice-score { margin-top: 12px; font-size: var(--t-sm); font-weight: 700; }
+.practice-score span { display: inline-flex; align-items: center; gap: 7px; }
+.practice-score .is-pass { color: var(--good); }
+.practice-score .is-fail { color: var(--ink-2); }
+
+.practice-tests { display: flex; flex-direction: column; gap: 5px; margin-top: 9px; }
+
+.practice-tests li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 8px 11px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--glass-line);
+  background: var(--tint);
+}
+
+.practice-tests li.is-pass { border-color: color-mix(in srgb, var(--good) 32%, transparent); background: var(--good-bg); }
+.practice-tests li.is-fail { border-color: color-mix(in srgb, var(--bad) 30%, transparent); background: var(--bad-bg); }
+
+.practice-test-call {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.practice-test-detail { font-size: var(--t-xs); color: var(--ink-3); overflow-wrap: anywhere; }
+.practice-test-detail b {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 650;
+  color: var(--ink-2);
+}
+
+/* ----------------------------------------------------------------- nav */
+
+.practice-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+@media (max-width: 1100px) {
+  .practice-grid { grid-template-columns: 1fr; gap: 20px; }
+  .practice-brief { position: static; }
+  .practice-tabs { flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
+  .practice-tab { flex-shrink: 0; }
+}
+
+/* Code is not something to print, and the editor prints as an unreadable
+   fragment of whatever was on screen. */
+@media print {
+  .practice-work,
+  .practice-tabs,
+  .practice-nav { display: none !important; }
+}

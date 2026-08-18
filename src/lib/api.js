@@ -152,6 +152,12 @@ const live = {
     status: (jobId, signal) => request(`/jobs/${jobId}`, { signal }),
   },
 
+  practice: {
+    /** Generated on first ask and cached on the material; `refresh` regenerates. */
+    get: (materialId, { refresh } = {}) =>
+      request(`/materials/${materialId}/practice${refresh ? '?refresh=1' : ''}`),
+  },
+
   binders: {
     list: () => request('/binders'),
     get: (id) => request(`/binders/${id}`),

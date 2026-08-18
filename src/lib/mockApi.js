@@ -110,6 +110,77 @@ function judgeShortAnswerDemo(question, studentAnswer) {
   };
 }
 
+/**
+ * Practice exercises for the bundled normalisation lecture.
+ *
+ * Every one is about something the sample slides actually teach and cites the
+ * slide that teaches it — the same rule the real generator is held to. The
+ * starters deliberately stop short of the answer, and the tests are the ones
+ * the student is graded on, so nothing here is hidden from them.
+ */
+const DEMO_PRACTICE = {
+  applicable: true,
+  exercises: [
+    {
+      id: 'e1',
+      title: 'Find the columns that break 1NF',
+      concept: 'First normal form',
+      language: 'python',
+      entry: 'non_atomic_columns',
+      brief:
+        'First normal form requires every column to hold a single atomic value. Return the names of the columns in a row whose value packs more than one item into a string, in the order they appear.',
+      starter:
+        'def non_atomic_columns(row):\n    """Return the names of columns holding more than one value.\n\n    `row` maps a column name to its value. A value like "Maths, Physics"\n    holds two items and breaks 1NF; "Ada" holds one and does not.\n    """\n    pass\n',
+      tests: [
+        { call: 'non_atomic_columns({"id": "S1", "subjects": "Maths, Physics"})', expect: '["subjects"]' },
+        { call: 'non_atomic_columns({"id": "S1", "name": "Ada"})', expect: '[]' },
+        { call: 'non_atomic_columns({"a": "x, y", "b": "p,q"})', expect: '["a", "b"]' },
+      ],
+      hint: 'A repeating group shows up as a separator inside one value. Look at each value and decide whether it is one thing or several.',
+      citations: ['c6'],
+    },
+    {
+      id: 'e2',
+      title: 'Spot a transitive dependency',
+      concept: 'Third normal form',
+      language: 'python',
+      entry: 'transitively_dependent',
+      brief:
+        'Third normal form removes transitive dependencies: a non-key attribute must not depend on another non-key attribute. Given a list of functional dependencies as (determinant, dependent) pairs and the primary key, return the attributes that reach the key only through another attribute.',
+      starter:
+        'def transitively_dependent(deps, key):\n    """Return the attributes that depend on `key` only indirectly.\n\n    `deps` is a list of (determinant, dependent) pairs, so\n    ("StudentID", "DeptID") means StudentID -> DeptID.\n    """\n    pass\n',
+      tests: [
+        {
+          call: 'transitively_dependent([("StudentID", "DeptID"), ("DeptID", "DeptName")], "StudentID")',
+          expect: '["DeptName"]',
+        },
+        { call: 'transitively_dependent([("StudentID", "Name")], "StudentID")', expect: '[]' },
+        { call: 'transitively_dependent([("A", "B"), ("B", "C"), ("C", "D")], "A")', expect: '["C"]' },
+      ],
+      hint: 'First work out what the key determines directly. Anything determined by one of those, rather than by the key itself, is the transitive case.',
+      citations: ['c8', 'c3'],
+    },
+    {
+      id: 'e3',
+      title: 'Check whether a column can be a primary key',
+      concept: 'Primary keys',
+      language: 'javascript',
+      entry: 'isValidPrimaryKey',
+      brief:
+        'A primary key uniquely identifies each row, cannot contain NULL, and cannot repeat. Return whether the named column satisfies that for the given rows.',
+      starter:
+        'function isValidPrimaryKey(rows, column) {\n  // Return true only if every row has a value for `column`\n  // and no two rows share the same one.\n}\n',
+      tests: [
+        { call: "isValidPrimaryKey([{id: 1}, {id: 2}], 'id')", expect: 'true' },
+        { call: "isValidPrimaryKey([{id: 1}, {id: 1}], 'id')", expect: 'false' },
+        { call: "isValidPrimaryKey([{id: 1}, {id: null}], 'id')", expect: 'false' },
+      ],
+      hint: 'Two separate conditions, and both have to hold. A Set is a quick way to ask whether anything repeated.',
+      citations: ['c4'],
+    },
+  ],
+};
+
 /** Mirrors `backend/src/handlers/process.js` so the UI shows the real pipeline. */
 export const PIPELINE_STAGES = [
   { id: 'upload', label: 'Reading the uploaded file', detail: 'Validated by the local Python backend', ms: 900 },
@@ -921,6 +992,32 @@ export const mockApi = {
 
   async tts() {
     throw Object.assign(new Error('Read-aloud is not available in demo mode.'), { status: 501 });
+  },
+
+  practice: {
+    /**
+     * Demo mode calls no model, so these are written by hand — but written to
+     * the same contract the real generator has to meet. They are about the
+     * bundled normalisation lecture and cite the slides that teach them,
+     * because an exercise that could have come from any deck would be
+     * misrepresenting what the feature does.
+     *
+     * The runner is entirely client-side, so these actually execute here: what
+     * a judge sees in demo mode is the real editor running real Python.
+     */
+    async get(materialId) {
+      await sleep(420);
+      const material = db.materials.find((m) => m.id === materialId);
+      if (!material) throw Object.assign(new Error('Material not found'), { status: 404 });
+      if (!material.sample && !material.demo) {
+        return {
+          exercises: [],
+          applicable: false,
+          reason: 'Demo mode calls no model, so it can only offer practice for the bundled sample material.',
+        };
+      }
+      return clone(DEMO_PRACTICE);
+    },
   },
 
   /** Test hook — lets Settings reset the demo store. */

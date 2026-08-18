@@ -195,6 +195,10 @@ export default function Recap() {
             <Icon name="ios_share" size={17} />
             <span className="action-label">Export</span>
           </button>
+          <Link to={`/app/material/${material.id}/practice`} className="btn btn-ghost btn-sm">
+            <Icon name="code" size={17} />
+            <span className="action-label">Practice</span>
+          </Link>
           {quizReady && !quizGenerating ? (
             <>
               <Link to={`/app/material/${material.id}/quiz`} className="btn btn-primary btn-sm">

@@ -267,6 +267,72 @@ export function groundQuiz(quiz, chunks) {
   return { quiz: { questions }, report: { kept: questions.length, removed, unverified } };
 }
 
+/**
+ * Practice exercises.
+ *
+ * An exercise is checked on the same terms as a recap point — it must cite a
+ * chunk that exists and actually discusses the thing being practised — but the
+ * claim text is the title, concept and brief rather than the code. Comparing
+ * the starter code against prose would be meaningless: a function signature
+ * shares no vocabulary with a slide even when it is exactly on topic.
+ *
+ * Everything else here is structural validation rather than grounding. An
+ * exercise whose tests are malformed cannot be marked, and an unmarkable
+ * exercise wastes the student's time more thoroughly than a missing one.
+ */
+export function groundPractice(set, chunks) {
+  const chunkById = new Map(chunks.map((c) => [c.id, c]));
+  const idf = buildIdf(chunks);
+  const exercises = [];
+  let removed = 0;
+
+  for (const e of set?.exercises ?? []) {
+    const language = e?.language === 'javascript' ? 'javascript' : 'python';
+    const entry = String(e?.entry ?? '').trim();
+    const starter = String(e?.starter ?? '');
+    const title = String(e?.title ?? '').trim();
+    const brief = String(e?.brief ?? '').trim();
+
+    // An entry point the starter never defines cannot be called, so no test
+    // could ever pass and the student would be debugging our bug.
+    if (!title || !brief || !entry || !starter.includes(entry)) {
+      removed += 1;
+      continue;
+    }
+
+    const tests = (Array.isArray(e?.tests) ? e.tests : [])
+      .map((t) => ({ call: String(t?.call ?? '').trim(), expect: String(t?.expect ?? '').trim() }))
+      // A test must call the function it is testing, or it is checking nothing.
+      .filter((t) => t.call && t.expect && t.call.includes(entry));
+
+    if (tests.length < 2) {
+      removed += 1;
+      continue;
+    }
+
+    const check = checkCitations(`${title} ${e.concept ?? ''} ${brief}`, e.citations, chunkById, idf);
+    if (!check.ok) {
+      removed += 1;
+      continue;
+    }
+
+    exercises.push({
+      id: e.id,
+      title,
+      concept: e.concept || 'General',
+      language,
+      entry,
+      brief,
+      starter,
+      tests,
+      hint: String(e.hint ?? '').trim(),
+      citations: check.resolved,
+    });
+  }
+
+  return { practice: { exercises }, report: { kept: exercises.length, removed } };
+}
+
 /** Same contract for a single Q&A answer. */
 export function groundAnswer(result, chunks) {
   const chunkById = new Map(chunks.map((c) => [c.id, c]));

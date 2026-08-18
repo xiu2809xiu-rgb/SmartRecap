@@ -7,7 +7,17 @@ from openai import OpenAI
 
 from .config import Settings
 from .gemini_service import generate_gemini_pack, generate_gemini_quiz
-from .models import Citation, Definition, NotebookChatResponse, QuizPack, SourceRecord, StudyPack, Takeaway, TopicSection
+from .models import (
+    Citation,
+    Definition,
+    NotebookChatResponse,
+    PracticeSet,
+    QuizPack,
+    SourceRecord,
+    StudyPack,
+    Takeaway,
+    TopicSection,
+)
 
 logger = logging.getLogger("smartrecap.ai")
 
@@ -706,3 +716,152 @@ def _demo_answer(sources: List[SourceRecord], question: str) -> NotebookChatResp
         return NotebookChatResponse(answer="I could not find a direct answer in these sources. The closest relevant passage is: {}".format(closest[0][2])[:1500], citations=[_citation(closest[0])], grounded=False)
     answer = "Based on your notebook: " + " ".join(item[2] for item in matches)
     return NotebookChatResponse(answer=answer[:1500], citations=[_citation(item) for item in matches], grounded=True)
+
+# --------------------------------------------------------------- practice ---
+
+# Weighted because the signals are not equally trustworthy. `def foo(` or
+# `SELECT ... FROM` cannot plausibly appear in a history deck, so one is
+# enough. "Algorithm" or "recursion" turn up in almost any subject's prose, so
+# those need corroboration. Words with strong everyday senses — stack, queue,
+# class, return — are not signals at all, or a timetable would qualify.
+_CODE_SIGNALS: List[Tuple[str, int]] = [
+    (r"\bdef\s+\w+\s*\(", 2),
+    (r"\bfunction\s+\w*\s*\(", 2),
+    (r"\b(?:const|let|var)\s+\w+\s*=", 2),
+    (r"\bclass\s+\w+\s*[:({]", 2),
+    (r"\bfor\s*\(.*;.*;", 2),
+    (r"\bfor\s+\w+\s+in\s+", 2),
+    (r"\bwhile\s*\(", 2),
+    (r"\bimport\s+\w+", 2),
+    (r"\b(?:public|private|static)\s+(?:void|int|String)\b", 2),
+    (r"\bprint\s*\(|\bconsole\.log\s*\(", 2),
+    (r"\bSELECT\b[\s\S]{0,80}\bFROM\b", 2),
+    (r"\bO\(\s*(?:1|n|log\s*n|n\s*log\s*n|n\s*\^?\s*2)\s*\)", 2),
+    (
+        r"\b(?:linked list|binary tree|binary search|hash table|hash function|merge sort|bubble sort|"
+        r"quicksort|breadth-first|depth-first|time complexity|space complexity|big-?o|pseudocode|"
+        r"recursion|recursive|data structure|algorithm)\b",
+        1,
+    ),
+]
+
+_CODE_THRESHOLD = 2
+
+
+def looks_like_code(sources: List[SourceRecord]) -> bool:
+    """Cheap local check, run before any model call.
+
+    Its only job is to keep a history deck from costing a request. It errs
+    towards yes, because the model is asked to decline as well and both have to
+    agree before a student is offered exercises.
+
+    Weak signals score per *distinct* term matched, not once for the whole
+    alternation. A lecture that says both "linked list" and "hash table" is
+    real evidence even with no literal code on its slides, and counting the
+    shared regex a single time would have denied that deck any practice.
+    """
+    text = "\n".join(source.text for source in sources)
+    score = 0
+    for pattern, weight in _CODE_SIGNALS:
+        if weight >= _CODE_THRESHOLD:
+            if re.search(pattern, text, flags=re.IGNORECASE):
+                score += weight
+        else:
+            distinct = {match.lower() for match in re.findall(pattern, text, flags=re.IGNORECASE)}
+            score += min(len(distinct), _CODE_THRESHOLD)
+        if score >= _CODE_THRESHOLD:
+            return True
+    return False
+
+
+_PRACTICE_PROMPT = """Write up to 3 short coding exercises drawn strictly from the material below.
+
+First decide whether this material teaches programming at all. If it does not — if it is history, marketing,
+biology, or any subject where writing code would not help a student revise it — return applicable=false with a
+one-sentence reason and no exercises. Declining is a correct answer and is expected most of the time.
+
+Rules for every exercise you do write:
+- It must practise something the material actually teaches, and cite the source that teaches it.
+- "language" is "python" or "javascript". Prefer whichever the material itself uses; otherwise "python".
+- "entry" names the function the student must write. "starter" contains that signature plus a docstring or
+  comment stating the task, and a body that does nothing useful yet. Never include the solution.
+- "tests" is 2 to 4 pairs. "call" is a single expression calling their function by its entry name; "expect" is
+  what that expression should evaluate to, written as source in the same language (for example "6", "[1, 2, 3]",
+  "'abc'", "True"). Keep values small and exact — no floating point, no randomness, no current time, no
+  dictionaries whose order could vary.
+- Every test must pass against a correct solution. Work each one through before writing it.
+- "hint" is one sentence pointing at the idea without giving the code.
+- No file access, no network, no input(), no package installs. Standard library only.
+
+MATERIAL:
+{context}"""
+
+
+def generate_practice(sources: List[SourceRecord], settings: Settings) -> PracticeSet:
+    """Coding exercises for a material, or an honest refusal.
+
+    Mirrors the contract the Node implementation documents in
+    docs/ARCHITECTURE.md: exercises must cite the material, and "this is not
+    programming material" is a first-class answer rather than a failure.
+    """
+    if not looks_like_code(sources):
+        return PracticeSet(
+            applicable=False,
+            reason="This material does not look like it teaches programming, so there is nothing here to practise in code.",
+            exercises=[],
+        )
+
+    if settings.demo_mode or not settings.azure_ready:
+        return PracticeSet(
+            applicable=False,
+            reason="Exercise generation needs an AI provider, which is not configured on this deployment.",
+            exercises=[],
+        )
+
+    prompt = _PRACTICE_PROMPT.format(context=_balanced_context(sources, 60000))
+    try:
+        completion = _client(settings).beta.chat.completions.parse(
+            model=settings.azure_fast_deployment,
+            messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}],
+            response_format=PracticeSet,
+            max_completion_tokens=6000,
+        )
+        message = completion.choices[0].message
+        if message.refusal or not message.parsed:
+            raise RuntimeError(message.refusal or "The AI model returned an invalid practice set.")
+        pack = message.parsed
+        for exercise in pack.exercises:
+            _repair_citation_list(exercise.citations, sources)
+            _validate_citation_list(exercise.citations, sources)
+        return _drop_unmarkable(pack)
+    except Exception as exc:
+        logger.warning("Practice generation failed: %s", exc)
+        return PracticeSet(
+            applicable=False,
+            reason="Exercises could not be generated for this material just now.",
+            exercises=[],
+        )
+
+
+def _drop_unmarkable(pack: PracticeSet) -> PracticeSet:
+    """Remove exercises that could never be marked.
+
+    An exercise whose tests call a function its starter never defines fails
+    every check no matter what the student writes — they would be debugging our
+    bug instead of learning. Better to show three exercises than four, one of
+    which is impossible.
+    """
+    kept = []
+    for exercise in pack.exercises:
+        if exercise.entry not in exercise.starter:
+            continue
+        tests = [test for test in exercise.tests if exercise.entry in test.call]
+        if len(tests) < 2:
+            continue
+        exercise.tests = tests
+        kept.append(exercise)
+    pack.exercises = kept
+    if not kept:
+        pack.applicable = False
+        pack.reason = pack.reason or "No exercise could be traced back to this material."
+    return pack
