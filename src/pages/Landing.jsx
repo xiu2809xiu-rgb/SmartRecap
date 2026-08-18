@@ -1,0 +1,422 @@
+import { useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { MarketingShell } from '../components/layout/Shells.jsx';
+import AuroraBackdrop from '../components/AuroraBackdrop.jsx';
+import Mascot from '../mascot/Mascot.jsx';
+import { Icon } from '../components/ui.jsx';
+import { usePrefs } from '../lib/prefs.jsx';
+import { SAMPLE_CHUNKS, SAMPLE_RECAP } from '../data/seed.js';
+import { CitationProvider, Claim, SourceCard, CitationRibbon } from '../components/Citations.jsx';
+
+import SplitText from '../reactbits/SplitText.jsx';
+import ShinyText from '../reactbits/ShinyText.jsx';
+import GradientText from '../reactbits/GradientText.jsx';
+import CountUp from '../reactbits/CountUp.jsx';
+import BlurText from '../reactbits/BlurText.jsx';
+import AnimatedContent from '../reactbits/AnimatedContent.jsx';
+import FadeContent from '../reactbits/FadeContent.jsx';
+import SpotlightCard from '../reactbits/SpotlightCard.jsx';
+import MagicBento from '../reactbits/MagicBento.jsx';
+import CardSwap, { Card } from '../reactbits/CardSwap.jsx';
+import { LogoLoop } from '../reactbits/LogoLoop.jsx';
+import StarBorder from '../reactbits/StarBorder.jsx';
+import Magnet from '../reactbits/Magnet.jsx';
+import ScrollFloat from '../reactbits/ScrollFloat.jsx';
+
+import '../reactbits/ShinyText.css';
+import '../reactbits/GradientText.css';
+import '../reactbits/SpotlightCard.css';
+import '../reactbits/MagicBento.css';
+import '../reactbits/CardSwap.css';
+import '../reactbits/LogoLoop.css';
+import '../reactbits/StarBorder.css';
+import '../reactbits/ScrollFloat.css';
+import './landing.css';
+
+const STEPS = [
+  {
+    n: '01',
+    title: 'Drop in the deck',
+    body: 'PDF, PowerPoint, Word or a photo of handwritten notes. The file goes straight to S3 with a presigned URL — it never passes through a server we run.',
+    icon: 'upload_file',
+  },
+  {
+    n: '02',
+    title: 'Text is split, not summarised yet',
+    body: 'Every slide and page becomes a numbered chunk. That numbering is what makes citation possible later — you cannot cite what you did not keep track of.',
+    icon: 'content_cut',
+  },
+  {
+    n: '03',
+    title: 'The model writes against the chunks',
+    body: 'The recap and the quiz come back as constrained JSON where every claim carries chunk ids. Anything that cites nothing is dropped before you ever see it.',
+    icon: 'fact_check',
+  },
+];
+
+const BENTO = [
+  {
+    color: '#150c26',
+    label: 'Recap',
+    title: 'Two depths',
+    description: 'Last-minute cram gives you the eight things that will be on the paper. Deep revision keeps the worked reasoning.',
+  },
+  {
+    color: '#150c26',
+    label: 'Quiz',
+    title: 'Adaptive retries',
+    description: 'Miss a topic and it comes back weighted heavier next round, until the mastery bar clears 70%.',
+  },
+  {
+    color: '#150c26',
+    label: 'Recall',
+    title: 'Spaced repetition',
+    description: 'Key terms and missed questions become flashcards on an SM-2 schedule, so revision spreads across the term.',
+  },
+  {
+    color: '#150c26',
+    label: 'Grounding',
+    title: 'Nothing uncited ships',
+    description: 'Claims the model could not trace to a chunk are listed separately as dropped, with the reason.',
+  },
+  {
+    color: '#150c26',
+    label: 'Ask',
+    title: 'Question the material',
+    description: 'Ask anything about the deck and get an answer that quotes the slides, or an honest "that is not in here".',
+  },
+  {
+    color: '#150c26',
+    label: 'Export',
+    title: 'Leaves the app cleanly',
+    description: 'Markdown, printable PDF, or CSV that imports into Anki. Your revision should not be locked in a demo.',
+  },
+];
+
+const STACK = [
+  { node: <StackChip icon="cloud_upload" label="Amazon S3" />, title: 'Amazon S3' },
+  { node: <StackChip icon="bolt" label="AWS Lambda" />, title: 'AWS Lambda' },
+  { node: <StackChip icon="api" label="API Gateway" />, title: 'API Gateway' },
+  { node: <StackChip icon="table" label="DynamoDB" />, title: 'DynamoDB' },
+  { node: <StackChip icon="badge" label="Cognito" />, title: 'Amazon Cognito' },
+  { node: <StackChip icon="document_scanner" label="Textract" />, title: 'Amazon Textract' },
+  { node: <StackChip icon="volume_up" label="Polly" />, title: 'Amazon Polly' },
+  { node: <StackChip icon="hub" label="OpenRouter" />, title: 'OpenRouter' },
+  { node: <StackChip icon="memory" label="NVIDIA NIM" />, title: 'NVIDIA NIM' },
+  { node: <StackChip icon="code" label="React 19" />, title: 'React 19' },
+];
+
+function StackChip({ icon, label }) {
+  return (
+    <span className="stack-chip">
+      <Icon name={icon} size={18} />
+      {label}
+    </span>
+  );
+}
+
+export default function Landing() {
+  const { allowEffects, reduced } = usePrefs();
+  const [mascotState, setMascotState] = useState('idle');
+  const ribbonRef = useRef(null);
+
+  // One section of the real recap, wired to the real ribbon — the landing page
+  // demonstrates the grounding claim rather than asserting it.
+  const demoSection = SAMPLE_RECAP.sections[2];
+  const demoChunks = SAMPLE_CHUNKS.filter((c) => ['c6', 'c7', 'c8'].includes(c.id));
+
+  return (
+    <MarketingShell>
+      {/* ------------------------------------------------------------ hero */}
+      <section className="hero">
+        <div className="shell hero-grid">
+          <div className="hero-copy">
+            <p className="eyebrow hero-eyebrow">
+              <ShinyText text="Automated class recap generator" speed={3.5} color="#8e80b4" shineColor="#00f0ff" />
+            </p>
+
+            {/* Each SplitText sits in its own block wrapper: the component sets
+                `display: inline-block` inline, so two of them would otherwise
+                reflow as one paragraph rather than two headline lines. */}
+            <h1 className="hero-title">
+              <span className="hero-line">
+                <SplitText
+                  text="Study what the"
+                  tag="span"
+                  splitType="chars"
+                  delay={22}
+                  duration={0.9}
+                  textAlign="left"
+                  from={{ opacity: 0, y: 60, rotateX: -40 }}
+                  to={{ opacity: 1, y: 0, rotateX: 0 }}
+                />
+              </span>
+              <span className="hero-line hero-line-accent">
+                <SplitText
+                  text="lecture actually said."
+                  tag="span"
+                  splitType="chars"
+                  delay={22}
+                  duration={0.9}
+                  textAlign="left"
+                  from={{ opacity: 0, y: 60, rotateX: -40 }}
+                  to={{ opacity: 1, y: 0, rotateX: 0 }}
+                />
+              </span>
+            </h1>
+
+            <BlurText
+              text="SmartRecap turns your slides and notes into a structured recap and a quiz that checks you read it. Every line of the recap points back at the slide it came from — and anything the model could not trace to your material is dropped before it reaches you."
+              className="lede hero-lede"
+              animateBy="words"
+              delay={12}
+              direction="bottom"
+            />
+
+            <div className="row wrap gap-2 hero-cta">
+              <Magnet padding={70} magnetStrength={5} disabled={!allowEffects}>
+                <Link to="/signup" className="btn btn-primary btn-lg">
+                  Upload your first deck
+                  <Icon name="arrow_forward" size={19} />
+                </Link>
+              </Magnet>
+              {allowEffects ? (
+                <StarBorder as={Link} to="/app" color="#00f0ff" speed="5s" thickness={2} className="hero-star">
+                  Try the sample deck
+                </StarBorder>
+              ) : (
+                <Link to="/app" className="btn btn-ghost btn-lg">
+                  Try the sample deck
+                </Link>
+              )}
+            </div>
+
+            <dl className="hero-stats">
+              <div>
+                <dt>Slides in the sample deck</dt>
+                <dd className="num">
+                  <CountUp to={24} duration={1.6} />
+                </dd>
+              </div>
+              <div>
+                <dt>Minutes to read its recap</dt>
+                <dd className="num">
+                  <CountUp to={5} duration={1.6} delay={0.15} />
+                </dd>
+              </div>
+              <div>
+                <dt>Uncited claims that ship</dt>
+                <dd className="num">0</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div
+            className="hero-mascot"
+            onMouseEnter={() => setMascotState('wave')}
+            onMouseLeave={() => setMascotState('idle')}
+          >
+            <div className="hero-mascot-glow" aria-hidden="true" />
+            <Mascot state={mascotState} size={380} />
+            <p className="hero-mascot-note">
+              <Icon name="drag_indicator" size={15} />
+              Drag to turn — this is Rec, and it stays with you through the whole pipeline
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------ how it works */}
+      <section id="how" className="section how">
+        <div className="shell how-grid">
+          <div>
+            <p className="eyebrow">How it works</p>
+            <ScrollFloat containerClassName="h2-float" textClassName="section-title">
+              Three steps, and the third one is the point
+            </ScrollFloat>
+            <div className="how-steps">
+              {STEPS.map((s) => (
+                <AnimatedContent key={s.n} distance={40} duration={0.7} threshold={0.25}>
+                  <div className="how-step">
+                    <span className="how-n num">{s.n}</span>
+                    <div>
+                      <h3>{s.title}</h3>
+                      <p>{s.body}</p>
+                    </div>
+                  </div>
+                </AnimatedContent>
+              ))}
+            </div>
+          </div>
+
+          <div className="how-visual">
+            {allowEffects ? (
+              <CardSwap width={420} height={300} cardDistance={52} verticalDistance={58} delay={3600} pauseOnHover skewAmount={5}>
+                {STEPS.map((s) => (
+                  <Card key={s.n} className="swap-card">
+                    <span className="swap-icon">
+                      <Icon name={s.icon} size={24} />
+                    </span>
+                    <span className="swap-n num">{s.n}</span>
+                    <h4>{s.title}</h4>
+                    <p>{s.body}</p>
+                  </Card>
+                ))}
+              </CardSwap>
+            ) : (
+              <div className="how-visual-static">
+                {STEPS.map((s) => (
+                  <div key={s.n} className="swap-card is-static">
+                    <span className="swap-icon">
+                      <Icon name={s.icon} size={24} />
+                    </span>
+                    <h4>{s.title}</h4>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* -------------------------------------------------------- grounding */}
+      <section id="grounding" className="section grounding">
+        <div className="shell">
+          <div className="grounding-head">
+            <p className="eyebrow">Grounding</p>
+            <h2 className="section-title">
+              Every line is tied to a slide.{' '}
+              <GradientText colors={['#5D34D0', '#FF006E', '#00F0FF', '#5D34D0']} animationSpeed={9}>
+                Hover one and watch.
+              </GradientText>
+            </h2>
+            <p className="lede">
+              This is the actual reader, running on the sample deck. The thread is not an illustration — it is drawn from
+              the claim to the extracted passage it was written from, and a claim that cannot draw one is marked
+              unsupported instead of being quietly presented as fact.
+            </p>
+          </div>
+
+          <FadeContent blur duration={700} threshold={0.15}>
+            <div className="grounding-demo panel" data-surface="study">
+              <CitationProvider chunks={demoChunks}>
+                <div className="reader-grid is-demo" ref={ribbonRef}>
+                  <div className="reader-col">
+                    <h3 className="demo-heading">{demoSection.heading}</h3>
+                    <ul className="claims">
+                      {demoSection.points.map((p) => (
+                        <Claim key={p.id} id={p.id} citations={p.citations} confidence={p.confidence}>
+                          {p.text}
+                        </Claim>
+                      ))}
+                    </ul>
+                  </div>
+                  <aside className="source-rail" aria-label="Source passages">
+                    <p className="rail-title">From your upload</p>
+                    {demoChunks.map((c) => (
+                      <SourceCard key={c.id} chunk={c} />
+                    ))}
+                  </aside>
+                  {!reduced && <CitationRibbon containerRef={ribbonRef} />}
+                </div>
+              </CitationProvider>
+            </div>
+          </FadeContent>
+
+          <div className="grounding-cards">
+            <SpotlightCard className="ground-card" spotlightColor="rgba(255, 0, 110, 0.2)">
+              <Icon name="rule" size={22} />
+              <h3>Dropped, and shown as dropped</h3>
+              <p>
+                The sample deck produced two claims the model could not ground. They are listed at the end of the recap
+                with the reason, not deleted silently — knowing what the AI wanted to say and could not is useful.
+              </p>
+            </SpotlightCard>
+            <SpotlightCard className="ground-card" spotlightColor="rgba(0, 240, 255, 0.18)">
+              <Icon name="quiz" size={22} />
+              <h3>Unverifiable questions do not score</h3>
+              <p>
+                A quiz item whose answer is not settled by the material is excluded from your percentage. Your score
+                measures whether you learned the deck, not whether you guessed the model.
+              </p>
+            </SpotlightCard>
+            <SpotlightCard className="ground-card" spotlightColor="rgba(93, 52, 208, 0.24)">
+              <Icon name="swap_horiz" size={22} />
+              <h3>Two providers, automatic failover</h3>
+              <p>
+                Requests go to OpenRouter first and fall through to NVIDIA NIM on rate-limit or timeout. Both run on
+                free tiers, so a busy demo day does not cost anything or stop working.
+              </p>
+            </SpotlightCard>
+          </div>
+        </div>
+      </section>
+
+      {/* --------------------------------------------------------- features */}
+      <section id="features" className="section features">
+        <div className="shell">
+          <p className="eyebrow">Features</p>
+          <h2 className="section-title features-title">Built for the week before the exam</h2>
+          <MagicBento
+            cards={BENTO}
+            glowColor="167, 139, 250"
+            spotlightRadius={340}
+            particleCount={10}
+            enableTilt
+            /* The component clamps copy to two lines by default, which cuts
+               every description here mid-sentence. */
+            textAutoHide={false}
+            disableAnimations={!allowEffects}
+          />
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------ stack */}
+      <section id="stack" className="section stack">
+        <div className="shell">
+          <p className="eyebrow">Built on</p>
+          <h2 className="section-title">Serverless on AWS, models from outside it</h2>
+          <p className="lede stack-lede">
+            Everything stateful lives in AWS — S3 for the uploads, DynamoDB for recaps and attempts, Lambda behind API
+            Gateway, Cognito for identity, Textract when a scan has no text layer and Polly for read-aloud. Generation
+            runs on external free-tier models, called only from Lambda so no key ever reaches the browser.
+          </p>
+          <div className="stack-loop">
+            <LogoLoop
+              logos={STACK}
+              speed={44}
+              logoHeight={38}
+              gap={26}
+              pauseOnHover
+              ariaLabel="Services and libraries this project uses"
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* -------------------------------------------------------------- cta */}
+      <section className="cta">
+        <AuroraBackdrop variant="threads" className="cta-backdrop" opacity={0.5} />
+        <div className="shell cta-inner">
+          <h2 className="cta-title">
+            Your next lecture is going to be 60 slides.
+            <br />
+            <GradientText colors={['#00F0FF', '#FF006E', '#5D34D0', '#00F0FF']} animationSpeed={7}>
+              Be ready for it in five minutes.
+            </GradientText>
+          </h2>
+          <div className="row wrap gap-2 center">
+            <Link to="/signup" className="btn btn-primary btn-lg">
+              Create a free account
+              <Icon name="arrow_forward" size={19} />
+            </Link>
+            <Link to="/app" className="btn btn-ghost btn-lg">
+              Try it as a guest
+            </Link>
+          </div>
+          <p className="cta-note">No card, no model spend — the whole thing runs on free tiers.</p>
+        </div>
+      </section>
+    </MarketingShell>
+  );
+}

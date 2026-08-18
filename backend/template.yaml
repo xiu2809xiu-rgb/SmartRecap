@@ -1,0 +1,276 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  SmartRecap — serverless API for turning lecture material into a grounded recap
+  and a revision quiz.
+
+  Built for AWS Academy Learner Lab, which is the constraint that shapes this
+  template. Learner Lab accounts cannot create IAM roles, so every function is
+  given the pre-existing LabRole rather than letting SAM generate policies.
+  That is why there are no `Policies:` blocks anywhere below — they would be
+  ignored at best and fail the deploy at worst.
+
+Parameters:
+  LabRoleArn:
+    Type: String
+    Description: >
+      ARN of the pre-created LabRole in your Learner Lab account. Find it under
+      IAM > Roles > LabRole. Looks like arn:aws:iam::123456789012:role/LabRole.
+    AllowedPattern: '^arn:aws:iam::\d{12}:role/.+$'
+
+  OpenRouterApiKey:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: >
+      OpenRouter API key (openrouter.ai/keys). Primary provider. Leave blank to
+      run on NVIDIA NIM only.
+
+  NvidiaApiKey:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: >
+      NVIDIA NIM API key (build.nvidia.com). Used when OpenRouter is rate
+      limited, times out, or is not configured.
+
+  OpenRouterModel:
+    Type: String
+    Default: 'meta-llama/llama-3.3-70b-instruct:free'
+    Description: Model id to request from OpenRouter. Must be a ':free' variant to stay at zero cost.
+
+  NvidiaModel:
+    Type: String
+    Default: 'meta/llama-3.3-70b-instruct'
+    Description: Model id to request from NVIDIA NIM.
+
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 24
+    Description: >
+      Random string used to sign session tokens (HS256). Generate one with
+      `openssl rand -base64 32`. Rotating it signs everyone out.
+
+  AllowedOrigin:
+    Type: String
+    Default: '*'
+    Description: >
+      Origin allowed by CORS. Set this to your deployed frontend URL once you
+      have one; '*' is fine while developing.
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Architectures: [x86_64]
+    Timeout: 30
+    MemorySize: 512
+    Role: !Ref LabRoleArn
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref AppTable
+        BUCKET_NAME: !Ref UploadBucket
+        USER_POOL_ID: !Ref UserPool
+        USER_POOL_CLIENT_ID: !Ref UserPoolClient
+        JWT_SECRET: !Ref JwtSecret
+        ALLOWED_ORIGIN: !Ref AllowedOrigin
+        OPENROUTER_API_KEY: !Ref OpenRouterApiKey
+        OPENROUTER_MODEL: !Ref OpenRouterModel
+        NVIDIA_API_KEY: !Ref NvidiaApiKey
+        NVIDIA_MODEL: !Ref NvidiaModel
+  Api:
+    Cors:
+      AllowMethods: "'GET,POST,PUT,PATCH,DELETE,OPTIONS'"
+      AllowHeaders: "'Content-Type,Authorization'"
+      AllowOrigin: "'*'"
+
+Resources:
+  # ---------------------------------------------------------------- storage --
+
+  # Single table. Every access pattern this app has is "everything belonging to
+  # one user" or "one item by id", both of which a PK/SK pair covers, so a
+  # second table would only add cost and deploy surface.
+  #
+  #   PK                SK                  item
+  #   USER#<id>         PROFILE             account record
+  #   USER#<id>         MATERIAL#<id>       material metadata + recap + quiz
+  #   USER#<id>         ATTEMPT#<ts>#<id>   quiz attempt
+  #   USER#<id>         CARDS#<materialId>  flashcard SRS state
+  #   JOB#<id>          JOB                 processing job status
+  #   SHARE#<token>     SHARE               public share pointer
+  AppTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AWS::StackName}-app'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      # Jobs and guest sessions clean themselves up; recaps do not expire.
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+  UploadBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-uploads-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      CorsConfiguration:
+        # The browser PUTs the file straight here with a presigned URL, so the
+        # bucket itself has to allow the cross-origin PUT.
+        CorsRules:
+          - AllowedMethods: [PUT, GET, HEAD]
+            AllowedOrigins: ['*']
+            AllowedHeaders: ['*']
+            ExposedHeaders: [ETag]
+            MaxAge: 3000
+      LifecycleConfiguration:
+        Rules:
+          # $50 of credits does not survive an unbounded bucket. Source files
+          # are only needed until extraction finishes; the recap lives in
+          # DynamoDB, so nothing user-visible is lost when these expire.
+          - Id: ExpireSourceFiles
+            Status: Enabled
+            Prefix: uploads/
+            ExpirationInDays: 30
+          - Id: ExpireAudio
+            Status: Enabled
+            Prefix: audio/
+            ExpirationInDays: 7
+          - Id: AbortIncompleteUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+
+  # ---------------------------------------------------------------- identity --
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub '${AWS::StackName}-users'
+      # Email-as-username, self-service signup, no SMS anywhere: SMS would need
+      # an IAM role for Cognito to assume, which Learner Lab cannot create.
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: []
+      MfaConfiguration: 'OFF'
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      Schema:
+        - Name: name
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: !Sub '${AWS::StackName}-web'
+      # No secret: the client id is only ever used from Lambda, but a public
+      # client keeps USER_PASSWORD_AUTH working without SECRET_HASH plumbing.
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      PreventUserExistenceErrors: ENABLED
+
+  # ---------------------------------------------------------------- compute --
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Format: esm
+        Minify: true
+        Target: node20
+        OutExtension: ['.js=.mjs']
+        EntryPoints: [src/handlers/api.js]
+    Properties:
+      Handler: src/handlers/api.handler
+      Description: Everything synchronous — auth, library reads, uploads, quiz, ask.
+      Environment:
+        Variables:
+          PROCESSOR_FUNCTION: !Ref ProcessorFunction
+      Events:
+        Proxy:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /{proxy+}
+            Method: ANY
+        Root:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /
+            Method: ANY
+
+  # Split out because generation takes 20-40 seconds and API Gateway hard-caps
+  # a request at 29. `POST /jobs` writes a job row, invokes this asynchronously
+  # and returns immediately; the client polls `GET /jobs/{id}`.
+  ProcessorFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Format: esm
+        Minify: true
+        Target: node20
+        OutExtension: ['.js=.mjs']
+        EntryPoints: [src/handlers/processor.js]
+    Properties:
+      Handler: src/handlers/processor.handler
+      Description: Extract, chunk, generate the recap and quiz, ground, persist.
+      Timeout: 300
+      MemorySize: 1536
+
+  Api:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      EndpointConfiguration:
+        Type: REGIONAL
+      BinaryMediaTypes:
+        - '*/*'
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          # Learner Lab credits are finite and CloudWatch charges for volume.
+          LoggingLevel: ERROR
+          DataTraceEnabled: false
+
+Outputs:
+  ApiUrl:
+    Description: Put this in the frontend's VITE_API_BASE_URL.
+    Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.amazonaws.com/prod'
+  BucketName:
+    Description: Private bucket holding uploaded source files.
+    Value: !Ref UploadBucket
+  TableName:
+    Value: !Ref AppTable
+  UserPoolId:
+    Value: !Ref UserPool

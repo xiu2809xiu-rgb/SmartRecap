@@ -1,0 +1,196 @@
+.upload { display: flex; flex-direction: column; gap: 26px; max-width: 920px; }
+
+.upload-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.upload-title { font-size: var(--t-h1); margin-block: 8px 12px; }
+
+.upload-stepper { padding: clamp(8px, 2vw, 20px); border-radius: var(--r-xl); }
+
+/* The Stepper is built as a standalone centred widget: its outer box takes a
+   2:1 aspect ratio above 768px and its card is capped at 28rem, so dropped
+   into a full-width panel it renders as a narrow slab that overflows its own
+   container. Releasing both lets it fill the panel it lives in. */
+.upload-stepper .outer-container {
+  aspect-ratio: auto;
+  min-height: 0;
+  padding: 0;
+}
+
+.upload-stepper .step-circle-container {
+  max-width: none;
+  box-shadow: none;
+  border-radius: var(--r-lg);
+}
+
+.upload-stepper .step-indicator-row { padding: 24px 24px 20px; }
+.upload-stepper .step-default { padding-inline: 22px; }
+.upload-stepper .footer-container { padding: 0 22px 22px; }
+.upload-stepper .footer-nav { margin-top: 28px; }
+
+/* React Bits' Stepper ships light-mode defaults; these bind it to our tokens. */
+.upload-stepper .step-circle-container {
+  background: transparent !important;
+  border-color: var(--glass-line) !important;
+  box-shadow: none !important;
+}
+
+.upload-stepper .step-indicator-inner,
+.upload-stepper .step-number { color: var(--ink); }
+
+.upload-stepper .step-default { background: rgba(255, 255, 255, 0.08) !important; }
+.upload-stepper .step-active { background: var(--accent) !important; color: #0b0616 !important; }
+.upload-stepper .step-complete { background: var(--accent-cool) !important; color: #08222a !important; }
+.upload-stepper .step-connector { background: var(--glass-line) !important; }
+.upload-stepper .step-connector-inner { background: var(--accent) !important; }
+
+.upload-stepper .back-button { color: var(--ink-3) !important; }
+.upload-stepper .back-button:hover { color: var(--ink) !important; }
+
+.upload-stepper .next-button {
+  background: linear-gradient(120deg, var(--aurora-violet), var(--accent-hot)) !important;
+  color: #fff !important;
+  border-radius: var(--r-pill) !important;
+  font-weight: 650;
+  padding: 11px 22px !important;
+}
+
+.step-title { font-size: var(--t-h3); margin-bottom: 18px; }
+
+/* ------------------------------------------------------------- dropzone */
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 220px;
+  padding: 28px;
+  border-radius: var(--r-lg);
+  border: 2px dashed var(--glass-line-strong);
+  background: rgba(255, 255, 255, 0.03);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease), transform var(--dur) var(--spring);
+}
+
+.dropzone:hover { border-color: var(--accent); background: rgba(167, 139, 250, 0.07); }
+
+.dropzone.is-dragging {
+  border-color: var(--accent-cool);
+  background: rgba(0, 240, 255, 0.09);
+  transform: scale(1.012);
+}
+
+.dropzone.has-file { border-style: solid; border-color: var(--accent); background: rgba(167, 139, 250, 0.08); }
+
+.dropzone strong { font-size: 1.0625rem; }
+.dropzone p { font-size: var(--t-sm); color: var(--ink-3); }
+
+.drop-icon {
+  width: 62px;
+  height: 62px;
+  display: grid;
+  place-items: center;
+  border-radius: 20px;
+  color: #fff;
+  background: linear-gradient(140deg, var(--aurora-violet), var(--accent-hot));
+  box-shadow: 0 14px 32px -12px rgba(255, 0, 110, 0.7);
+  margin-bottom: 6px;
+}
+
+.drop-file {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 460px;
+  text-align: left;
+}
+
+.drop-file strong { display: block; font-size: 1rem; }
+.drop-file p { font-size: var(--t-xs); color: var(--ink-4); margin-top: 3px; }
+
+.upload-error { margin-top: 14px; }
+
+.upload-privacy {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: var(--t-xs);
+  color: var(--ink-4);
+  line-height: 1.5;
+}
+
+.upload-privacy .material-symbols-rounded { color: var(--accent-cool); flex-shrink: 0; margin-top: 1px; }
+
+/* ----------------------------------------------------------------- modes */
+
+.mode-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; }
+
+.mode-card {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 22px;
+  text-align: left;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--glass-line);
+  background: rgba(255, 255, 255, 0.03);
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease), transform var(--dur) var(--spring);
+}
+
+.mode-card:hover { transform: translateY(-2px); border-color: var(--glass-line-strong); }
+
+.mode-card.is-on {
+  border-color: var(--accent);
+  background: rgba(167, 139, 250, 0.11);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+.mode-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: rgba(167, 139, 250, 0.16);
+  color: var(--accent);
+}
+
+.mode-card.is-on .mode-icon {
+  background: linear-gradient(140deg, var(--aurora-violet), var(--accent-hot));
+  color: #fff;
+}
+
+.mode-card strong { font-size: 1.0625rem; }
+.mode-card p { font-size: var(--t-sm); color: var(--ink-2); }
+
+/* --------------------------------------------------------------- details */
+
+.upload-field { margin-bottom: 24px; }
+.field-hint { font-size: var(--t-xs); color: var(--ink-4); line-height: 1.5; margin-top: 6px; max-width: 60ch; }
+
+.upload-summary {
+  padding: 20px;
+  border-radius: var(--r-lg);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-line);
+}
+
+.upload-summary h3 { font-size: var(--t-xs); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-4); margin-bottom: 14px; }
+
+.upload-summary dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin: 0; }
+.upload-summary dt { font-size: var(--t-xs); color: var(--ink-4); margin-bottom: 3px; }
+.upload-summary dd { margin: 0; font-size: var(--t-sm); font-weight: 650; }
+
+@media (max-width: 760px) {
+  .upload-head { flex-direction: column; align-items: flex-start; }
+  .upload-head .mascot { display: none; }
+}

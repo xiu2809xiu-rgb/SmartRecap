@@ -1,0 +1,14 @@
+.notfound { position: relative; min-height: 100vh; display: flex; flex-direction: column; }
+.notfound-bar { height: 76px; display: flex; align-items: center; flex-shrink: 0; }
+.notfound-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 12px;
+  padding-bottom: 80px;
+}
+.notfound-main h1 { font-size: var(--t-display); }
+.notfound-main .lede { margin-bottom: 14px; }

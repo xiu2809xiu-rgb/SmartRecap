@@ -1,0 +1,189 @@
+.flashcards {
+  max-width: 720px;
+  padding-block: clamp(24px, 4vw, 40px) 90px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.fc-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--ink-3);
+  padding-block: 100px;
+}
+
+.fc-meter {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 9px;
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+}
+
+/* --------------------------------------------------------------- the card */
+
+.fc-card {
+  width: 100%;
+  perspective: 1400px;
+  background: none;
+  padding: 0;
+  min-height: 320px;
+}
+
+.fc-inner {
+  position: relative;
+  width: 100%;
+  min-height: 320px;
+  transform-style: preserve-3d;
+  transition: transform 620ms var(--spring);
+}
+
+.fc-card.is-flipped .fc-inner { transform: rotateY(180deg); }
+
+.fc-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: clamp(24px, 4vw, 40px);
+  border-radius: var(--r-xl);
+  border: 1px solid var(--glass-line);
+  text-align: center;
+}
+
+.fc-front {
+  background: linear-gradient(150deg, var(--series-1-soft), transparent 62%), var(--ground-raised);
+  box-shadow: var(--shadow-panel);
+}
+
+.fc-back {
+  transform: rotateY(180deg);
+  background: linear-gradient(150deg, var(--series-3-soft), transparent 62%), var(--ground-raised);
+  box-shadow: var(--shadow-panel);
+}
+
+.fc-face p {
+  font-size: clamp(1.1rem, 2.4vw, 1.4rem);
+  line-height: 1.5;
+  color: var(--ink);
+  white-space: pre-wrap;
+  max-width: 46ch;
+}
+
+.fc-back p { font-size: clamp(1rem, 2vw, 1.15rem); }
+.fc-topic { position: absolute; top: 16px; left: 16px; }
+
+.fc-flip-hint {
+  position: absolute;
+  bottom: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-xs);
+  color: var(--ink-4);
+}
+
+.fc-cites { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+
+/* -------------------------------------------------------------- grading */
+
+.fc-grades {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  opacity: 0.35;
+  pointer-events: none;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.fc-grades.is-on { opacity: 1; pointer-events: auto; }
+
+.fc-grade {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 15px 12px;
+  border-radius: var(--r);
+  border: 1.5px solid var(--glass-line);
+  background: var(--ground-raised);
+  transition: border-color var(--dur) var(--ease), transform var(--dur) var(--spring), background var(--dur) var(--ease);
+}
+
+.fc-grade:not(:disabled):hover { transform: translateY(-2px); }
+.fc-grade strong { font-size: var(--t-sm); }
+.fc-grade span { font-size: var(--t-xs); color: var(--ink-4); }
+
+.fc-grade kbd {
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink-4);
+  border: 1px solid var(--glass-line);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.fc-grade.is-again { color: var(--bad); }
+.fc-grade.is-again:not(:disabled):hover { border-color: var(--bad); background: var(--bad-bg); }
+.fc-grade.is-good { color: var(--accent); }
+.fc-grade.is-good:not(:disabled):hover { border-color: var(--accent); background: var(--series-1-soft); }
+.fc-grade.is-easy { color: var(--good); }
+.fc-grade.is-easy:not(:disabled):hover { border-color: var(--good); background: var(--good-bg); }
+
+.fc-note { font-size: var(--t-xs); color: var(--ink-4); line-height: 1.55; text-align: center; max-width: 62ch; margin-inline: auto; }
+
+/* ------------------------------------------------------------------ done */
+
+.fc-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+  padding: clamp(28px, 5vw, 48px);
+  border-radius: var(--r-xl);
+}
+
+.fc-done h2 { font-size: var(--t-h2); }
+.fc-done p { color: var(--ink-2); max-width: 52ch; font-size: var(--t-sm); }
+
+.fc-schedule {
+  width: 100%;
+  max-width: 440px;
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.fc-schedule li {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  background: var(--ground-sunken);
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+}
+
+@media (max-width: 520px) {
+  .fc-grades { grid-template-columns: 1fr; }
+  .fc-grade { flex-direction: row; justify-content: flex-start; gap: 10px; }
+  .fc-grade kbd { display: none; }
+}

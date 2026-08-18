@@ -1,0 +1,375 @@
+/* ===========================================================================
+   Landing page — the dark shell at full strength.
+   ======================================================================== */
+
+.marketing { position: relative; z-index: 0; }
+
+.section-title {
+  font-size: var(--t-h1);
+  margin-block: 14px 20px;
+}
+
+/* ------------------------------------------------------------------- hero */
+
+.hero {
+  position: relative;
+  padding-top: clamp(70px, 11vw, 130px);
+  padding-bottom: clamp(50px, 8vw, 100px);
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
+  align-items: center;
+  gap: clamp(28px, 5vw, 72px);
+}
+
+.hero-eyebrow { margin-bottom: 22px; }
+
+.hero-title {
+  font-size: var(--t-hero);
+  font-weight: 850;
+  letter-spacing: -0.055em;
+  line-height: 0.92;
+  margin-bottom: 26px;
+}
+
+.hero-line { display: block; }
+
+/* SplitText's inline `overflow: hidden` would clip the descenders of the
+   settled text, so the wrapper takes the mask duty off it. */
+.hero-title .split-parent { overflow: visible !important; }
+
+/* A gradient clipped to text cannot survive gsap splitting the line into
+   per-character spans — each span would carry its own copy of the ramp. The
+   accent line therefore uses a flat neon colour with the anchor's glow, and
+   the animated gradient lives on GradientText elsewhere on the page, where
+   the text is not split. */
+.hero-line-accent {
+  color: var(--accent);
+  text-shadow:
+    0 0 26px rgba(167, 139, 250, 0.55),
+    0 0 60px rgba(255, 0, 110, 0.32);
+}
+
+.hero-lede { margin-bottom: 34px; }
+.hero-cta { margin-bottom: 46px; }
+
+/* StarBorder ships a black inner pill for light pages; rebind it to our
+   glass surface so it reads as a secondary button next to the primary CTA. */
+.hero-star,
+.hero-star .inner-content {
+  border-radius: var(--r-pill) !important;
+}
+
+.hero-star .inner-content {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--glass-line);
+  color: var(--ink);
+  font-size: 1.0625rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  padding: 17px 34px;
+  backdrop-filter: blur(14px);
+  transition: background var(--dur) var(--ease);
+}
+
+.hero-star:hover .inner-content { background: rgba(255, 255, 255, 0.1); }
+
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  padding-top: 28px;
+  border-top: 1px solid var(--glass-line);
+  margin: 0;
+  max-width: 560px;
+}
+
+.hero-stats dt {
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+  line-height: 1.35;
+  margin-bottom: 6px;
+}
+
+.hero-stats dd {
+  margin: 0;
+  font-size: clamp(2rem, 3.6vw, 2.75rem);
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  color: var(--accent-cool);
+  text-shadow: var(--glow-cyan);
+}
+
+.hero-mascot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 400px;
+}
+
+.hero-mascot-glow {
+  position: absolute;
+  inset: 8% 6%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 45%, rgba(255, 0, 110, 0.32), rgba(93, 52, 208, 0.22) 42%, transparent 70%);
+  filter: blur(38px);
+}
+
+.hero-mascot-note {
+  position: absolute;
+  bottom: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+  text-align: center;
+  max-width: 32ch;
+  line-height: 1.4;
+}
+
+/* ------------------------------------------------------------ how it works */
+
+.how-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
+  gap: clamp(32px, 6vw, 80px);
+  align-items: center;
+}
+
+/* ScrollFloat ships its own display scale (up to 10rem, weight 900, centred).
+   Bind it to the page's h1 scale so section headings stay consistent, and
+   drop `text-align: center` so it aligns with the copy beneath it. */
+.h2-float { margin-bottom: 8px; }
+
+.h2-float .scroll-float-text {
+  font-size: var(--t-h1);
+  font-weight: 800;
+  line-height: 1.06;
+  text-align: left;
+  letter-spacing: -0.035em;
+}
+
+
+.how-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  margin-top: 34px;
+}
+
+.how-step { display: flex; gap: 20px; }
+
+.how-n {
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  padding-top: 4px;
+  min-width: 30px;
+}
+
+.how-step h3 { font-size: var(--t-h3); margin-bottom: 8px; }
+.how-step p { color: var(--ink-2); font-size: var(--t-sm); max-width: 54ch; }
+
+.how-visual {
+  position: relative;
+  min-height: 400px;
+}
+
+/* CardSwap anchors itself to the bottom-right of its container and pushes 5%
+   further out, which sends the stack past the page edge here. Re-anchoring it
+   to the centre keeps the whole stack inside the column. */
+.how-visual .card-swap-container {
+  right: 50%;
+  bottom: 50%;
+  transform: translate(50%, 50%);
+  transform-origin: center;
+}
+
+@media (max-width: 768px) {
+  .how-visual .card-swap-container { transform: translate(50%, 50%) scale(0.8); }
+}
+
+.swap-card {
+  background: linear-gradient(160deg, #1b1030, #120a22) !important;
+  border: 1px solid var(--glass-line-strong) !important;
+  border-radius: var(--r-lg) !important;
+  padding: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: var(--shadow-lift);
+}
+
+.swap-card.is-static { min-height: 130px; }
+
+.swap-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: linear-gradient(140deg, var(--aurora-violet), var(--accent-hot));
+  color: #fff;
+  box-shadow: 0 10px 24px -8px rgba(255, 0, 110, 0.6);
+}
+
+.swap-n {
+  font-size: var(--t-xs);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+}
+
+.swap-card h4 { font-size: 1.25rem; }
+.swap-card p { font-size: var(--t-sm); color: var(--ink-2); }
+
+.how-visual-static {
+  display: grid;
+  gap: 14px;
+}
+
+/* -------------------------------------------------------------- grounding */
+
+.grounding-head { max-width: 74ch; margin-bottom: 42px; }
+
+.grounding-demo {
+  padding: clamp(20px, 3vw, 36px);
+  border-radius: var(--r-xl);
+  background: var(--ground);
+  border: 1px solid rgba(93, 52, 208, 0.2);
+  overflow: hidden;
+}
+
+.demo-heading {
+  font-size: 1.35rem;
+  margin-bottom: 20px;
+  color: var(--ink);
+}
+
+.grounding-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+  margin-top: 34px;
+}
+
+.ground-card {
+  border-radius: var(--r-lg) !important;
+  border-color: var(--glass-line) !important;
+  background: var(--glass) !important;
+  padding: 26px !important;
+}
+
+.ground-card .material-symbols-rounded { color: var(--accent-cool); margin-bottom: 14px; }
+.ground-card h3 { font-size: 1.1rem; margin-bottom: 10px; }
+.ground-card p { font-size: var(--t-sm); color: var(--ink-2); }
+
+/* --------------------------------------------------------------- features */
+
+.features-title { margin-bottom: 40px; }
+
+/* MagicBento ships a 12–16px type scale for its own demo copy. Rebind it to
+   the page's scale and tokens so the bento reads as part of this site. */
+.features .card-grid { padding: 0; gap: 14px; }
+
+.features .magic-bento-card {
+  border-radius: var(--r-lg);
+  border-color: var(--glass-line);
+  padding: 24px;
+  min-height: 180px;
+}
+
+.features .magic-bento-card__label {
+  font-size: var(--t-xs);
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--accent);
+  opacity: 1;
+}
+
+.features .magic-bento-card__title {
+  font-size: 1.25rem;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  margin-bottom: 8px;
+}
+
+.features .magic-bento-card__description {
+  font-size: var(--t-sm);
+  line-height: 1.55;
+  color: var(--ink-2);
+  opacity: 1;
+}
+
+/* ------------------------------------------------------------------ stack */
+
+.stack-lede { margin-bottom: 42px; }
+
+.stack-loop {
+  position: relative;
+  padding-block: 20px;
+  border-block: 1px solid var(--glass-line);
+  /* A real transparent mask rather than LogoLoop's `fadeOut`, which paints a
+     solid colour at the edges — over a live aurora that reads as two dark
+     bands instead of a fade. */
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+}
+
+.stack-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 17px;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-line);
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.stack-chip .material-symbols-rounded { color: var(--accent); }
+
+/* -------------------------------------------------------------------- cta */
+
+.cta {
+  position: relative;
+  padding-block: clamp(80px, 12vw, 160px);
+  overflow: hidden;
+  text-align: center;
+}
+
+.cta-backdrop { position: absolute; inset: 0; z-index: -1; }
+
+.cta-inner { position: relative; }
+
+.cta-title {
+  font-size: var(--t-display);
+  margin-bottom: 34px;
+  line-height: 1.06;
+}
+
+.cta-note { margin-top: 20px; color: var(--ink-3); font-size: var(--t-sm); }
+
+/* ------------------------------------------------------------ responsive */
+
+@media (max-width: 980px) {
+  .hero-grid,
+  .how-grid { grid-template-columns: minmax(0, 1fr); }
+
+  .hero-mascot { min-height: 300px; order: -1; }
+  .how-visual { min-height: 340px; }
+  .hero-stats { max-width: none; }
+}
+
+@media (max-width: 620px) {
+  .hero-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hero-stats > div:last-child { grid-column: 1 / -1; }
+}

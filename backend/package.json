@@ -1,0 +1,33 @@
+{
+  "name": "smartrecap-backend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "SmartRecap API \u2014 runs on EC2 behind Express, or on Lambda behind API Gateway. Same core logic either way.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "sam:build": "sam build",
+    "sam:deploy": "sam deploy --guided",
+    "sam:logs": "sam logs --stack-name smartrecap --tail",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.699.0",
+    "@aws-sdk/client-dynamodb": "^3.699.0",
+    "@aws-sdk/client-lambda": "^3.699.0",
+    "@aws-sdk/client-polly": "^3.699.0",
+    "@aws-sdk/client-s3": "^3.699.0",
+    "@aws-sdk/client-textract": "^3.699.0",
+    "@aws-sdk/lib-dynamodb": "^3.699.0",
+    "@aws-sdk/s3-request-presigner": "^3.699.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "fast-xml-parser": "^5.11.0",
+    "jszip": "^3.10.1",
+    "unpdf": "^0.12.1"
+  }
+}

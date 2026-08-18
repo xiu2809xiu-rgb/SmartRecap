@@ -1,0 +1,9 @@
+.route-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 60vh;
+  color: var(--ink-3);
+  font-size: var(--t-sm);
+}
