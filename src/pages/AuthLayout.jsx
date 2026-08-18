@@ -113,6 +113,13 @@ export default function AuthLayout({ title, subtitle, children, footer, methods,
         <div className={`auth-mascot ${avatar.ready ? 'has-avatar' : ''}`}>
           {avatar.ready ? (
             <Suspense fallback={<Mascot state={mascotState} size={300} caption />}>
+              {/* Above the figure rather than below it: the label reads as
+                  belonging to the person, and the space under the model is
+                  where the feet swing during several of the clips. */}
+              <p className="auth-learner">
+                <span className="auth-learner-role">Learner</span>
+                Richie Koh
+              </p>
               <AvatarStage url={avatar.url} />
             </Suspense>
           ) : (

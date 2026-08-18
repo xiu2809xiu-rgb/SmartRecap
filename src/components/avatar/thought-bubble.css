@@ -70,41 +70,28 @@
 
 /* ------------------------------------------------------------- auth page */
 
-/* The sign-in screen has open space around the figure, so the bubbles move out
-   into it. The two sides get different offsets because the space is not
-   symmetric — measured at three widths, the gap to the LEFT of the frame runs
-   from 60px (at 1280) to 380px (at 1920), while the gap on the RIGHT, between
-   the frame and the sign-in card, is a steady ~300px. A single symmetric
-   offset therefore either wastes the right-hand room or pushes the left-hand
-   bubble off the edge of the screen, which is what -46% on both did. */
+/* Now that the frame is centred in its column the space either side is close
+   to balanced — measured left gap 172px (1280) to 490px (1920), right gap a
+   steady ~190px before the sign-in card. So both sides hang outward by a
+   similar amount, sized so the bubble clears the figure's widest reach
+   (measured: the figure spans 9.8%-84.5% of the frame across all clips)
+   without ever crossing the viewport edge or the card. */
 .auth-mascot.has-avatar { overflow: visible; }
 
 .auth-mascot.has-avatar .thought {
-  width: min(250px, 46%);
-  top: 12%;
+  width: min(230px, 42%);
+  /* Measured across 26 samples of every clip: the figure's topmost pixel
+     ranges from 4.4% to 32.8% of the frame height, so anything below about 4%
+     can be reached by a raised hand. Sitting just above the frame keeps the
+     bubble level with or above the head in every pose. */
+  top: -2%;
 }
 
-.auth-mascot.has-avatar .thought.is-right { right: -46%; }
+.auth-mascot.has-avatar .thought.is-left { left: -36%; }
+.auth-mascot.has-avatar .thought.is-right { right: -40%; }
 
-@media (min-width: 1400px) {
-  .auth-mascot.has-avatar .thought.is-left { left: -24%; }
-}
-
-/* 1180-1400: the gap to the left of the frame narrows to about 60px, so the
-   bubble hangs out by as much as fits and shrinks to stay off the figure.
-   Measured by reading the WebGL buffer under the bubble: at -12% and 40% wide
-   it covers no model pixels, where tucking it flush into the corner covered
-   15% of the figure. */
-@media (min-width: 1181px) and (max-width: 1399px) {
-  .auth-mascot.has-avatar .thought { width: min(190px, 40%); }
-  .auth-mascot.has-avatar .thought.is-left { left: -12%; }
-}
-
-@media (max-width: 1180px) {
-  .auth-mascot.has-avatar .thought { width: min(220px, 52%); top: 4%; }
-  .auth-mascot.has-avatar .thought.is-right { right: 0; }
-}
-
+/* One column below this — the avatar is hidden entirely (auth.css:96), so
+   there is nothing to position around. */
 @media (max-width: 900px) {
   .thought { width: min(200px, 58%); top: 2%; }
   .thought-body { font-size: var(--t-xs); padding: 11px 13px; }

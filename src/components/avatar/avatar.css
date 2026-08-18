@@ -27,7 +27,10 @@
   position: relative;
   aspect-ratio: 4 / 5;
   border-radius: var(--r-xl);
-  overflow: hidden;
+  /* Visible, not hidden: a thought bubble is allowed to hang outside the panel.
+     Clipping it to the frame forced it inward onto the figure, which is the
+     one thing it must not cover. The canvas is masked separately below. */
+  overflow: visible;
   background:
     radial-gradient(60% 55% at 50% 30%, color-mix(in srgb, var(--aurora-violet) 34%, transparent), transparent 72%),
     linear-gradient(160deg, var(--glass-strong), var(--glass));
@@ -38,6 +41,9 @@
 .avatar-stage {
   position: absolute;
   inset: 0;
+  /* NOT overflow:hidden — the thought bubble is a child of this element and
+     hangs deliberately outside the frame. Clipping here sliced it to a sliver.
+     The canvas is rounded on its own below instead. */
   opacity: 0;
   transition: opacity 700ms var(--ease);
 }
@@ -49,6 +55,7 @@
 
 .avatar-stage canvas {
   display: block;
+  border-radius: var(--r-xl);
   width: 100% !important;
   height: 100% !important;
   /* The global `canvas { max-width: 100% }` rule would otherwise fight r3f's

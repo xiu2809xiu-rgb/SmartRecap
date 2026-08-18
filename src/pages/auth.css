@@ -99,6 +99,10 @@
 /* The avatar needs a real box: <Canvas> fills its parent, and the grid cell
    that suited a 300px mascot would collapse it to nothing. */
 .auth-mascot.has-avatar {
+  /* Centred in its grid column. With an explicit width and no justify-self a
+     grid item aligns to the column START, which left the figure sitting well
+     off-centre in the open half of the page. */
+  justify-self: center;
   width: min(420px, 100%);
   aspect-ratio: 4 / 5;
   border-radius: var(--r-xl);
@@ -108,3 +112,35 @@
 
 .auth-mascot.has-avatar .avatar-stage { position: absolute; inset: 0; }
 .auth-mascot.has-avatar { position: relative; }
+
+/* The learner label, above the model's head. */
+.auth-learner {
+  position: absolute;
+  top: -34px;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--t-sm);
+  font-weight: 750;
+  color: var(--ink);
+  text-shadow: 0 0 18px color-mix(in srgb, var(--aurora-violet) 70%, transparent);
+  pointer-events: none;
+}
+
+.auth-learner-role {
+  font-size: var(--t-xs);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-cool);
+  text-shadow: none;
+}
+
+@media (max-width: 1180px) {
+  .auth-learner { top: -28px; }
+}
