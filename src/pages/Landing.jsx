@@ -4,6 +4,7 @@ import { MarketingShell } from '../components/layout/Shells.jsx';
 import AuroraBackdrop from '../components/AuroraBackdrop.jsx';
 import ScrollProgress from '../components/ScrollProgress.jsx';
 import PipelineScroll from '../components/PipelineScroll.jsx';
+import AvatarShowcase from '../components/avatar/AvatarShowcase.jsx';
 import Mascot from '../mascot/Mascot.jsx';
 import { Icon } from '../components/ui.jsx';
 import { usePrefs } from '../lib/prefs.jsx';
@@ -402,6 +403,9 @@ export default function Landing() {
       </section>
 
       {/* -------------------------------------------------------------- cta */}
+      {/* ------------------------------------------------------------ built by */}
+      <AvatarShowcase />
+
       <section className="cta">
         <AuroraBackdrop variant="threads" className="cta-backdrop" opacity={0.5} />
         <div className="shell cta-inner">
