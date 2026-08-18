@@ -194,7 +194,9 @@
 }
 
 .swap-card {
-  background: linear-gradient(160deg, #1b1030, #120a22) !important;
+  /* Tokens, not literals. A fixed near-black behind token-coloured text is
+     dark-on-dark under daylight, where --ink-2 resolves to a dark ink. */
+  background: linear-gradient(160deg, var(--ground-raised), color-mix(in srgb, var(--ground-raised) 70%, var(--ground))) !important;
   border: 1px solid var(--glass-line-strong) !important;
   border-radius: var(--r-lg) !important;
   padding: 26px;
@@ -372,4 +374,13 @@
 @media (max-width: 620px) {
   .hero-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .hero-stats > div:last-child { grid-column: 1 / -1; }
+}
+
+/* MagicBento applies its `color` prop as an inline background. The six feature
+   cards used to hard-code #150c26 there, which under the daylight palette put
+   dark ink on a near-black card. The surface belongs here, where the token can
+   resolve per theme. */
+.features .magic-bento-card,
+.features .card {
+  background: var(--ground-raised);
 }

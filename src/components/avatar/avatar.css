@@ -79,3 +79,15 @@
      section entirely off the fold. */
   .avatar-frame { aspect-ratio: 1 / 1; max-width: 420px; }
 }
+
+/* The name, in particles. Sits between the eyebrow and the heading, so it needs
+   to read as a name rather than compete with the section title — hence the
+   shallow ratio and the constrained width. */
+.avatar-name {
+  width: min(420px, 100%);
+  margin: 2px 0 10px;
+}
+
+@media (max-width: 900px) {
+  .avatar-name { width: min(340px, 100%); }
+}

@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 from pathlib import Path
@@ -865,3 +866,76 @@ def _drop_unmarkable(pack: PracticeSet) -> PracticeSet:
         pack.applicable = False
         pack.reason = pack.reason or "No exercise could be traced back to this material."
     return pack
+
+
+# ------------------------------------------------------------- translation ---
+
+# Singapore's four official languages. `en` is not a translation at all — it is
+# the absence of one, which is why it is absent from this map.
+TRANSLATABLE = {
+    "zh": "Chinese (Simplified)",
+    "ms": "Malay",
+    "ta": "Tamil",
+}
+
+
+def normalise_language(code: Optional[str]) -> str:
+    return code if code in TRANSLATABLE else "en"
+
+
+_TRANSLATE_PROMPT = """Translate each value below into {language}.
+
+Rules:
+- Return an object with exactly the same keys. Do not add, drop, merge, split or reorder keys.
+- Translate the meaning, not word by word. The reader is a student revising for an exam.
+- Keep technical terms, proper nouns, code, formulae, units and numbers exactly as they appear. These are what
+  the exam will use, so the student needs to recognise them.
+- Keep any slide or page reference, such as "Slide 4", readable as the same reference.
+- If a value is already in {language}, return it unchanged.
+- Preserve the register: a heading stays a heading, a one-sentence point stays one sentence.
+
+Return JSON of the same shape: {{"t0": "translated", "t1": "translated"}}
+
+INPUT:
+{payload}"""
+
+
+def translate_strings(values: List[str], language: str, settings: Settings) -> List[str]:
+    """Translate a list of strings, returning the originals for anything that fails.
+
+    Deliberately never raises. A recap in the wrong language still teaches; a
+    failed job twenty seconds before a deadline does not. Anything the model
+    does not return keeps its original wording, so a partial response degrades
+    to a partly-translated recap rather than an error.
+    """
+    code = normalise_language(language)
+    if code == "en" or not values:
+        return values
+    if settings.demo_mode or not settings.azure_ready:
+        return values
+
+    out = list(values)
+    # Batched so one oversized recap cannot blow the output token budget.
+    for start in range(0, len(values), 40):
+        batch = values[start : start + 40]
+        payload = json.dumps({"t{}".format(i): text for i, text in enumerate(batch)}, ensure_ascii=False)
+        prompt = _TRANSLATE_PROMPT.format(language=TRANSLATABLE[code], payload=payload)
+        try:
+            completion = _client(settings).chat.completions.create(
+                model=settings.azure_fast_deployment,
+                messages=[
+                    {"role": "system", "content": "You translate study material. Reply with JSON only."},
+                    {"role": "user", "content": prompt},
+                ],
+                response_format={"type": "json_object"},
+                max_completion_tokens=8000,
+            )
+            parsed = json.loads(completion.choices[0].message.content or "{}")
+            for i in range(len(batch)):
+                value = parsed.get("t{}".format(i))
+                if isinstance(value, str) and value.strip():
+                    out[start + i] = value.strip()
+        except Exception as exc:
+            logger.warning("Translation batch failed (%s), keeping original wording: %s", code, exc)
+
+    return out

@@ -59,37 +59,31 @@ const STEPS = [
 
 const BENTO = [
   {
-    color: '#150c26',
     label: 'Recap',
     title: 'Two depths',
     description: 'Last-minute cram gives you the eight things that will be on the paper. Deep revision keeps the worked reasoning.',
   },
   {
-    color: '#150c26',
     label: 'Quiz',
     title: 'Adaptive retries',
     description: 'Miss a topic and it comes back weighted heavier next round, until the mastery bar clears 70%.',
   },
   {
-    color: '#150c26',
     label: 'Recall',
     title: 'Spaced repetition',
     description: 'Key terms and missed questions become flashcards that come back at widening intervals, so revision spreads across the term instead of the night before.',
   },
   {
-    color: '#150c26',
     label: 'Grounding',
     title: 'Nothing uncited ships',
     description: 'Anything the AI could not trace back to one of your slides is listed separately as dropped, with the reason it did not hold up.',
   },
   {
-    color: '#150c26',
     label: 'Ask',
     title: 'Question the material',
     description: 'Ask anything about the deck and get an answer that quotes the slides, or an honest "that is not in here".',
   },
   {
-    color: '#150c26',
     label: 'Export',
     title: 'Leaves the app cleanly',
     description: 'Markdown, printable PDF, or CSV that imports into Anki. Your revision should not be locked in a demo.',

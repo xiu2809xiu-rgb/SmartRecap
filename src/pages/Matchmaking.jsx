@@ -239,4 +239,8 @@ export default function Matchmaking() {
   );
 }
 
-function titleCase(value) { return value ? value[0].toUpperCase() + value.slice(1).toLowerCase() : 'Mixed'; }
+function titleCase(value) {
+  // Falls back to 'Medium', not 'Mixed'. 'Mixed' was a label the backend had
+  // never heard of, so an empty difficulty produced a 422 on room creation.
+  return value ? value[0].toUpperCase() + value.slice(1).toLowerCase() : 'Medium';
+}

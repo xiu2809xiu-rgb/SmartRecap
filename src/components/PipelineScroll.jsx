@@ -91,8 +91,9 @@ export default function PipelineScroll() {
 
   useMotionValueEvent(scrollYProgress, 'change', (value) => {
     if (reduced) return;
-    // A small lead-in so stage one is readable before anything moves, then an
-    // even split across the rest.
+    // The 1.04 does not add a lead-in — it slightly narrows every band and so
+    // widens only the last, which is what makes "Into your library" readable
+    // before the section releases.
     const index = Math.min(STAGES.length - 1, Math.max(0, Math.floor(value * STAGES.length * 1.04)));
     setActive((current) => (current === index ? current : index));
   });
@@ -106,7 +107,7 @@ export default function PipelineScroll() {
 
   if (reduced) {
     return (
-      <section id="pipeline" className="section pipe pipe-static">
+      <section id="pipeline" className="section pipe pipe-static" ref={sectionRef}>
         <div className="shell">
           <p className="eyebrow">What happens to your file</p>
           <h2 className="section-title">Seven steps, and the fifth one is the product</h2>
@@ -152,6 +153,7 @@ export default function PipelineScroll() {
                   className={`pipe-step ${i === active ? 'is-on' : ''} ${i < active ? 'is-done' : ''} ${
                     s.keystone ? 'is-keystone' : ''
                   }`}
+                  aria-current={i === active ? 'step' : undefined}
                 >
                   <span className="pipe-dot">
                     {i < active ? <Icon name="check" size={12} /> : <span className="pipe-dot-core" />}
@@ -161,7 +163,7 @@ export default function PipelineScroll() {
               ))}
             </ol>
 
-            <div className={`pipe-card ${stage.keystone ? 'is-keystone' : ''}`} aria-live="polite">
+            <div className={`pipe-card ${stage.keystone ? 'is-keystone' : ''}`}>
               <span className="pipe-card-icon">
                 <Icon name={stage.icon} size={26} />
               </span>

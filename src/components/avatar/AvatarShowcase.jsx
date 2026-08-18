@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Icon, Spinner } from '../ui.jsx';
 import { usePrefs } from '../../lib/prefs.jsx';
+import ParticleText from '../ParticleText.jsx';
 import './avatar.css';
 
 const AvatarStage = lazy(() => import('./AvatarStage.jsx'));
@@ -69,6 +70,15 @@ export default function AvatarShowcase() {
       <div className="shell avatar-grid">
         <div className="avatar-copy">
           <p className="eyebrow">Built by</p>
+
+          {/* The name in particles, reusing the component the 404 hero uses.
+              Canvas 2D, so it costs no WebGL context of its own alongside the
+              model's, and it degrades on its own terms under reduced motion.
+              The real <h2> below still carries the heading for a screen reader;
+              this is the name, said once, loudly. */}
+          <ParticleText text="Richie Koh" className="avatar-name" ratio={0.2} />
+          <p className="sr-only">Richie Koh</p>
+
           <h2 className="section-title">A student who had the problem</h2>
           <p className="lede">
             SmartRecap was built for the Nanyang Polytechnic Cloud Computing Club hackathon, by someone who had

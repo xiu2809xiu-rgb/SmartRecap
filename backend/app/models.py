@@ -113,7 +113,12 @@ class LobbyCreate(BaseModel):
     material_id: str = Field(min_length=1, alias="materialId")
     quiz_id: str = Field(min_length=1, alias="quizId")
     max_players: int = Field(default=8, ge=2, le=20)
-    difficulty: Literal["Easy", "Medium", "Hard"] = "Medium"
+    # Not a Literal. The quiz editor stamps `difficulty: "manual"` on a
+    # student-authored quiz, so a three-value enum rejected the whole lobby
+    # with a 422 and the Create button just appeared to do nothing. This is a
+    # label shown in the room header, not a control value — it does not need to
+    # be closed, it needs to be bounded.
+    difficulty: str = Field(default="Medium", max_length=24)
     visibility: Literal["public", "private"] = "public"
     password: Optional[str] = Field(default=None, min_length=4, max_length=64)
     question_count: int = Field(default=0, ge=0, le=50, alias="questionCount")
