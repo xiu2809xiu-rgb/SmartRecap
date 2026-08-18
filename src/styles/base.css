@@ -313,4 +313,9 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .grow { flex: 1; }
 .truncate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.section { padding-block: clamp(64px, 10vw, 148px); }
+.section {
+  padding-block: clamp(64px, 10vw, 148px);
+  /* The topbar is sticky and 70px tall, so an anchor jump would otherwise put
+     the section's first line behind it. */
+  scroll-margin-top: 92px;
+}

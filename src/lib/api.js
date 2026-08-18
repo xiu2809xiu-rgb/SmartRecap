@@ -43,6 +43,30 @@ export const tokenStore = {
 export const API_UNREACHABLE =
   'The SmartRecap API is not responding. If you are running this locally, start the backend with "npm run backend:dev" in a second terminal.';
 
+/**
+ * The human-readable reason out of an error body.
+ *
+ * FastAPI sends two different shapes under the same key. A thrown
+ * `HTTPException` gives `detail` as a string; a validation failure gives it as
+ * an ARRAY of `{loc, msg, type}`. Passing that array to `new Error()` renders
+ * it as the literal text "[object Object]", which is what a student saw for
+ * every rejected form in the app — a room name a character too short, a
+ * password too weak, a value the server did not recognise.
+ */
+function readDetail(payload) {
+  const detail = payload?.detail;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail.map((item) => item?.msg || item?.message).filter(Boolean);
+    if (messages.length) {
+      // Sentence-cased and joined: pydantic writes "String should have at
+      // least 3 characters" without a full stop.
+      return messages.map((m) => (m.endsWith('.') ? m : `${m}.`)).join(' ');
+    }
+  }
+  return typeof payload?.message === 'string' ? payload.message : null;
+}
+
 export class ApiError extends Error {
   constructor(message, status, body) {
     super(message);
@@ -96,7 +120,7 @@ async function request(path, { method = 'GET', body, signal, auth = true } = {})
       throw new ApiError(API_UNREACHABLE, res.status, null);
     }
 
-    throw new ApiError(payload?.detail || payload?.message || `Request failed (${res.status})`, res.status, payload);
+    throw new ApiError(readDetail(payload) || `Request failed (${res.status})`, res.status, payload);
   }
   return payload;
 }

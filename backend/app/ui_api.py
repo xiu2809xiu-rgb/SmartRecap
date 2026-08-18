@@ -13,6 +13,8 @@ from starlette.concurrency import run_in_threadpool
 
 from .ai_service import (
     answer_notebook_question,
+    normalise_language,
+    translate_strings,
     create_study_image_prompt,
     generate_notebook_pack,
     generate_notebook_quiz,
@@ -200,6 +202,54 @@ def _material_from_pack(
         },
     }
 
+
+def _translate_material(material: Dict[str, Any], language: str, settings: Settings) -> Dict[str, Any]:
+    """Translate a finished recap's prose, leaving its structure alone.
+
+    Collects every translatable string with a setter that puts the result back
+    where it came from, so citations, chunk ids and section ids cannot be
+    touched — they are structure, and translating structure is how you break a
+    recap. Key term NAMES stay in the original language on purpose: that is the
+    word the exam paper will use.
+    """
+    recap = material.get("recap") or {}
+    setters: List[Any] = []
+    values: List[str] = []
+
+    def take(text: Any, set_fn) -> None:
+        if isinstance(text, str) and text.strip():
+            values.append(text)
+            setters.append(set_fn)
+
+    def set_summary(v):
+        recap["summary"] = v
+
+    take(recap.get("summary"), set_summary)
+
+    for section in recap.get("sections", []):
+        take(section.get("heading"), lambda v, s=section: s.__setitem__("heading", v))
+        for pt in section.get("points", []):
+            take(pt.get("text"), lambda v, p=pt: p.__setitem__("text", v))
+
+    for term in recap.get("keyTerms", []):
+        take(term.get("definition"), lambda v, t=term: t.__setitem__("definition", v))
+
+    tips = recap.get("examTips", [])
+    for i, tip in enumerate(tips):
+        take(tip, lambda v, idx=i: tips.__setitem__(idx, v))
+
+    if not values:
+        return material
+
+    translated = translate_strings(values, language, settings)
+    for set_fn, value in zip(setters, translated):
+        set_fn(value)
+
+    material["recap"] = recap
+    material["translated"] = translated != values
+    return material
+
+
 def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRouter:
     router = APIRouter(prefix="/api")
     storage = ObjectStorage(settings)
@@ -289,7 +339,7 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
                 timeout=settings.ai_timeout_seconds + 30,
             )
             job.update(stage="ground", progress=92, stageLabel="Verifying every citation")
-            _materials[material_id] = _material_from_pack(
+            material = _material_from_pack(
                 material_id,
                 source,
                 pack,
@@ -298,6 +348,19 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
                 settings,
                 started_at,
             )
+
+            # Translation runs AFTER citations are verified, never instead of
+            # it. The recap is written and checked against the slides in their
+            # own language first, and only what survived is translated — so a
+            # translated point still points at the original slide and the
+            # source panel still quotes it in the original words.
+            language = normalise_language(payload.get("language"))
+            material["language"] = language
+            if language != "en":
+                job.update(stage="translate", progress=95, stageLabel="Translating what passed the check")
+                material = await run_in_threadpool(_translate_material, material, language, settings)
+
+            _materials[material_id] = material
             if storage.ready:
                 await run_in_threadpool(
                     storage.put_json,

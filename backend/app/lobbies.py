@@ -10,6 +10,22 @@ from fastapi import HTTPException, WebSocket
 from .models import Lobby, LobbyAnswerAction, LobbyCreate, LobbyJoin, LobbyScoreAction, LobbySession, Player
 
 
+def _unique_name(wanted: str, players) -> str:
+    """`Student` → `Student`, then `Student 2`, `Student 3`, ...
+
+    Case-insensitive, because two people reading "student" and "Student" off a
+    leaderboard cannot tell them apart either.
+    """
+    taken = {player.name.casefold() for player in players}
+    if wanted.casefold() not in taken:
+        return wanted
+    for suffix in range(2, len(taken) + 3):
+        candidate = "{} {}".format(wanted, suffix)
+        if candidate.casefold() not in taken:
+            return candidate
+    return wanted
+
+
 class LobbyStore:
     def __init__(self) -> None:
         self._lobbies: Dict[str, Lobby] = {}
@@ -77,11 +93,16 @@ class LobbyStore:
                 raise HTTPException(status_code=403, detail="That room password is incorrect.")
             if len(lobby.players) >= lobby.max_players:
                 raise HTTPException(status_code=409, detail="This lobby is full.")
-            normalized = request.player_name.strip().casefold()
-            if any(player.name.casefold() == normalized for player in lobby.players):
-                raise HTTPException(status_code=409, detail="That display name is already in use.")
+            # A clashing display name is disambiguated, not refused.
+            #
+            # Refusing it made the very first interaction of the multiplayer
+            # demo fail: the auth stub is a single shared record, so every
+            # browser reports the same name ("Student"). The host took it, and
+            # the second student was turned away at the door with a 409 for
+            # something they did not choose and could not see.
+            name = _unique_name(request.player_name.strip() or "Player", lobby.players)
             player_id, token = secrets.token_urlsafe(8), secrets.token_urlsafe(24)
-            lobby.players.append(Player(id=player_id, name=request.player_name.strip()))
+            lobby.players.append(Player(id=player_id, name=name))
             self._tokens[player_id] = token
             self._answers.setdefault(lobby_id, {})[player_id] = set()
         await self.broadcast(lobby_id)
