@@ -24,6 +24,7 @@ export default function Signup() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [touched, setTouched] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const results = useMemo(() => RULES.map((r) => ({ ...r, ok: r.test(form.password) })), [form.password]);
   const valid = results.every((r) => r.ok) && form.email.includes('@');
@@ -96,15 +97,27 @@ export default function Signup() {
 
         <div className="field">
           <label htmlFor="signup-password">Password</label>
-          <input
-            id="signup-password"
-            className="input"
-            type="password"
-            autoComplete="new-password"
-            required
-            value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-          />
+          {/* Same reveal control as sign-in. Leaving it off here meant the only
+              way to check a new password was the browser's own dark glyph. */}
+          <div className="input-affix">
+            <input
+              id="signup-password"
+              className="input"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="new-password"
+              required
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+            />
+            <button
+              type="button"
+              className="affix-btn"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+            >
+              <Icon name={showPassword ? 'visibility_off' : 'visibility'} size={18} />
+            </button>
+          </div>
           <ul className="rules" aria-live="polite">
             {results.map((r) => (
               <li key={r.id} className={r.ok ? 'is-ok' : touched ? 'is-bad' : ''}>
