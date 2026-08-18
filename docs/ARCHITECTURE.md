@@ -172,6 +172,42 @@ visible in one interaction.
 
 ---
 
+## Multi-language recaps, and why translation runs last
+
+A student can ask to read their recap in Chinese, Malay or Tamil. The obvious
+implementation — tell the model to write it in Malay — quietly destroys the
+guarantee above.
+
+Overlap checking is lexical. A Malay sentence and an English slide share no
+content vocabulary, so `overlapRatio` would score every claim near zero and the
+grounding pass would delete the entire recap. Worse, `contentTokens` strips
+anything outside `[a-z0-9]`, so a recap in Chinese or Tamil tokenises to the
+empty set — and an empty claim returns `1`, a perfect score. Every claim would
+pass a check that had silently stopped checking anything, and the pipeline would
+report success.
+
+So the order is: **generate → ground → translate.** The recap is written, cited
+and checked in the material's own language. Only the lines that survived are
+translated, in `ai/generate.js`'s `translateStudyPack`, which:
+
+- sends strings as an id-keyed object, so the model cannot reorder, merge or
+  drop them the way it does with a numbered list;
+- never sends citations, chunk ids, answer indices or `verified` flags — those
+  are structure, and translating structure is how you break it;
+- leaves a key term's *name* in the original language and translates only its
+  definition, because the exam paper will use the original term;
+- keeps the original wording for anything that does not come back, so a
+  translation failure degrades to an English recap rather than a failed job.
+
+The source panel is never translated. A translated point still cites the
+original slide and the reader still quotes that slide verbatim, which is what
+makes the citation checkable by a student who wants to go and look.
+
+`test/translate.test.mjs` pins all of this: citations, indices and flags must
+survive a translation byte-for-byte.
+
+---
+
 ## Frontend
 
 **React 19 + Vite, `react-router-dom` v7.** No state library — auth, library and

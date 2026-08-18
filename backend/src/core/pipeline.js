@@ -2,7 +2,8 @@ import { keys, getItem, putItem, updateItem } from '../lib/db.js';
 import { getObjectBytes } from '../lib/s3.js';
 import { extractDocument } from '../extract/index.js';
 import { chunkPages, fitToBudget } from '../extract/chunk.js';
-import { generateRecap, generateQuiz } from '../ai/generate.js';
+import { generateRecap, generateQuiz, translateStudyPack } from '../ai/generate.js';
+import { normaliseLanguage, languageName } from '../ai/languages.js';
 
 /**
  * The generation pipeline, as one callable function.
@@ -25,23 +26,39 @@ import { generateRecap, generateQuiz } from '../ai/generate.js';
 // their terms rather than ours. The infrastructure detail belongs in the logs
 // and in docs/ARCHITECTURE.md, not on a screen someone is waiting at.
 const STAGES = [
-  { id: 'upload', label: 'Uploading your file', weight: 5 },
+  { id: 'upload', label: 'Uploading your file', weight: 3 },
   { id: 'extract', label: 'Reading the text', weight: 20 },
   { id: 'chunk', label: 'Sorting it by slide', weight: 5 },
   { id: 'recap', label: 'Writing your recap', weight: 35 },
   { id: 'quiz', label: 'Writing your quiz', weight: 25 },
-  { id: 'ground', label: 'Checking every claim', weight: 5 },
-  { id: 'store', label: 'Saving to your library', weight: 5 },
+  { id: 'ground', label: 'Checking every claim', weight: 2 },
+  // Only runs when the student asked for a language other than the one their
+  // material is in, so an English job goes straight from ground to store.
+  { id: 'translate', label: 'Translating what passed the check', weight: 8 },
+  { id: 'store', label: 'Saving to your library', weight: 2 },
 ];
 
 export const PIPELINE_STAGES = STAGES;
+
+const labelOf = (id) => STAGES.find((s) => s.id === id)?.label ?? '';
 
 function progressThrough(stageId) {
   const index = STAGES.findIndex((s) => s.id === stageId);
   return Math.min(99, STAGES.slice(0, index).reduce((n, s) => n + s.weight, 0));
 }
 
-export async function runPipeline({ jobId, userId, materialId, fileName, key, mode, moduleName, quizLength }) {
+export async function runPipeline({
+  jobId,
+  userId,
+  materialId,
+  fileName,
+  key,
+  mode,
+  moduleName,
+  quizLength,
+  difficulty = 'balanced',
+  language = 'en',
+}) {
   const startedAt = Date.now();
   const log = [];
 
@@ -64,18 +81,18 @@ export async function runPipeline({ jobId, userId, materialId, fileName, key, mo
 
   try {
     /* ---------------------------------------------------------- 1. fetch */
-    await record('upload', STAGES[0].label, 'Stored privately — only you can open it');
+    await record('upload', labelOf('upload'), 'Stored privately — only you can open it');
     const buffer = await getObjectBytes(key);
 
     /* -------------------------------------------------------- 2. extract */
-    await record('extract', STAGES[1].label, 'Keeping track of which slide each part came from');
+    await record('extract', labelOf('extract'), 'Keeping track of which slide each part came from');
     const { pages, pageCount, ocr } = await extractDocument({ buffer, fileName, key });
     // A scan or a photo has no selectable text, so the words are read off the
     // image instead. Worth surfacing, because it is noticeably slower.
     if (ocr) await record('extract', 'No selectable text — reading it off the page', `${pageCount} pages read`);
 
     /* ---------------------------------------------------------- 3. chunk */
-    await record('chunk', STAGES[2].label, 'So every point can link back to where it came from');
+    await record('chunk', labelOf('chunk'), 'So every point can link back to where it came from');
     const allChunks = chunkPages(pages);
     if (!allChunks.length) {
       await fail('No readable text was found in that file. If it is a scan, try a sharper copy.');
@@ -101,15 +118,16 @@ export async function runPipeline({ jobId, userId, materialId, fileName, key, mo
     };
 
     /* ---------------------------------------------------------- 4. recap */
-    await record('recap', STAGES[3].label, 'Every point has to name the slide it came from');
+    await record('recap', labelOf('recap'), 'Every point has to name the slide it came from');
     const { recap, meta: recapMeta, report: recapReport } = await generateRecap({ chunks, mode, moduleName, onAttempt });
 
     /* ----------------------------------------------------------- 5. quiz */
-    await record('quiz', STAGES[4].label, `${quizLength} questions, every answer traced back to your material`);
+    await record('quiz', labelOf('quiz'), `${quizLength} questions, every answer traced back to your material`);
     const { quiz, meta: quizMeta, report: quizReport } = await generateQuiz({
       chunks,
       count: quizLength,
       moduleName,
+      difficulty,
       onAttempt,
     });
 
@@ -118,12 +136,40 @@ export async function runPipeline({ jobId, userId, materialId, fileName, key, mo
     // because "we dropped two claims" is information the student should see.
     await record(
       'ground',
-      STAGES[5].label,
+      labelOf('ground'),
       `${recapReport.kept} points kept, ${recapReport.dropped} dropped; ${quizReport.kept} questions kept, ${quizReport.removed} removed`,
     );
 
-    /* ---------------------------------------------------------- 7. store */
-    await record('store', STAGES[6].label, 'Recap, quiz and sources');
+    /* ------------------------------------------------------ 7. translate */
+    // Deliberately after grounding, never instead of it. The check in
+    // `ground.js` compares a claim against the slide it cites by shared
+    // vocabulary; run it on a Malay sentence citing an English slide and it
+    // stops checking anything while still reporting success. So the recap is
+    // written, cited and checked in the material's own language, and only the
+    // lines that survived get translated. See `ai/generate.js`.
+    let finalRecap = recap;
+    let finalQuiz = quiz;
+    let translation = null;
+
+    if (normaliseLanguage(language) !== 'en') {
+      await record(
+        'translate',
+        labelOf('translate'),
+        `Into ${languageName(language)} — the citations stay pointed at your original slides`,
+      );
+      const result = await translateStudyPack({ recap, quiz, language, onAttempt });
+      finalRecap = result.recap;
+      finalQuiz = result.quiz;
+      translation = { language: result.language, translated: result.translated, ...result.report };
+      if (!result.translated) {
+        // Not a job failure. A recap in the wrong language still teaches; a
+        // failed job twenty seconds before a deadline does not.
+        await record('translate', 'Translation did not come back — showing the original wording', 'Your recap is still fully checked');
+      }
+    }
+
+    /* ---------------------------------------------------------- 8. store */
+    await record('store', labelOf('store'), 'Recap, quiz and sources');
 
     const existing = (await getItem(keys.material(userId, materialId))) ?? {};
     const material = {
@@ -136,14 +182,16 @@ export async function runPipeline({ jobId, userId, materialId, fileName, key, mo
       sizeBytes: buffer.length,
       module: moduleName || 'Unfiled',
       mode,
+      difficulty,
+      language: normaliseLanguage(language),
       status: 'ready',
       pageCount,
       ocr,
       s3Key: key,
       createdAt: existing.createdAt ?? new Date().toISOString(),
       chunks,
-      recap,
-      quiz,
+      recap: finalRecap,
+      quiz: finalQuiz,
       provider: {
         name: recapMeta.provider,
         model: recapMeta.model,
@@ -163,6 +211,7 @@ export async function runPipeline({ jobId, userId, materialId, fileName, key, mo
         questionsKept: quizReport.kept,
         questionsRemoved: quizReport.removed,
         questionsUnverified: quizReport.unverified,
+        ...(translation ? { translation } : null),
         repaired: recapReport.repaired || quizReport.repaired,
       },
     };

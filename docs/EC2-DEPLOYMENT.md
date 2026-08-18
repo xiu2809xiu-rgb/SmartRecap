@@ -144,6 +144,29 @@ process picked up, and how long it has been running. From your laptop:
 curl http://<elastic-ip>/health
 ```
 
+### Prove it actually works
+
+`/health` says the process is alive. It does not say the process can reach
+DynamoDB. `?deep=1` probes every AWS service the pipeline depends on with a
+read-only call, so a missing instance profile or a bucket in the wrong region
+shows up now rather than mid-demo:
+
+```bash
+curl "http://<elastic-ip>/health?deep=1"
+```
+
+Or run the whole check — services, guest sign-in, a presigned upload, and that
+an unauthenticated read is actually rejected:
+
+```bash
+./scripts/verify-deployment.sh http://<elastic-ip>
+```
+
+It exits non-zero if anything fails, and each failure maps to a row in
+[When it does not work](#when-it-does-not-work) below. The same probes back the
+status panel on `/architecture`, so what a judge sees on that page is a live
+reading rather than a diagram.
+
 ---
 
 ## Step 6 — point the frontend at it
@@ -200,6 +223,10 @@ With an Elastic IP the address does not change, so nothing else needs touching.
 | `503` on recap generation | No provider key set, or both are rate limited |
 | PDF upload kills the process | Out of memory on `t2.micro`. Use `t3.small` |
 | CORS errors in the browser | `ALLOWED_ORIGIN` does not match the frontend's origin exactly — scheme, host and port all count |
+| `?deep=1` shows `ResourceNotFoundException` on DynamoDB | `TABLE_NAME` is wrong, or the table is in another region |
+| `?deep=1` shows `NotFound` on S3 | `BUCKET_NAME` is wrong. A bucket in a different region reports `PermanentRedirect` instead |
+| `?deep=1` shows `CredentialsError` on Textract | No instance profile. Everything AWS will fail the same way — fix this one first |
+| A recap comes back in English after asking for another language | The translation call failed. The recap is still fully grounded; the reader says so. Check the provider keys |
 
 Logs:
 

@@ -195,6 +195,8 @@ const live = {
     get: (token) => request(`/shared/${token}`, { auth: false }),
   },
 
+  /** `deep` additionally probes each AWS service the backend depends on. */
+  health: ({ deep } = {}) => request(`/health${deep ? '?deep=1' : ''}`, { auth: false }),
   ask: (payload) => request('/ask', { method: 'POST', body: payload }),
   tts: (payload) => request('/tts', { method: 'POST', body: payload }),
 };

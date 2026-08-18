@@ -68,6 +68,7 @@ export const STAGE_STATE = {
   recap: 'thinking',
   quiz: 'thinking',
   ground: 'thinking',
+  translate: 'thinking',
   store: 'idle',
   done: 'celebrate',
 };

@@ -34,6 +34,7 @@ const Progress = lazy(() => import('./pages/Progress.jsx'));
 const Settings = lazy(() => import('./pages/Settings.jsx'));
 const SharedRecap = lazy(() => import('./pages/SharedRecap.jsx'));
 const NotFound = lazy(() => import('./pages/NotFound.jsx'));
+const Architecture = lazy(() => import('./pages/Architecture.jsx'));
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -82,6 +83,9 @@ export default function App() {
             <Route path="/signup" element={<Signup />} />
             {/* Public read-only view of a shared recap. */}
             <Route path="/s/:token" element={<SharedRecap />} />
+            {/* For markers and maintainers, not students — deliberately absent
+                from the app navigation. */}
+            <Route path="/architecture" element={<Architecture />} />
 
             <Route
               path="/app"

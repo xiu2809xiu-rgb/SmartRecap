@@ -9,6 +9,7 @@ import AskPanel from '../components/AskPanel.jsx';
 import { Icon, Spinner, Empty, Modal, CopyButton, useToast } from '../components/ui.jsx';
 import { toMarkdown, toAnkiCsv, printRecap } from '../lib/exporters.js';
 import { formatDuration } from '../lib/format.js';
+import { languageLabel, langAttr } from '../lib/languages.js';
 import FadeContent from '../reactbits/FadeContent.jsx';
 import './recap.css';
 
@@ -77,6 +78,14 @@ export default function Recap() {
   }
 
   const { recap } = material;
+  // Two different questions. `askedForTranslation` decides whether to explain
+  // anything to the reader; `readsAsTranslated` decides the `lang` attribute,
+  // and that one has to follow the text that is actually on screen. Demo mode
+  // calls no model, and a live translation call can fail — in both cases the
+  // words below are still English, and telling a screen reader otherwise would
+  // have it read English aloud in a Chinese voice.
+  const askedForTranslation = !!material.language && material.language !== 'en';
+  const readsAsTranslated = askedForTranslation && material.pipeline?.translation?.translated === true;
 
   const createShare = async () => {
     setSharing(true);
@@ -115,7 +124,22 @@ export default function Recap() {
       <div className={`shell recap-shell ${askOpen ? 'ask-open' : ''}`}>
         <CitationProvider chunks={chunks}>
           <div className="reader-grid" ref={readerRef}>
-            <div className="reader-col">
+            {/* `lang` so a screen reader switches voice with the recap, and so
+                the browser hyphenates and line-breaks it correctly. The source
+                panel is not inside this column — it still quotes the original
+                slides, in the original language. */}
+            <div className="reader-col" lang={readsAsTranslated ? langAttr(material.language) : 'en'}>
+              {askedForTranslation && (
+                <p className="recap-flag">
+                  <Icon name="translate" size={16} />
+                  {readsAsTranslated
+                    ? `Written and checked against your slides first, then translated into ${languageLabel(material.language)}. Every source quote below is the original wording.`
+                    : material.demo
+                      ? `Demo mode calls no model, so this stayed in English. On a live deployment it would be written in ${languageLabel(material.language)}.`
+                      : `You asked for ${languageLabel(material.language)}, but the translation did not come back — this is the original wording. It is still fully checked against your slides.`}
+                </p>
+              )}
+
               {(material.sample || material.demo) && (
                 <p className="recap-flag">
                   <Icon name="science" size={16} />

@@ -6,6 +6,7 @@ import { useToast, Icon, Segmented } from '../components/ui.jsx';
 import { usePrefs } from '../lib/prefs.jsx';
 import Mascot from '../mascot/Mascot.jsx';
 import { FILE_TYPES, fileTypeOf, formatBytes } from '../lib/format.js';
+import { LANGUAGES } from '../lib/languages.js';
 import Stepper, { Step } from '../reactbits/Stepper.jsx';
 import '../reactbits/Stepper.css';
 import './upload.css';
@@ -28,6 +29,18 @@ const MODES = [
   },
 ];
 
+const DIFFICULTIES = [
+  { value: 'gentle', label: 'Gentle' },
+  { value: 'balanced', label: 'Balanced' },
+  { value: 'challenge', label: 'Challenge' },
+];
+
+const DIFFICULTY_HINTS = {
+  gentle: 'Definitions and stated facts. Use this on a first pass through a topic.',
+  balanced: 'A mix of recall, applying an idea, and joining two parts of the material.',
+  challenge: 'Mostly reasoning across the material, with distractors that catch a half-memory.',
+};
+
 export default function Upload() {
   const navigate = useNavigate();
   const toast = useToast();
@@ -38,6 +51,8 @@ export default function Upload() {
   const [mode, setMode] = useState('deep');
   const [moduleName, setModuleName] = useState('');
   const [quizLength, setQuizLength] = useState(10);
+  const [difficulty, setDifficulty] = useState('balanced');
+  const [language, setLanguage] = useState('en');
   const [dragging, setDragging] = useState(false);
   const [step, setStep] = useState(1);
   const [error, setError] = useState(null);
@@ -108,6 +123,8 @@ export default function Upload() {
         mode,
         module: moduleName || 'Unfiled',
         quizLength,
+        difficulty,
+        language,
       });
 
       upsertMaterial({
@@ -118,6 +135,8 @@ export default function Upload() {
         sizeBytes: file.size,
         module: moduleName || 'Unfiled',
         mode,
+        difficulty,
+        language,
         status: 'processing',
         createdAt: new Date().toISOString(),
       });
@@ -278,7 +297,7 @@ export default function Upload() {
             </div>
 
             <div className="field upload-field">
-              <label htmlFor="quizlen">Quiz length</label>
+              <label>Quiz length</label>
               <Segmented
                 options={[
                   { value: 5, label: '5 questions' },
@@ -292,6 +311,38 @@ export default function Upload() {
               <p className="field-hint">
                 Questions your material does not clearly answer are still shown and explained, but they do not count
                 toward your score — so the scored total can come out slightly lower.
+              </p>
+            </div>
+
+            <div className="field upload-field">
+              <label>Quiz difficulty</label>
+              <Segmented
+                options={DIFFICULTIES}
+                value={difficulty}
+                onChange={setDifficulty}
+                label="Quiz difficulty"
+              />
+              <p className="field-hint">{DIFFICULTY_HINTS[difficulty]}</p>
+            </div>
+
+            <div className="field upload-field">
+              <label htmlFor="language">Read the recap in</label>
+              <select
+                id="language"
+                className="input"
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+              >
+                {LANGUAGES.map((l) => (
+                  <option key={l.code} value={l.code}>
+                    {l.endonym ? `${l.endonym} — ${l.label}` : l.label}
+                  </option>
+                ))}
+              </select>
+              <p className="field-hint">
+                {language === 'en'
+                  ? 'Your material is read and checked in its own language.'
+                  : 'Your recap is written and checked against your slides first, then translated — so the citations still point at the original wording. Technical terms stay as your material writes them, because that is what the exam will use.'}
               </p>
             </div>
 
@@ -312,7 +363,14 @@ export default function Upload() {
                 </div>
                 <div>
                   <dt>Quiz</dt>
-                  <dd className="num">{quizLength} questions</dd>
+                  <dd>
+                    <span className="num">{quizLength}</span> questions,{' '}
+                    {DIFFICULTIES.find((d) => d.value === difficulty).label.toLowerCase()}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Language</dt>
+                  <dd>{LANGUAGES.find((l) => l.code === language).endonym ?? 'English'}</dd>
                 </div>
               </dl>
             </div>

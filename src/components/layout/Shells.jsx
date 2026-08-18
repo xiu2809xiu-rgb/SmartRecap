@@ -137,7 +137,7 @@ export function MarketingShell({ children }) {
               <a href="https://github.com" rel="noreferrer noopener" target="_blank">
                 Source repository
               </a>
-              <a href="#stack">Architecture</a>
+              <Link to="/architecture">Architecture and live status</Link>
             </nav>
           </div>
           <div className="foot-bottom">
