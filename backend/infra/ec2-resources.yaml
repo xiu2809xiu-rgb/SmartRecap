@@ -1,0 +1,142 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  SmartRecap stateful resources for the EC2 deployment — DynamoDB table, private
+  upload bucket, and Cognito user pool.
+
+  Use this when the API runs on EC2. It creates everything the server needs and
+  nothing it does not: no Lambda, no API Gateway. (`../template.yaml` is the
+  serverless alternative and creates all of this plus the compute.)
+
+  Deploy:
+    aws cloudformation deploy \
+      --template-file infra/ec2-resources.yaml \
+      --stack-name smartrecap-data \
+      --region us-east-1
+
+  No --capabilities flag is needed because nothing here creates an IAM role,
+  which Learner Lab would refuse anyway. The EC2 instance gets its AWS access
+  from LabInstanceProfile instead — set at launch under
+  Advanced Details > IAM instance profile.
+
+Parameters:
+  WebOrigin:
+    Type: String
+    Default: '*'
+    Description: >
+      Origin allowed to PUT to the upload bucket. Set to your frontend URL once
+      you have one; '*' is fine while developing.
+
+Resources:
+  # Single table. Every access pattern is "everything for one user" or "one item
+  # by id", both of which a pk/sk pair covers, so a second table would add cost
+  # and deploy surface for nothing. Key shapes are documented in src/lib/db.js.
+  AppTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AWS::StackName}-app'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      # Jobs and guest sessions expire themselves; recaps do not.
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+  UploadBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-uploads-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      CorsConfiguration:
+        # The browser PUTs the file here directly with a presigned URL, so the
+        # bucket itself must allow the cross-origin PUT.
+        CorsRules:
+          - AllowedMethods: [PUT, GET, HEAD]
+            AllowedOrigins: [!Ref WebOrigin]
+            AllowedHeaders: ['*']
+            ExposedHeaders: [ETag]
+            MaxAge: 3000
+      LifecycleConfiguration:
+        Rules:
+          # A finite credit budget does not survive an unbounded bucket. Source
+          # files are only needed until extraction finishes — the recap lives in
+          # DynamoDB, so nothing user-visible is lost when these expire.
+          - Id: ExpireSourceFiles
+            Status: Enabled
+            Prefix: uploads/
+            ExpirationInDays: 30
+          - Id: ExpireAudio
+            Status: Enabled
+            Prefix: audio/
+            ExpirationInDays: 7
+          - Id: AbortIncompleteUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub '${AWS::StackName}-users'
+      # Email as username, self-service signup, and no SMS anywhere — SMS needs
+      # an IAM role for Cognito to assume, which Learner Lab cannot create.
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: []
+      MfaConfiguration: 'OFF'
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      Schema:
+        - Name: name
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: !Sub '${AWS::StackName}-api'
+      # No secret: the client id is only ever used server-side, and a public
+      # client keeps USER_PASSWORD_AUTH working without SECRET_HASH plumbing.
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      PreventUserExistenceErrors: ENABLED
+
+Outputs:
+  TableName:
+    Description: Set as TABLE_NAME in the server environment.
+    Value: !Ref AppTable
+  BucketName:
+    Description: Set as BUCKET_NAME in the server environment.
+    Value: !Ref UploadBucket
+  UserPoolId:
+    Description: Set as USER_POOL_ID in the server environment.
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Description: Set as USER_POOL_CLIENT_ID in the server environment.
+    Value: !Ref UserPoolClient

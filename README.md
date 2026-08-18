@@ -38,10 +38,12 @@ Opens on <http://localhost:5173>. No AWS session needed — the frontend runs
 against a local demo backend with a bundled sample deck, and says so on screen
 rather than passing sample content off as model output.
 
-To generate real recaps, deploy the backend (`docs/AWS-DEPLOYMENT.md`) and set:
+To generate real recaps, deploy the backend — `docs/EC2-DEPLOYMENT.md` for the
+EC2 path, `docs/AWS-DEPLOYMENT.md` for serverless — then point the frontend at
+it:
 
 ```bash
-echo "VITE_API_BASE_URL=https://xxxx.execute-api.us-east-1.amazonaws.com/prod" > .env.local
+echo "VITE_API_BASE_URL=http://your-api-host" > .env.local
 ```
 
 Production build:
@@ -88,12 +90,13 @@ being extracted and thinks while the model is being called. See
 three.js/R3F for the mascot, and 39 [React Bits](https://reactbits.dev)
 components (`docs/REACT-BITS-MAP.md`).
 
-**Backend** — API Gateway → Lambda → DynamoDB + S3, Cognito for identity,
-Textract for OCR, Polly for read-aloud, CloudFormation via SAM.
+**Backend** — the same API runs on **EC2 behind Express** or on **Lambda behind
+API Gateway**; both call the same `core/` functions. DynamoDB + S3 for state,
+Cognito for identity, Textract for OCR, Polly for read-aloud.
 
 **Generation** — OpenRouter with automatic failover to NVIDIA NIM. Amazon
 Bedrock is not available in AWS Academy Learner Lab, so both providers run on
-free tiers and are called only from Lambda — no key ever reaches the browser.
+free tiers and are called only from the server — no key ever reaches the browser.
 
 ---
 
@@ -108,15 +111,23 @@ src/
   lib/          API client, auth, store, spaced repetition, exporters
   styles/       design tokens and shared surfaces
 backend/
-  src/handlers/ API router and the async pipeline
+  src/core/     the logic — plain functions, no framework
   src/ai/       provider failover, prompts, grounding
   src/extract/  PDF/PPTX/DOCX/image extraction, OCR, chunking
-  template.yaml SAM stack
+  src/server.js EC2 adapter (Express)
+  src/handlers/ Lambda adapters
+  infra/        EC2 provisioning: CloudFormation, systemd, nginx
+  template.yaml Lambda: the full serverless stack
+  test/         19 tests, no AWS needed
 docs/
   ARCHITECTURE.md      how it works and why it is shaped this way
-  AWS-DEPLOYMENT.md    Learner Lab deployment, with the failure modes
+  EC2-DEPLOYMENT.md    running the API on EC2, and surviving lab sessions
+  AWS-DEPLOYMENT.md    the serverless alternative
+  LEARNER-LAB-LIMITS.md what the account can and cannot do
   MASCOT-BRIEF.md      3D model specification and animation clip names
   REACT-BITS-MAP.md    which component is used where, and why
+scripts/
+  check-learner-lab.sh probes your account for what is actually permitted
 ```
 
 ---
@@ -134,10 +145,16 @@ and colour-vision deficiency against both surfaces.
 
 ## Security
 
-Never commit API keys, AWS credentials, private keys, `.env` files, or
-`backend/samconfig.toml`. All of them are gitignored. Provider keys live in
-Lambda environment variables and are never sent to the browser — which is also
-why demo mode cannot generate recaps.
+Never commit API keys, AWS credentials, private keys (`*.pem`), `.env` files,
+`/etc/smartrecap.env`, or `backend/samconfig.toml`. All are gitignored.
+
+Provider keys live in server-side environment variables and are never sent to
+the browser — which is also why demo mode cannot generate recaps. AWS access on
+EC2 comes from the instance profile, so no long-lived keys sit on the box
+either.
+
+`./scripts/check-learner-lab.sh` probes what your lab account actually permits
+without changing anything.
 
 ---
 

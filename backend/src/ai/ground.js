@@ -9,12 +9,14 @@
  *      Models invent ids, especially near the end of a long generation. A claim
  *      left with no resolvable citation is removed from the recap.
  *
- *   2. Overlap — does the claim share meaningful vocabulary with the chunk it
- *      cites? This is the check that catches the more dangerous failure: a true
- *      statement attached to the wrong slide, which resolution alone waves
- *      through. It is a lexical heuristic, not semantic comparison, so the
- *      threshold is set low — its job is to catch a claim citing a chunk about
- *      an unrelated topic, not to referee close paraphrase.
+ *   2. Overlap — does the claim share the *distinctive* vocabulary of the chunk
+ *      it cites? This catches the more dangerous failure: a true statement
+ *      attached to the wrong slide, which resolution alone waves through.
+ *      Terms are weighted by inverse document frequency across the chunk set,
+ *      because inside one subject every chunk shares the generic vocabulary and
+ *      an unweighted count is fooled by it. It is still lexical, not semantic,
+ *      so its job is to catch a citation pointing at an unrelated passage — not
+ *      to referee close paraphrase.
  *
  * Everything dropped is kept, with a reason, and surfaced in the reader. A
  * student learns more from seeing what the model wanted to claim and could not
@@ -44,22 +46,55 @@ function contentTokens(text) {
   );
 }
 
-/** Share of the claim's content words that appear in the cited text. */
-function overlapRatio(claim, source) {
+/**
+ * Term weights across this document.
+ *
+ * A plain word-overlap count does not work inside a single subject. Every chunk
+ * of a database lecture contains "table", "row" and "data", so a claim about
+ * joins scores a comfortable 0.37 against a chunk about primary keys purely on
+ * shared domain vocabulary — which is exactly the wrong-slide citation this
+ * check exists to catch. (A test caught it: `test/extract.test.mjs`.)
+ *
+ * Weighting by inverse document frequency fixes it. A term in most chunks
+ * carries almost no signal about *which* chunk a claim came from; a term in one
+ * or two carries nearly all of it. The floor keeps the denominator non-zero
+ * when every term is common.
+ */
+function buildIdf(chunks) {
+  const n = chunks.length || 1;
+  const df = new Map();
+  for (const chunk of chunks) {
+    for (const term of contentTokens(chunk.text)) df.set(term, (df.get(term) ?? 0) + 1);
+  }
+  return (term) => Math.max(0.05, Math.log(n / (1 + (df.get(term) ?? 0))));
+}
+
+/** Weighted share of the claim's distinctive vocabulary present in the source. */
+function overlapRatio(claim, source, idf) {
   const a = contentTokens(claim);
   if (a.size === 0) return 1;
   const b = contentTokens(source);
-  let hits = 0;
-  for (const w of a) if (b.has(w)) hits += 1;
-  return hits / a.size;
+
+  let matched = 0;
+  let total = 0;
+  for (const term of a) {
+    const weight = idf(term);
+    total += weight;
+    if (b.has(term)) matched += weight;
+  }
+  return total === 0 ? 1 : matched / total;
 }
 
-// Below this, the claim and its cited chunk are almost certainly about
-// different things. Paraphrase routinely lands around 0.35-0.6, so 0.18 only
-// fires on a genuine mismatch.
+// Below this, the claim and its cited chunk are about different things. With
+// IDF weighting a genuine paraphrase lands well above 0.4, because the terms
+// that survive weighting are the distinctive ones a paraphrase keeps.
 const MIN_OVERLAP = 0.18;
 
-function checkCitations(text, citations, chunkById) {
+// Above this the claim restates its source closely enough to call grounded
+// rather than inferred; the reader shows the difference.
+const CONFIDENT_OVERLAP = 0.45;
+
+function checkCitations(text, citations, chunkById, idf) {
   const resolved = (citations ?? []).filter((id) => chunkById.has(id));
   if (!resolved.length) {
     return {
@@ -72,7 +107,7 @@ function checkCitations(text, citations, chunkById) {
     };
   }
 
-  const best = Math.max(...resolved.map((id) => overlapRatio(text, chunkById.get(id).text)));
+  const best = Math.max(...resolved.map((id) => overlapRatio(text, chunkById.get(id).text, idf)));
   if (best < MIN_OVERLAP) {
     const labels = resolved.map((id) => chunkById.get(id).label).join(', ');
     return {
@@ -82,7 +117,7 @@ function checkCitations(text, citations, chunkById) {
     };
   }
 
-  return { ok: true, resolved, confidence: best >= 0.45 ? 'grounded' : 'inferred' };
+  return { ok: true, resolved, confidence: best >= CONFIDENT_OVERLAP ? 'grounded' : 'inferred' };
 }
 
 /**
@@ -91,6 +126,7 @@ function checkCitations(text, citations, chunkById) {
  */
 export function groundRecap(recap, chunks) {
   const chunkById = new Map(chunks.map((c) => [c.id, c]));
+  const idf = buildIdf(chunks);
   const ungrounded = [...(recap.ungrounded ?? [])];
   let kept = 0;
   let dropped = 0;
@@ -100,7 +136,7 @@ export function groundRecap(recap, chunks) {
       const points = [];
       for (const point of section.points ?? []) {
         if (!point?.text) continue;
-        const check = checkCitations(point.text, point.citations, chunkById);
+        const check = checkCitations(point.text, point.citations, chunkById, idf);
         if (check.ok) {
           points.push({ ...point, citations: check.resolved, confidence: check.confidence });
           kept += 1;
@@ -116,7 +152,7 @@ export function groundRecap(recap, chunks) {
 
   const keyTerms = (recap.keyTerms ?? []).filter((t) => {
     if (!t?.term || !t?.definition) return false;
-    const check = checkCitations(`${t.term} ${t.definition}`, t.citations, chunkById);
+    const check = checkCitations(`${t.term} ${t.definition}`, t.citations, chunkById, idf);
     if (check.ok) {
       t.citations = check.resolved;
       return true;
@@ -147,6 +183,7 @@ export function groundRecap(recap, chunks) {
  */
 export function groundQuiz(quiz, chunks) {
   const chunkById = new Map(chunks.map((c) => [c.id, c]));
+  const idf = buildIdf(chunks);
   const questions = [];
   let removed = 0;
   let unverified = 0;
@@ -165,7 +202,7 @@ export function groundQuiz(quiz, chunks) {
     // The correct option carries the claim, so it is what gets checked — not
     // the stem, which is often a neutral question with little vocabulary.
     const claim = `${q.prompt} ${q.options[answer]}`;
-    const check = checkCitations(claim, q.citations, chunkById);
+    const check = checkCitations(claim, q.citations, chunkById, idf);
     if (!check.ok) {
       removed += 1;
       continue;
@@ -193,13 +230,14 @@ export function groundQuiz(quiz, chunks) {
 /** Same contract for a single Q&A answer. */
 export function groundAnswer(result, chunks) {
   const chunkById = new Map(chunks.map((c) => [c.id, c]));
+  const idf = buildIdf(chunks);
   const answer = String(result?.answer ?? '').trim();
   if (!answer) {
     return { answer: 'The model did not return an answer. Try rephrasing the question.', citations: [], grounded: false };
   }
   if (result.grounded === false) return { answer, citations: [], grounded: false };
 
-  const check = checkCitations(answer, result.citations, chunkById);
+  const check = checkCitations(answer, result.citations, chunkById, idf);
   if (!check.ok) {
     return {
       answer: `${answer}\n\nThis could not be traced back to your material, so treat it as unverified.`,
