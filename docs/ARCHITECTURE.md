@@ -180,6 +180,28 @@ For programming and DSA modules a recap is only half of revising — the other
 half is writing the thing. `/app/material/:id/practice` puts the exercise brief
 and the slide it came from on the left, and an editor on the right.
 
+### Run and Check are separate controls
+
+The page does two different things and they are two different buttons.
+
+- **Run** executes what is in the editor and shows the output. It never grades
+  anything.
+- **Check answer** runs the exercise's tests.
+
+An earlier version had one button doing both. Typing `print(21)` to see what
+happened answered with *"0 of 3 tests passing"* and three NameErrors — a tool
+telling someone they are wrong for experimenting. Exploring and being marked
+are different intentions and now look different.
+
+Two consequences of the same principle:
+
+- A **Playground** tab has no tests at all and needs no backend, so it works
+  even when exercise generation is unavailable. It keeps a separate draft per
+  language.
+- When the code simply does not define the function yet, the page says so in
+  one sentence instead of printing one near-identical NameError per test. Not
+  having written it is where you start, not an error.
+
 **The exercises come from the student's own material and cite it.** Same
 contract as everything else: `ai/prompts.js`'s `practicePrompt` requires a
 `citations` array, and `groundPractice` drops any exercise whose citation does
@@ -192,14 +214,20 @@ binary search to write, not FizzBuzz.
 uploads are not code. Two independent checks have to agree before a student is
 offered exercises:
 
-1. `core/practice.js`'s `looksLikeCode` — a local regex pass with weighted
-   signals, run *before* any model call so a history deck never costs a
-   request. Literal syntax (`def foo(`, `SELECT ... FROM`) counts double,
-   because nothing else writes like that; vocabulary ("algorithm",
-   "recursion") counts single, because any subject might use it. Words with
-   everyday senses — "stack", "queue", "class", "return" — are not signals at
-   all, or a timetable would qualify.
+1. `looks_like_code` — a local regex pass with weighted signals, run *before*
+   any model call so a history deck never costs a request. Literal syntax
+   (`def foo(`, `SELECT ... FROM`) counts double, because nothing else writes
+   like that; vocabulary ("algorithm", "recursion") counts single, because any
+   subject might use it, and scores per *distinct* term so a lecture naming
+   both "linked list" and "hash table" qualifies without showing code. Words
+   with everyday senses — "stack", "queue", "class", "return" — are not signals
+   at all, or a timetable would qualify.
 2. The model, which is told that declining is correct and expected.
+
+This lives in **both** backends and must stay in step: `backend/app/ai_service.py`
+for the FastAPI host that is currently deployed, and `backend/src/core/practice.js`
+for the Node host kept as the serverless alternative. `backend/test/practice.test.mjs`
+pins the Node behaviour.
 
 The result is cached on the material either way. "No" is a result, and
 re-deciding it on every visit would cost a request to reach the same answer.

@@ -252,3 +252,41 @@ class NotebookChatResponse(BaseModel):
     answer: str
     citations: List[Citation] = Field(default_factory=list, max_length=8)
     grounded: bool = True
+
+class PracticeTest(BaseModel):
+    """One check on a student's answer.
+
+    An expression and the value it should evaluate to, both written as source
+    in the exercise's own language. Keeping them as source rather than as typed
+    values means one runner checks Python and JavaScript identically and
+    neither language needs a test framework shipped to the browser.
+    """
+
+    call: str = Field(min_length=1, description="A single expression calling the student's function")
+    expect: str = Field(min_length=1, description="What that expression should evaluate to, written as source")
+
+
+class PracticeExercise(BaseModel):
+    id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    concept: str = Field(default="General", description="Topic label taken from the material")
+    language: Literal["python", "javascript"] = "python"
+    entry: str = Field(min_length=1, description="Name of the function the student must write")
+    brief: str = Field(min_length=1, description="One or two sentences saying what the function must do")
+    starter: str = Field(min_length=1, description="Signature and docstring only — never the solution")
+    tests: List[PracticeTest] = Field(min_length=2, max_length=4)
+    hint: str = ""
+    citations: List[Citation] = Field(default_factory=list, max_length=4)
+
+
+class PracticeSet(BaseModel):
+    """Exercises for a material, or an honest refusal.
+
+    `applicable=False` is a complete and expected answer: most uploads are not
+    programming material, and offering coding practice for a marketing deck
+    would be worse than offering none.
+    """
+
+    applicable: bool = True
+    reason: str = ""
+    exercises: List[PracticeExercise] = Field(default_factory=list, max_length=4)

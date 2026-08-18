@@ -11,7 +11,14 @@ from typing import Any, Awaitable, Callable, Dict, List
 from fastapi import APIRouter, HTTPException, Request, Response
 from starlette.concurrency import run_in_threadpool
 
-from .ai_service import answer_notebook_question, create_study_image_prompt, generate_notebook_pack, generate_notebook_quiz, hard_quiz_provider_error
+from .ai_service import (
+    answer_notebook_question,
+    create_study_image_prompt,
+    generate_notebook_pack,
+    generate_notebook_quiz,
+    generate_practice,
+    hard_quiz_provider_error,
+)
 from .config import Settings
 from .image_service import generate_image, verify_raster_image
 from .models import ChatIllustrationRequest, Citation, IllustrationGenerationRequest, MaterialAskRequest, QuizGenerationRequest, SourceRecord, StudyPack
@@ -1107,5 +1114,51 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
     @router.post("/tts")
     async def tts_unavailable() -> None:
         raise HTTPException(status_code=501, detail="Read-aloud is not configured on the Python backend.")
+
+    @router.get("/materials/{material_id}/practice")
+    async def get_practice(material_id: str, refresh: str = "") -> Dict[str, Any]:
+        """Coding exercises drawn from this material, or an honest refusal.
+
+        Generated on demand rather than during the pipeline: most uploads are
+        not programming material, and spending a request on exercises for a
+        marketing deck every time — only to throw them away — is a bad trade.
+        The answer is cached on the material either way, because "no" is a
+        result and re-deciding it on every visit costs a request to reach the
+        same conclusion.
+        """
+        material = _require_material(material_id)
+        if refresh != "1" and material.get("practice"):
+            return {**material["practice"], "cached": True}
+
+        sources = _sources.get(material_id, [])
+        if not sources:
+            raise HTTPException(status_code=422, detail="That material has no readable source text.")
+
+        pack = await run_in_threadpool(generate_practice, sources, settings)
+        chunks = material.get("chunks", [])
+        exercises = []
+        for exercise in pack.exercises:
+            citation_ids = list(dict.fromkeys(_citation_id(c, chunks) for c in exercise.citations)) if chunks else []
+            exercises.append({
+                "id": exercise.id,
+                "title": exercise.title,
+                "concept": exercise.concept,
+                "language": exercise.language,
+                "entry": exercise.entry,
+                "brief": exercise.brief,
+                "starter": exercise.starter,
+                "tests": [{"call": t.call, "expect": t.expect} for t in exercise.tests],
+                "hint": exercise.hint,
+                "citations": citation_ids,
+            })
+
+        payload = {
+            "applicable": bool(exercises),
+            "reason": pack.reason,
+            "exercises": exercises,
+        }
+        material["practice"] = payload
+        await persist("material", material_id, material)
+        return {**payload, "cached": False}
 
     return router

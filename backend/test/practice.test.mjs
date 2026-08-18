@@ -183,6 +183,19 @@ test('a programming lecture is recognised whether or not it contains literal cod
   );
 });
 
+test('two different data-structure terms count separately', () => {
+  // Both match the same alternation regex. Scoring that regex once — which an
+  // earlier version did — denied practice to an algorithms lecture whose
+  // slides describe structures in prose without showing any code.
+  assert.equal(
+    looksLikeCode([
+      { id: 'c1', label: 'Slide 1', text: 'A linked list stores each element in a node that references the next.' },
+      { id: 'c2', label: 'Slide 2', text: 'A hash table maps a key to a bucket for constant time lookup.' },
+    ]),
+    true,
+  );
+});
+
 test('one incidental keyword in ordinary prose is not enough', () => {
   // "return" and "class" both appear here in their English senses, and neither
   // is a signal at all — words with everyday meanings are excluded outright.

@@ -70,12 +70,25 @@ const CODE_SIGNALS = [
   [/\breturn\s+(?:the\s+)?(?:value|index|result|list|array|true|false|null|none)\b/i, WEAK],
 ];
 
+/**
+ * Weak signals score per *distinct* term matched, not once for the whole
+ * alternation. A lecture that says both "linked list" and "hash table" is real
+ * evidence even with no literal code on its slides, and counting the shared
+ * regex a single time would have denied that deck any practice.
+ *
+ * Mirrored in `backend/app/ai_service.py`'s `looks_like_code`, which is the
+ * one the deployed FastAPI host actually runs.
+ */
 export function looksLikeCode(chunks) {
   const text = (chunks ?? []).map((c) => c.text).join('\n');
   let score = 0;
   for (const [pattern, weight] of CODE_SIGNALS) {
-    if (!pattern.test(text)) continue;
-    score += weight;
+    if (weight >= THRESHOLD) {
+      if (pattern.test(text)) score += weight;
+    } else {
+      const found = text.match(new RegExp(pattern.source, 'gi')) ?? [];
+      score += Math.min(new Set(found.map((m) => m.toLowerCase())).size, THRESHOLD);
+    }
     if (score >= THRESHOLD) return true;
   }
   return false;
