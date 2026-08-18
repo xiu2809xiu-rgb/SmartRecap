@@ -25,6 +25,13 @@
   --glass-line: rgba(163, 132, 255, 0.22);
   --glass-line-strong: rgba(186, 160, 255, 0.4);
 
+  /* Surface tints. Every "slightly raised panel" in the app was a hard-coded
+     rgba(255,255,255,.0x), which is invisible once the ground is light. As
+     tokens they flip with the palette instead. */
+  --tint: rgba(255, 255, 255, 0.05);
+  --tint-2: rgba(255, 255, 255, 0.08);
+  --tint-3: rgba(255, 255, 255, 0.11);
+
   /* ---- Ink on dark ---------------------------------------------------- */
   --ink: #f4f0ff;
   --ink-2: #c3b6e4;
@@ -104,11 +111,22 @@
 }
 
 /* ============================================================================
-   The study surface — same system, inverted luminance.
-   Scoped by [data-surface="study"] rather than a media query: which surface
-   you are on is a product decision, not an OS preference.
+   The light palette — same system, inverted luminance.
+
+   Which surfaces get it is the theme:
+
+     aurora    dark chrome, light reading pages   (the default)
+     midnight  dark everywhere, for reading at night
+     daylight  light everywhere
+
+   That is the whole theme mechanism. `[data-surface='study']` is set by the
+   reader, quiz and flashcard routes; `:not([data-theme='midnight'])` is what
+   lets midnight opt those pages back out of the light palette, and the
+   `[data-theme='daylight']` arm hands the same palette to the app chrome.
+   No second copy of the dark tokens is needed anywhere.
    ========================================================================= */
-[data-surface='study'] {
+[data-surface='study']:not([data-theme='midnight']),
+[data-theme='daylight'] {
   --ground: #f6f4fb;
   --ground-raised: #ffffff;
   --ground-sunken: #ebe6f7;
@@ -117,6 +135,10 @@
   --glass-strong: #ffffff;
   --glass-line: rgba(93, 52, 208, 0.16);
   --glass-line-strong: rgba(93, 52, 208, 0.32);
+
+  --tint: rgba(24, 16, 46, 0.04);
+  --tint-2: rgba(24, 16, 46, 0.07);
+  --tint-3: rgba(24, 16, 46, 0.11);
 
   --ink: #140f22;
   --ink-2: #453a63;

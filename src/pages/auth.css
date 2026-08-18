@@ -50,7 +50,7 @@
   color: var(--ink-3);
 }
 
-.affix-btn:hover { color: var(--ink); background: rgba(255, 255, 255, 0.07); }
+.affix-btn:hover { color: var(--ink); background: var(--tint-2); }
 
 .rules { display: flex; flex-direction: column; gap: 5px; margin-top: 9px; }
 

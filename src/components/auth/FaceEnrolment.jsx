@@ -59,16 +59,23 @@ export default function FaceEnrolment({ isGuest }) {
 
   return (
     <section className="panel settings-card">
-      <div className="settings-row">
-        <div>
-          <h2>Face sign-in</h2>
-          <p>
-            Save your face once and you can sign in by looking at the camera, instead of typing a password. Your email
-            and password keep working either way — this is a shortcut, never the only way into your account.
-          </p>
+      <header className="settings-card-head">
+        <span className="settings-card-icon">
+          <Icon name="face_retouching_natural" size={18} />
+        </span>
+        <h2>Face sign-in</h2>
+      </header>
+
+      <div className="setting-row">
+        <div className="setting-copy">
+          <strong>Sign in by looking at the camera</strong>
+          <span>
+            Save your face once and skip typing a password. Your email and password keep working either way — this is
+            a shortcut, never the only way into your account.
+          </span>
         </div>
 
-        <div className="face-enrol-action">
+        <div className="setting-control face-enrol-action">
           {status.loading ? (
             <Spinner size={20} />
           ) : isGuest ? (
