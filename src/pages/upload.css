@@ -194,3 +194,18 @@
   .upload-head { flex-direction: column; align-items: flex-start; }
   .upload-head .mascot { display: none; }
 }
+
+/* Says why Continue is disabled. A dead button with no explanation is the
+   thing people click twice and then give up on. */
+.upload-hint {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 14px;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* A step that validation has not unlocked yet. */
+.upload-stepper .step-indicator.is-locked { cursor: not-allowed; }

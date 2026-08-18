@@ -72,6 +72,20 @@ export default function Upload() {
     accept(e.dataTransfer.files?.[0]);
   };
 
+  /**
+   * What each step needs before you may leave it.
+   *
+   * Step two is always satisfied because the depth has a sensible default —
+   * forcing a choice you have already been given the right answer to is friction,
+   * not validation. It is listed explicitly anyway so the rule is visible in one
+   * place if that ever changes.
+   */
+  const canLeaveStep = (which) => {
+    if (which === 1) return !!file;
+    if (which === 2) return mode === 'cram' || mode === 'deep';
+    return !!file;
+  };
+
   const start = async () => {
     if (!file) {
       setError('Choose a file first.');
@@ -139,10 +153,15 @@ export default function Upload() {
           nextButtonText="Continue"
           onStepChange={setStep}
           onFinalStepCompleted={start}
-          /* Gate step one on actually having a file. Without this you can walk
-             all three steps and only discover the problem at the end, which is
-             the worst possible moment to be told. */
-          nextButtonProps={{ disabled: busy || (step === 1 && !file) }}
+          /* The real gate. Disabling the Continue button alone was not enough:
+             the step indicators were also clickable, so you could jump straight
+             to step three and submit with nothing selected. `canProceed` is
+             consulted by the button AND by the indicators. */
+          canProceed={canLeaveStep}
+          /* Stay on step three when the submit fails, rather than advancing
+             into a state with no content and no buttons. */
+          advanceOnComplete={false}
+          nextButtonProps={{ disabled: busy || !canLeaveStep(step) }}
         >
           {/* ------------------------------------------------------- step 1 */}
           <Step>
@@ -204,6 +223,13 @@ export default function Upload() {
             {error && (
               <p className="field-error upload-error" role="alert">
                 {error}
+              </p>
+            )}
+
+            {!file && !error && (
+              <p className="upload-hint">
+                <Icon name="arrow_upward" size={15} />
+                Choose a file to continue.
               </p>
             )}
 
