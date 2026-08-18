@@ -118,6 +118,14 @@ Pick **one**. Do not list them all.
 - **Recap in four languages** — Chinese, Malay or Tamil, translated *after*
   grounding so the citations still point at the original slides *(strongest if a
   judge asks who else could use this)*
+- **Practice** — write and run real code against exercises taken from your own
+  lecture, in the browser *(strongest for a technical judge, and the most
+  visually convincing thing we have after the ribbon)*
+
+> **If you demo Practice, run it once during the pre-flight.** The first Python
+> run downloads the runtime. After that it is cached and instant, but a cold
+> first run on conference wifi is not what you want on stage. The JavaScript
+> exercise needs no download at all — use that one if you are unsure.
 
 ### 2:40 — Close on the constraint
 
@@ -162,6 +170,20 @@ panel finish the sentence for you.
 > to an English slide, which shares no vocabulary — the check would have deleted
 > everything, or passed everything while reporting that it had checked. Key
 > terms stay in the original language, because that is what the exam paper uses.
+
+**"Where does the student's code run? Is that not dangerous?"**
+> Entirely in their own browser, in a Web Worker — Pyodide for Python,
+> JavaScript natively. Nothing is sent to us. We deliberately did not build a
+> server-side runner: accepting arbitrary code onto a Learner Lab instance we
+> cannot properly isolate, days before a deadline, risks the whole AWS account
+> for no benefit a student would notice. The trade is that we support Python
+> and JavaScript, not Java or C, and the page says so.
+
+**"How do you stop an infinite loop hanging the page?"**
+> The worker is killed from the main thread after ten seconds. The interpreter
+> never yields inside a `while True`, so nothing inside it can time itself out —
+> terminating from outside is the only thing that works. The next run starts a
+> fresh worker.
 
 **"Is this just a wrapper around an LLM?"**
 > The model is one of six stages. Extraction preserves slide numbers, chunking

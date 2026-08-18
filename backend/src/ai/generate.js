@@ -1,7 +1,15 @@
 import { complete } from './provider.js';
-import { recapPrompt, quizPrompt, askPrompt, judgeShortAnswerPrompt, repairPrompt, translatePrompt } from './prompts.js';
+import {
+  recapPrompt,
+  quizPrompt,
+  askPrompt,
+  judgeShortAnswerPrompt,
+  repairPrompt,
+  translatePrompt,
+  practicePrompt,
+} from './prompts.js';
 import { languageName, normaliseLanguage } from './languages.js';
-import { groundRecap, groundQuiz, groundAnswer } from './ground.js';
+import { groundRecap, groundQuiz, groundAnswer, groundPractice } from './ground.js';
 import { upstream } from '../lib/http.js';
 
 /**
@@ -203,6 +211,76 @@ export async function generateQuiz({ chunks, count, moduleName, difficulty, onAt
   });
   const { quiz, report } = groundQuiz(data, chunks);
   return { quiz, meta, report: { ...report, repaired } };
+}
+
+function validatePractice(obj) {
+  if (!obj || typeof obj !== 'object') return ['Response was not a JSON object.'];
+  // Declining is a valid, complete answer — most uploads are not programming
+  // material, and a model that says so is behaving correctly.
+  if (obj.applicable === false) return [];
+  if (!Array.isArray(obj.exercises)) return ['"exercises" must be an array.'];
+
+  const errors = [];
+  const ids = new Set();
+  (obj.exercises ?? []).forEach((e, i) => {
+    if (!isNonEmptyString(e?.id)) errors.push(`exercises[${i}].id must be a non-empty string.`);
+    else if (ids.has(e.id)) errors.push(`exercises[${i}].id must be unique.`);
+    else ids.add(e.id);
+
+    if (!isNonEmptyString(e?.title)) errors.push(`exercises[${i}].title must be a non-empty string.`);
+    if (!isNonEmptyString(e?.brief)) errors.push(`exercises[${i}].brief must be a non-empty string.`);
+    if (!isNonEmptyString(e?.entry)) errors.push(`exercises[${i}].entry must name the function to write.`);
+    if (!isNonEmptyString(e?.starter)) errors.push(`exercises[${i}].starter must be a non-empty string.`);
+    if (!['python', 'javascript'].includes(e?.language)) {
+      errors.push(`exercises[${i}].language must be "python" or "javascript".`);
+    }
+    if (!Array.isArray(e?.citations)) errors.push(`exercises[${i}].citations must be an array.`);
+    if (!Array.isArray(e?.tests) || e.tests.length < 2) {
+      errors.push(`exercises[${i}].tests must have at least 2 entries.`);
+    } else {
+      e.tests.forEach((t, j) => {
+        if (!isNonEmptyString(t?.call)) errors.push(`exercises[${i}].tests[${j}].call must be an expression.`);
+        if (!isNonEmptyString(t?.expect)) errors.push(`exercises[${i}].tests[${j}].expect must be a value.`);
+      });
+    }
+  });
+  return errors;
+}
+
+/**
+ * Coding exercises for a material, or an honest refusal.
+ *
+ * Called on demand rather than in the pipeline: most uploads are not
+ * programming material, and generating exercises for a marketing deck just to
+ * throw them away would burn a free tier for nothing.
+ */
+export async function generatePractice({ chunks, count = 3, moduleName, language, onAttempt }) {
+  const { data, meta, repaired } = await generateValidated({
+    messages: practicePrompt({ chunks, count, moduleName, language: language && language !== 'en' ? languageName(language) : null }),
+    validate: validatePractice,
+    maxTokens: 3000,
+    temperature: 0.3,
+    onAttempt,
+  });
+
+  if (data.applicable === false || !(data.exercises ?? []).length) {
+    return {
+      practice: { exercises: [], applicable: false, reason: String(data.reason ?? 'This material does not teach programming.') },
+      meta,
+      report: { kept: 0, removed: 0, repaired },
+    };
+  }
+
+  const { practice, report } = groundPractice(data, chunks);
+  return {
+    practice: {
+      ...practice,
+      applicable: practice.exercises.length > 0,
+      ...(practice.exercises.length ? null : { reason: 'Nothing the model wrote could be traced back to your material.' }),
+    },
+    meta,
+    report: { ...report, repaired },
+  };
 }
 
 /* ------------------------------------------------------------- translation */

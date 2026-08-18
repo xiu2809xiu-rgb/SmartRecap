@@ -10,6 +10,7 @@ import * as jobs from './core/jobs.js';
 import * as face from './core/face.js';
 import * as binders from './core/binders.js';
 import * as sources from './core/sources.js';
+import * as practice from './core/practice.js';
 import { dispatchBackgroundJob } from './core/dispatch.js';
 import { configuredProviders } from './ai/provider.js';
 import { health } from './core/health.js';
@@ -181,6 +182,11 @@ app.get('/quiz/attempts', send((req) => study.listAttempts(requireUser(req).id, 
 
 app.post('/ask', send((req) => study.ask(requireUser(req).id, req.body)));
 app.post('/tts', send((req) => study.textToSpeech(requireUser(req).id, req.body)));
+
+app.get(
+  '/materials/:id/practice',
+  send((req) => practice.getPractice(requireUser(req).id, req.params.id, { refresh: req.query.refresh === '1' })),
+);
 
 app.use((req, res) => res.status(404).json({ message: `No route for ${req.method} ${req.path}` }));
 

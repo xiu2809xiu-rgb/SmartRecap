@@ -3,6 +3,10 @@ node_modules/
 dist/
 .vite/
 
+# 13 MB of Pyodide, copied out of node_modules by scripts/copy-pyodide.mjs on
+# predev/prebuild. Build output, not source.
+public/pyodide/
+
 # Secrets and local configuration
 .env
 .env.*

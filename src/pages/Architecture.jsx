@@ -212,6 +212,16 @@ export default function Architecture() {
               </p>
             </article>
             <article>
+              <h3>Why student code never reaches our server</h3>
+              <p>
+                The practice panel runs Python through WebAssembly and JavaScript natively, both inside a Web Worker
+                in the student&rsquo;s own browser. A server-side runner would mean accepting arbitrary code from the
+                internet onto a Learner Lab instance we cannot properly isolate — the blast radius of getting that
+                wrong is the entire AWS account. This has none of that exposure, costs nothing to operate, and keeps
+                working when the lab session ends. The trade is Python and JavaScript only.
+              </p>
+            </article>
+            <article>
               <h3>Why translation runs last</h3>
               <p>
                 Grounding compares a claim against the slide it cites by shared vocabulary. Ask the model to write the

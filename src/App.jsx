@@ -29,6 +29,7 @@ const Processing = lazy(() => import('./pages/Processing.jsx'));
 const Recap = lazy(() => import('./pages/Recap.jsx'));
 const Quiz = lazy(() => import('./pages/Quiz.jsx'));
 const Matchmaking = lazy(() => import('./pages/Matchmaking.jsx'));
+const Practice = lazy(() => import('./pages/Practice.jsx'));
 const Results = lazy(() => import('./pages/Results.jsx'));
 const Flashcards = lazy(() => import('./pages/Flashcards.jsx'));
 const Quizzes = lazy(() => import('./pages/Quizzes.jsx'));
@@ -141,6 +142,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <Recap />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/app/material/:id/practice"
+              element={
+                <RequireAuth>
+                  <Practice />
                 </RequireAuth>
               }
             />
