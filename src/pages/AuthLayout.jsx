@@ -4,6 +4,7 @@ import AuroraBackdrop from '../components/AuroraBackdrop.jsx';
 import Mascot from '../mascot/Mascot.jsx';
 import { lazy, Suspense } from 'react';
 import useAvatarModel from '../components/avatar/useAvatarModel.js';
+import ParticleText from '../components/ParticleText.jsx';
 
 // Only reached once the probe says the model is there, so the three.js chunk
 // is never downloaded on an auth page that is going to show Rec instead.
@@ -116,10 +117,14 @@ export default function AuthLayout({ title, subtitle, children, footer, methods,
               {/* Above the figure rather than below it: the label reads as
                   belonging to the person, and the space under the model is
                   where the feet swing during several of the clips. */}
-              <p className="auth-learner">
+              <div className="auth-learner">
                 <span className="auth-learner-role">Learner</span>
-                Richie Koh
-              </p>
+                {/* The name in particles, the same effect the 404 hero uses.
+                    Canvas 2D, so it adds no WebGL context alongside the
+                    model's, and it already handles reduced motion itself. */}
+                <ParticleText text="Richie Koh" className="auth-learner-name" ratio={0.22} />
+                <span className="sr-only">Richie Koh</span>
+              </div>
               <AvatarStage url={avatar.url} />
             </Suspense>
           ) : (

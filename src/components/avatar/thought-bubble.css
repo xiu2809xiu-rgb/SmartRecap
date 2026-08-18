@@ -76,8 +76,6 @@
    similar amount, sized so the bubble clears the figure's widest reach
    (measured: the figure spans 9.8%-84.5% of the frame across all clips)
    without ever crossing the viewport edge or the card. */
-.auth-mascot.has-avatar { overflow: visible; }
-
 .auth-mascot.has-avatar .thought {
   width: min(230px, 42%);
   /* Measured across 26 samples of every clip: the figure's topmost pixel
