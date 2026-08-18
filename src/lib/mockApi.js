@@ -87,15 +87,24 @@ export const PIPELINE_STAGES = [
   { id: 'recap', label: 'Writing your recap', detail: 'Every point has to name the slide it came from', ms: 4200 },
   { id: 'quiz', label: 'Writing your quiz', detail: 'Every answer traced back to your material', ms: 3200 },
   { id: 'ground', label: 'Checking every claim', detail: 'Anything that cannot be traced is dropped', ms: 1400 },
+  {
+    id: 'translate',
+    label: 'Translating what passed the check',
+    detail: 'The citations stay pointed at your original slides',
+    ms: 2200,
+  },
   { id: 'store', label: 'Saving to your library', detail: 'Recap, quiz and sources', ms: 600 },
 ];
 
 async function runJob(jobId, material) {
   const job = jobs.get(jobId);
-  const total = PIPELINE_STAGES.reduce((n, s) => n + s.ms, 0);
+  // Same rule as the real pipeline: an English job skips translation, so it
+  // must not appear in the demo's timeline either.
+  const running = PIPELINE_STAGES.filter((s) => s.id !== 'translate' || (material.language && material.language !== 'en'));
+  const total = running.reduce((n, s) => n + s.ms, 0);
   let elapsed = 0;
 
-  for (const stage of PIPELINE_STAGES) {
+  for (const stage of running) {
     job.stage = stage.id;
     job.stageLabel = stage.label;
     job.log.push({ at: Date.now(), stage: stage.id, message: stage.label, detail: stage.detail });
@@ -299,7 +308,7 @@ export const mockApi = {
   },
 
   jobs: {
-    async start({ materialId, fileName, mode, module: moduleName }) {
+    async start({ materialId, fileName, mode, module: moduleName, difficulty = 'balanced', language = 'en' }) {
       const material = {
         id: materialId,
         demo: true,
@@ -309,6 +318,11 @@ export const mockApi = {
         sizeBytes: 0,
         module: moduleName || 'Unfiled',
         mode,
+        difficulty,
+        // Demo mode calls no model, so it cannot translate the sample recap.
+        // It records the choice and shows the stage, and the reader says
+        // plainly that the text stayed in English rather than pretending.
+        language,
         status: 'processing',
         pageCount: SAMPLE_CHUNKS.length * 2,
         createdAt: new Date().toISOString(),
@@ -321,7 +335,16 @@ export const mockApi = {
       persist();
 
       const jobId = makeId('job');
-      jobs.set(jobId, { id: jobId, materialId, status: 'running', stage: 'upload', stageLabel: '', progress: 0, log: [] });
+      jobs.set(jobId, {
+        id: jobId,
+        materialId,
+        language,
+        status: 'running',
+        stage: 'upload',
+        stageLabel: '',
+        progress: 0,
+        log: [],
+      });
       runJob(jobId, material);
       return { jobId, materialId };
     },
@@ -658,6 +681,11 @@ export const mockApi = {
       grounded: true,
       demo: true,
     };
+  },
+
+  async health() {
+    await sleep(120);
+    return { ok: true, mode: 'demo', providers: [], region: 'n/a', uptimeSeconds: 0 };
   },
 
   async tts() {

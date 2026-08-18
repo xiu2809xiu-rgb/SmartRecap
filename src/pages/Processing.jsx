@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
 import { api, pollJob, PIPELINE_STAGES } from '../lib/api.js';
 import { useStore } from '../lib/store.jsx';
@@ -60,7 +60,14 @@ export default function Processing() {
     };
   }, [jobId, materialId, navigate, upsertMaterial, toast]);
 
-  const stageIndex = PIPELINE_STAGES.findIndex((s) => s.id === job.stage);
+  // The translation stage only runs when the student asked for a language
+  // other than their material's, so an English job should never see a step
+  // listed that is not going to happen.
+  const stages = useMemo(
+    () => PIPELINE_STAGES.filter((s) => s.id !== 'translate' || (job.language && job.language !== 'en')),
+    [job.language],
+  );
+  const stageIndex = stages.findIndex((s) => s.id === job.stage);
   const mascotState = error ? 'confused' : (STAGE_STATE[job.stage] ?? 'thinking');
 
   return (
@@ -80,7 +87,7 @@ export default function Processing() {
 
         <div className="processing-copy">
           <p className="eyebrow">
-            {error ? 'Something went wrong' : `Step ${Math.max(1, stageIndex + 1)} of ${PIPELINE_STAGES.length}`}
+            {error ? 'Something went wrong' : `Step ${Math.max(1, stageIndex + 1)} of ${stages.length}`}
           </p>
 
           <h1 className="processing-title" aria-live="polite">
@@ -89,7 +96,7 @@ export default function Processing() {
             ) : (
               <DecryptedText
                 key={job.stage}
-                text={PIPELINE_STAGES[stageIndex]?.label ?? 'Starting up'}
+                text={stages[stageIndex]?.label ?? 'Starting up'}
                 animateOn="view"
                 sequential
                 speed={26}
@@ -100,7 +107,7 @@ export default function Processing() {
           </h1>
 
           <p className="processing-detail">
-            {error ? error : (PIPELINE_STAGES[stageIndex]?.detail ?? 'Contacting the API')}
+            {error ? error : (stages[stageIndex]?.detail ?? 'Contacting the API')}
           </p>
 
           {error ? (
@@ -126,7 +133,7 @@ export default function Processing() {
               </div>
 
               <ol className="stage-list">
-                {PIPELINE_STAGES.map((s, i) => {
+                {stages.map((s, i) => {
                   const state = i < stageIndex ? 'done' : i === stageIndex ? 'now' : 'todo';
                   return (
                     <li key={s.id} className={`stage is-${state}`}>

@@ -12,6 +12,7 @@ import * as binders from './core/binders.js';
 import * as sources from './core/sources.js';
 import { dispatchBackgroundJob } from './core/dispatch.js';
 import { configuredProviders } from './ai/provider.js';
+import { health } from './core/health.js';
 
 /**
  * SmartRecap API on EC2.
@@ -103,16 +104,9 @@ const dispatchInProcess = async (payload) => {
 
 /* ---------------------------------------------------------------- routes */
 
-app.get(
-  '/health',
-  send(async () => ({
-    ok: true,
-    providers: configuredProviders().map((p) => p.name),
-    region: process.env.AWS_REGION ?? 'unset',
-    table: process.env.TABLE_NAME ?? 'unset',
-    uptimeSeconds: Math.round(process.uptime()),
-  })),
-);
+// `?deep=1` additionally probes every AWS service the pipeline uses, so
+// "the deployment works" is one request away from being demonstrable.
+app.get('/health', send((req) => health({ deep: req.query.deep === '1' })));
 
 app.post('/auth/signup', send((req) => auth.signup(req.body, guestIdOf(req)), 201));
 app.post('/auth/login', send((req) => auth.login(req.body)));

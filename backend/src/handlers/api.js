@@ -7,6 +7,7 @@ import * as library from '../core/library.js';
 import * as study from '../core/study.js';
 import * as jobs from '../core/jobs.js';
 import * as face from '../core/face.js';
+import { health } from '../core/health.js';
 import * as binders from '../core/binders.js';
 import * as sources from '../core/sources.js';
 
@@ -52,6 +53,7 @@ const dispatchToProcessor = (payload) =>
 const publicOrigin = () => (process.env.PUBLIC_WEB_ORIGIN ?? (process.env.ALLOWED_ORIGIN !== '*' ? process.env.ALLOWED_ORIGIN : '') ?? '');
 
 const ROUTES = [
+  ['GET', /^\/health$/, async (e) => json(200, await health({ deep: e.queryStringParameters?.deep === '1' }))],
   ['POST', /^\/auth\/signup$/, async (e) => json(201, await auth.signup(parseBody(e), guestIdOf(e)))],
   ['POST', /^\/auth\/login$/, async (e) => json(200, await auth.login(parseBody(e)))],
   ['POST', /^\/auth\/guest$/, async () => json(201, await auth.guest())],

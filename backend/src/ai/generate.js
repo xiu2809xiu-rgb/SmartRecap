@@ -1,5 +1,6 @@
 import { complete } from './provider.js';
-import { recapPrompt, quizPrompt, askPrompt, judgeShortAnswerPrompt, repairPrompt } from './prompts.js';
+import { recapPrompt, quizPrompt, askPrompt, judgeShortAnswerPrompt, repairPrompt, translatePrompt } from './prompts.js';
+import { languageName, normaliseLanguage } from './languages.js';
 import { groundRecap, groundQuiz, groundAnswer } from './ground.js';
 import { upstream } from '../lib/http.js';
 
@@ -192,9 +193,9 @@ export async function generateRecap({ chunks, mode, moduleName, onAttempt }) {
   return { recap, meta, report: { ...report, repaired } };
 }
 
-export async function generateQuiz({ chunks, count, moduleName, onAttempt }) {
+export async function generateQuiz({ chunks, count, moduleName, difficulty, onAttempt }) {
   const { data, meta, repaired } = await generateValidated({
-    messages: quizPrompt({ chunks, count, moduleName }),
+    messages: quizPrompt({ chunks, count, moduleName, difficulty }),
     validate: validateQuiz,
     maxTokens: 4096,
     temperature: 0.35,
@@ -202,6 +203,149 @@ export async function generateQuiz({ chunks, count, moduleName, onAttempt }) {
   });
   const { quiz, report } = groundQuiz(data, chunks);
   return { quiz, meta, report: { ...report, repaired } };
+}
+
+/* ------------------------------------------------------------- translation */
+
+/**
+ * Every translatable string in a study pack, each paired with a setter that
+ * writes the translation back where it came from.
+ *
+ * Collecting setters rather than paths means the shape is never re-walked and
+ * never parsed, so a translation cannot land in the wrong field. Citations,
+ * chunk ids, answer indices and `verified` flags are not in this list at all —
+ * they are structure, and translating structure is how you break it.
+ */
+function translatableFields(recap, quiz) {
+  const out = [];
+  const push = (text, set) => {
+    if (typeof text === 'string' && text.trim()) out.push({ text, set });
+  };
+
+  push(recap.summary, (v) => {
+    recap.summary = v;
+  });
+  for (const section of recap.sections ?? []) {
+    push(section.heading, (v) => {
+      section.heading = v;
+    });
+    for (const point of section.points ?? []) {
+      push(point.text, (v) => {
+        point.text = v;
+      });
+    }
+  }
+  // The term itself stays in the material's language on purpose: it is the
+  // word the exam paper will use, so replacing it would cost the student the
+  // one thing they most need to recognise. Only the explanation moves.
+  for (const term of recap.keyTerms ?? []) {
+    push(term.definition, (v) => {
+      term.definition = v;
+    });
+  }
+  (recap.examTips ?? []).forEach((tip, i) => {
+    push(tip, (v) => {
+      recap.examTips[i] = v;
+    });
+  });
+  for (const item of recap.ungrounded ?? []) {
+    push(item.text, (v) => {
+      item.text = v;
+    });
+    push(item.reason, (v) => {
+      item.reason = v;
+    });
+  }
+
+  for (const question of quiz?.questions ?? []) {
+    push(question.prompt, (v) => {
+      question.prompt = v;
+    });
+    push(question.explanation, (v) => {
+      question.explanation = v;
+    });
+    push(question.modelAnswer, (v) => {
+      question.modelAnswer = v;
+    });
+    push(question.rubric, (v) => {
+      question.rubric = v;
+    });
+    (question.options ?? []).forEach((option, i) => {
+      push(option, (v) => {
+        question.options[i] = v;
+      });
+    });
+  }
+
+  return out;
+}
+
+// Small enough that a batch fits comfortably inside 4096 output tokens even in
+// a script that expands under translation, large enough that a 15-question pack
+// is three calls rather than thirty.
+const BATCH = 50;
+
+/**
+ * Translates a grounded study pack in place-ish (on a clone) into `language`.
+ *
+ * A translation failure never fails the job. Anything that does not come back
+ * keeps its original wording, so the worst case is a recap that is partly in
+ * English — which is still a usable recap, and is visibly what happened rather
+ * than a blank screen twenty seconds before a demo.
+ */
+export async function translateStudyPack({ recap, quiz, language, onAttempt }) {
+  const code = normaliseLanguage(language);
+  if (code === 'en') return { recap, quiz, translated: false, language: code };
+
+  const nextRecap = structuredClone(recap);
+  const nextQuiz = structuredClone(quiz);
+  const fields = translatableFields(nextRecap, nextQuiz);
+  if (!fields.length) return { recap, quiz, translated: false, language: code };
+
+  const name = languageName(code);
+  const meta = { tokensIn: 0, tokensOut: 0, latencyMs: 0, costUsd: 0 };
+  let applied = 0;
+
+  for (let start = 0; start < fields.length; start += BATCH) {
+    const batch = fields.slice(start, start + BATCH);
+    const items = Object.fromEntries(batch.map((f, i) => [`t${i}`, f.text]));
+
+    try {
+      const res = await complete(
+        { messages: translatePrompt({ language: name, items }), maxTokens: 4096, temperature: 0.1 },
+        { onAttempt },
+      );
+      meta.tokensIn += res.tokensIn ?? 0;
+      meta.tokensOut += res.tokensOut ?? 0;
+      meta.latencyMs += res.latencyMs ?? 0;
+      meta.costUsd += res.costUsd ?? 0;
+
+      const parsed = extractJson(res.content);
+      if (!parsed || typeof parsed !== 'object') {
+        onAttempt?.({ status: 'failed', provider: 'translation', reason: 'Unreadable response — this batch stays in the original language.' });
+        continue;
+      }
+
+      batch.forEach((field, i) => {
+        const value = parsed[`t${i}`];
+        if (typeof value === 'string' && value.trim()) {
+          field.set(value.trim());
+          applied += 1;
+        }
+      });
+    } catch (e) {
+      onAttempt?.({ status: 'failed', provider: 'translation', reason: e?.message ?? 'Translation call failed.' });
+    }
+  }
+
+  return {
+    recap: nextRecap,
+    quiz: nextQuiz,
+    language: code,
+    translated: applied > 0,
+    meta,
+    report: { total: fields.length, applied },
+  };
 }
 
 export async function judgeShortAnswer({ prompt, modelAnswer, rubric, studentAnswer, onAttempt }) {

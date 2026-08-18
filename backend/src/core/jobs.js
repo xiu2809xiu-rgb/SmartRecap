@@ -2,6 +2,8 @@ import { keys, newId, getItem, putItem, ttlDays } from '../lib/db.js';
 import { presignUpload, sourceKey } from '../lib/s3.js';
 import { badRequest, notFound, forbidden, HttpError } from '../lib/http.js';
 import { configuredProviders } from '../ai/provider.js';
+import { normaliseLanguage } from '../ai/languages.js';
+import { QUIZ_DIFFICULTIES } from '../ai/prompts.js';
 
 /**
  * Uploads and job control.
@@ -32,6 +34,23 @@ export async function createUpload(userId, { fileName, contentType, sizeBytes })
  * `InvokeCommand`, on EC2 it is a bare call that is not awaited. Everything
  * else about starting a job is identical.
  */
+/**
+ * Everything the student chose, clamped to something the pipeline can run.
+ *
+ * A request body is untrusted input, and an unrecognised difficulty or language
+ * is a typo far more often than an attack — so both fall back to the default
+ * rather than rejecting the upload the student just waited on.
+ */
+function optionsFrom(body) {
+  return {
+    mode: body.mode === 'cram' ? 'cram' : 'deep',
+    moduleName: body.module || '',
+    quizLength: Math.min(20, Math.max(3, Number(body.quizLength) || 10)),
+    difficulty: QUIZ_DIFFICULTIES.includes(body.difficulty) ? body.difficulty : 'balanced',
+    language: normaliseLanguage(body.language),
+  };
+}
+
 export async function startJob(userId, body, dispatch) {
   if (!body?.materialId || !body?.fileName) throw badRequest('materialId and fileName are required.');
 
@@ -41,6 +60,7 @@ export async function startJob(userId, body, dispatch) {
 
   const jobId = newId('job');
   const key = sourceKey(userId, body.materialId, body.fileName);
+  const options = optionsFrom(body);
 
   await putItem({
     ...keys.job(jobId),
@@ -51,6 +71,10 @@ export async function startJob(userId, body, dispatch) {
     stage: 'upload',
     progress: 0,
     log: [],
+    // The processing screen reads this to decide whether to show the
+    // translation stage at all, so an English job never displays a step that
+    // is not going to run.
+    language: options.language,
     createdAt: new Date().toISOString(),
     expiresAt: ttlDays(2),
   });
@@ -62,7 +86,9 @@ export async function startJob(userId, body, dispatch) {
     title: String(body.fileName).replace(/\.[^.]+$/, ''),
     fileName: body.fileName,
     module: body.module || 'Unfiled',
-    mode: body.mode === 'cram' ? 'cram' : 'deep',
+    mode: options.mode,
+    difficulty: options.difficulty,
+    language: options.language,
     status: 'processing',
     s3Key: key,
     createdAt: new Date().toISOString(),
@@ -74,9 +100,7 @@ export async function startJob(userId, body, dispatch) {
     materialId: body.materialId,
     fileName: body.fileName,
     key,
-    mode: body.mode === 'cram' ? 'cram' : 'deep',
-    moduleName: body.module || '',
-    quizLength: Math.min(20, Math.max(3, Number(body.quizLength) || 10)),
+    ...options,
   });
 
   return { jobId, materialId: body.materialId };

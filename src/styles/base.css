@@ -217,6 +217,12 @@ img, svg, canvas { display: block; max-width: 100%; }
 
 /* ---- Form fields ---- */
 .field { display: flex; flex-direction: column; gap: 7px; }
+
+/* A column flex container stretches its children across the cross axis, which
+   silently overrides `inline-flex` and turns a three-word segmented control
+   into a full-width slab with dead space in it. Sizing it to its content is
+   what `inline-flex` was asking for in the first place. */
+.field > .segmented { align-self: flex-start; }
 .field > label {
   font-size: var(--t-xs);
   font-weight: 650;
