@@ -70,6 +70,9 @@ export default function Practice() {
   const [output, setOutput] = useState({});
   const [checks, setChecks] = useState({});
   const [showHint, setShowHint] = useState(false);
+  const [helpAvailable, setHelpAvailable] = useState(false);
+  const [help, setHelp] = useState({});
+  const [helping, setHelping] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,6 +96,18 @@ export default function Practice() {
       cancelled = true;
     };
   }, [id]);
+
+  // Only offered when the deployment actually has a coding model configured.
+  useEffect(() => {
+    let cancelled = false;
+    api.practice
+      .helpAvailable()
+      .then((r) => !cancelled && setHelpAvailable(!!r?.available))
+      .catch(() => !cancelled && setHelpAvailable(false));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const exercises = practice?.exercises ?? [];
   const isPlayground = activeId === PLAYGROUND_ID;
@@ -118,7 +133,28 @@ export default function Practice() {
   const clear = useCallback(() => {
     setOutput((prev) => ({ ...prev, [draftKey]: null }));
     setChecks((prev) => ({ ...prev, [draftKey]: null }));
+    setHelp((prev) => ({ ...prev, [draftKey]: null }));
   }, [draftKey]);
+
+  /** Ask why the failing checks fail. Never asks for, or shows, a solution. */
+  const onExplain = useCallback(async () => {
+    if (!exercise) return;
+    setHelping(true);
+    try {
+      const failing = (checks[draftKey]?.tests ?? []).filter((t) => !t.pass);
+      const res = await api.practice.explain({
+        language: exercise.language,
+        brief: exercise.brief,
+        code,
+        failures: failing,
+      });
+      setHelp((prev) => ({ ...prev, [draftKey]: { text: res.explanation, model: res.model } }));
+    } catch (e) {
+      setHelp((prev) => ({ ...prev, [draftKey]: { error: e.message ?? 'Could not get help just now.' } }));
+    } finally {
+      setHelping(false);
+    }
+  }, [exercise, checks, draftKey, code]);
 
   /** Run without grading. This is the one that always has to work. */
   const onRun = useCallback(async () => {
@@ -370,6 +406,44 @@ export default function Practice() {
                           {passed} of {check.tests.length} passing
                         </span>
                       </p>
+                      {/* Offered only when something actually failed, and only
+                          on a deployment with a coding model. It explains the
+                          failure; it never writes the answer. */}
+                      {helpAvailable && passed < check.tests.length && (
+                        <div className="practice-help">
+                          {!help[draftKey] && (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              onClick={onExplain}
+                              disabled={helping}
+                            >
+                              {helping ? <Spinner size={15} /> : <Icon name="lightbulb_2" size={16} />}
+                              {helping ? 'Reading your code…' : 'Why did this fail?'}
+                            </button>
+                          )}
+                          {help[draftKey]?.error && (
+                            <p className="practice-help-error">
+                              <Icon name="error" size={15} />
+                              {help[draftKey].error}
+                            </p>
+                          )}
+                          {help[draftKey]?.text && (
+                            <div className="practice-help-body">
+                              <p className="practice-panel-head">
+                                Why it fails
+                                <span className="practice-help-model">{help[draftKey].model}</span>
+                              </p>
+                              <p>{help[draftKey].text}</p>
+                              <p className="practice-help-note">
+                                <Icon name="info" size={14} />
+                                Deliberately not the answer — the fix is yours to write.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       <ul className="practice-tests">
                         {check.tests.map((t, i) => (
                           <li key={i} className={t.pass ? 'is-pass' : 'is-fail'}>

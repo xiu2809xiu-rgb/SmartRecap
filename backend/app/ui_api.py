@@ -22,6 +22,7 @@ from .ai_service import (
     hard_quiz_provider_error,
 )
 from .config import Settings
+from .code_service import coding_help_available, explain_failure
 from .google_auth import verify_google_id_token
 from .image_service import generate_image, verify_raster_image
 from .models import ChatIllustrationRequest, Citation, IllustrationGenerationRequest, MaterialAskRequest, QuizGenerationRequest, SourceRecord, StudyPack
@@ -1231,6 +1232,40 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
     @router.post("/tts")
     async def tts_unavailable() -> None:
         raise HTTPException(status_code=501, detail="Read-aloud is not configured on the Python backend.")
+
+    @router.post("/practice/explain")
+    async def explain_practice_failure(request: Request) -> Dict[str, Any]:
+        """Why did this attempt fail?
+
+        Deliberately not "fix my code": the service is prompted to withhold a
+        solution and its output is stripped of code blocks, because a student
+        handed working code has learned nothing. See `code_service.py`.
+        """
+        body = await request.json()
+        code = str(body.get("code") or "").strip()
+        if not code:
+            raise HTTPException(status_code=422, detail="There is no code to look at yet.")
+        if not coding_help_available(settings):
+            raise HTTPException(
+                status_code=501,
+                detail="Coding help is not configured on this deployment.",
+            )
+
+        result = await run_in_threadpool(
+            explain_failure,
+            language=str(body.get("language") or "python"),
+            brief=str(body.get("brief") or ""),
+            code=code,
+            failures=[f for f in (body.get("failures") or []) if isinstance(f, dict)],
+            settings=settings,
+        )
+        if not result:
+            raise HTTPException(status_code=502, detail="Could not reach the coding model just now.")
+        return {"explanation": result["text"], "model": result["model"]}
+
+    @router.get("/practice/help-available")
+    async def practice_help_available() -> Dict[str, Any]:
+        return {"available": coding_help_available(settings)}
 
     @router.get("/materials/{material_id}/practice")
     async def get_practice(material_id: str, refresh: str = "") -> Dict[str, Any]:

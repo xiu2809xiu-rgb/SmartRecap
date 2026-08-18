@@ -203,6 +203,10 @@ const live = {
     /** Generated on first ask and cached on the material; `refresh` regenerates. */
     get: (materialId, { refresh } = {}) =>
       request(`/materials/${materialId}/practice${refresh ? '?refresh=1' : ''}`),
+    /** Whether this deployment has a coding model configured. */
+    helpAvailable: () => request('/practice/help-available'),
+    /** Why did this attempt fail? Never returns a corrected solution. */
+    explain: (payload) => request('/practice/explain', { method: 'POST', body: payload }),
   },
 
   binders: {
