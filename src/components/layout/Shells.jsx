@@ -14,7 +14,7 @@ import '../../reactbits/GooeyNav.css';
  * shell and the light study surface, including the body background. Setting it
  * on a wrapper div would leave the page behind the content still dark.
  */
-function useSurface(surface) {
+export function useSurface(surface) {
   useEffect(() => {
     const root = document.documentElement;
     if (surface) root.dataset.surface = surface;

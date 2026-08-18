@@ -121,10 +121,12 @@ Pick **one**. Do not list them all.
 
 ### 2:40 — Close on the constraint
 
-> "Bedrock is blocked in Learner Lab, so generation runs on OpenRouter with
-> automatic failover to NVIDIA NIM — both free tiers, called only from the
-> server. The AWS AI in our pipeline is Textract for OCR and Polly for
-> read-aloud. Everything stateful is S3, DynamoDB and Cognito."
+> "The bonus is for meaningful use of AI, so here is ours: the model is one
+> stage of seven, and the other six exist to make its output checkable. The
+> points it wrote that failed the check are the ones you just saw listed.
+> Generation runs on OpenRouter with automatic failover to NVIDIA
+> NIM, called only from the server. Textract reads scans, Polly reads recaps
+> aloud, and everything stateful is S3, DynamoDB and Cognito."
 
 If you have a spare 15 seconds, open `/architecture` and let the live status
 panel finish the sentence for you.
@@ -141,9 +143,12 @@ panel finish the sentence for you.
 > one lets through. Anything that fails is dropped and shown as dropped.
 
 **"Why not Bedrock?"**
-> It is not available in AWS Academy Learner Lab. We use Textract and Polly for
-> the AWS AI in the pipeline, and external free-tier models for generation,
-> called only from the server so no key reaches the browser.
+> It is not available in AWS Academy Learner Lab, and the organisers relaxed the
+> bonus criteria to meaningful use of AI rather than a specific AWS service.
+> Generation runs on OpenRouter with failover to NVIDIA NIM, called only from
+> the server so no key reaches the browser. Textract and Polly are the AWS AI in
+> the pipeline. Do not get drawn into a vendor conversation — the interesting
+> part is what we do with the output, not where it came from.
 
 **"What if the file is a scan, or nearly empty?"**
 > Under 40 characters a page we treat it as a scan and send it to Textract. If

@@ -45,6 +45,36 @@ region = us-east-1
 
 ---
 
+## If you have been reassigned a new Learner Lab
+
+The organisers reassigned every team a fresh Learner Lab module with USD $50 of
+credits (announced 18 August 2025). Accept the new module in AWS Academy before
+you do anything else.
+
+**A new Learner Lab module is a different AWS account.** Nothing carries over:
+
+| Gone with the old lab | What that means |
+|---|---|
+| The DynamoDB table and everything in it | Re-run the stack. Any recap made during development is lost |
+| The S3 bucket and every uploaded file | Same. Bucket names are global, so the old name may still be taken by your old account for a while |
+| The Cognito user pool | Every test account has to be made again |
+| The EC2 instance and its Elastic IP | Relaunch, and `VITE_API_BASE_URL` changes |
+| Your `vockey` key pair and `.pem` | A new lab issues a new one. The old `.pem` opens nothing |
+
+Practical order: accept the module → Start Lab → re-run step 1 of
+[EC2-DEPLOYMENT.md](EC2-DEPLOYMENT.md) → relaunch the instance → re-run
+`./scripts/verify-deployment.sh`. Do this **days** before judging, not the
+morning of. Whoever owns the backend should say out loud in the group chat which
+lab the deployment currently lives in, because two people working against two
+different labs is a very confusing afternoon.
+
+> The AI bonus was also relaxed in the same announcement: it is now up to 5
+> marks for **meaningful and effective use of AI**, with no requirement to use
+> Bedrock or any specific AWS service. OpenRouter and NVIDIA NIM qualify on
+> their own.
+
+---
+
 ## What happens when the lab session ends
 
 | Resource | On session end | Public endpoint |
