@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useStore } from '../lib/store.jsx';
+import { useJobs } from '../lib/jobs.jsx';
+import { enableCompletionNotifications } from '../lib/notifications.js';
 import { usePrefs } from '../lib/prefs.jsx';
 import { StudyShell } from '../components/layout/Shells.jsx';
-import { Icon, Spinner, Empty } from '../components/ui.jsx';
+import { Icon, Spinner, Empty, useToast } from '../components/ui.jsx';
 import { ScoreRing, MasteryBars } from '../components/charts/Charts.jsx';
 import Mascot from '../mascot/Mascot.jsx';
 import CountUp from '../reactbits/CountUp.jsx';
@@ -20,7 +22,11 @@ function optionText(question, indices) {
 
 export default function Results() {
   const { id, attemptId } = useParams();
+  const [params] = useSearchParams();
+  const matchId = params.get('match');
   const { materialById, attemptsFor } = useStore();
+  const { registerJob } = useJobs();
+  const toast = useToast();
   const { allowMascot } = usePrefs();
   const location = useLocation();
   const gameStats = location.state?.gamePoints != null ? location.state : null;
@@ -30,6 +36,8 @@ export default function Results() {
   const attempt = attempts.find((a) => a.id === attemptId) ?? attempts[0];
 
   const [fallback, setFallback] = useState(null);
+  const [matchLobby, setMatchLobby] = useState(null);
+  const [generatingWeak, setGeneratingWeak] = useState(false);
   useEffect(() => {
     if (attempt || fallback) return;
     api.quiz
@@ -38,12 +46,51 @@ export default function Results() {
       .catch(() => setFallback(null));
   }, [attempt, fallback, id, attemptId]);
 
+  useEffect(() => {
+    if (!matchId) return undefined;
+    const refresh = () => api.lobbies.get(matchId).then(setMatchLobby).catch(() => {});
+    refresh();
+    const timer = setInterval(refresh, 1500);
+    return () => clearInterval(timer);
+  }, [matchId]);
+
   const shown = attempt ?? fallback;
 
   const weakTopics = useMemo(
     () => (shown?.byTopic ?? []).filter((t) => t.total > 0 && t.correct / t.total < 0.7),
     [shown],
   );
+
+  const generateWeakQuiz = async () => {
+    if (!shown || !weakTopics.length || generatingWeak) return;
+    setGeneratingWeak(true);
+    void enableCompletionNotifications();
+    try {
+      const requested = Math.max(5, Math.min(15, weakTopics.length * 5));
+      const questionCount = requested <= 5 ? 5 : requested <= 10 ? 10 : 15;
+      const difficulty = ['easy', 'medium', 'hard'].includes(shown.difficulty) ? shown.difficulty : 'medium';
+      const response = await api.quiz.generate(id, {
+        difficulty,
+        questionCount,
+        topics: weakTopics.map((topic) => topic.topic),
+        fresh: true,
+      });
+      registerJob({
+        id: response.jobId,
+        materialId: id,
+        kind: 'quiz',
+        title: material.title,
+        stage: 'queued',
+        stageLabel: `Creating new questions for ${weakTopics.map((topic) => topic.topic).join(', ')}`,
+        progress: 0,
+      });
+      toast.info('A fresh weak-area quiz is being created. None of the previous question prompts will be reused.');
+    } catch (error) {
+      toast.error(error.message || 'Could not create a new weak-area quiz.');
+    } finally {
+      setGeneratingWeak(false);
+    }
+  };
 
   const previous = useMemo(() => {
     if (!shown) return null;
@@ -158,13 +205,19 @@ export default function Results() {
 
             <div className="row wrap gap-2 results-actions">
               {weakTopics.length > 0 && (
-                <Link
-                  to={`/app/material/${id}/quiz?topics=${encodeURIComponent(weakTopics.map((t) => t.topic).join(','))}`}
-                  className="btn btn-primary"
-                >
-                  <Icon name="target" size={18} />
-                  Retry weak topics only
-                </Link>
+                <>
+                  <button className="btn btn-primary" type="button" onClick={generateWeakQuiz} disabled={generatingWeak}>
+                    {generatingWeak ? <Spinner size={17} /> : <Icon name="auto_awesome" size={18} />}
+                    Generate new weak-area questions
+                  </button>
+                  <Link
+                    to={`/app/material/${id}/quiz?topics=${encodeURIComponent(weakTopics.map((t) => t.topic).join(','))}`}
+                    className="btn btn-ghost"
+                  >
+                    <Icon name="replay" size={18} />
+                    Retry current weak questions
+                  </Link>
+                </>
               )}
               <Link to={`/app/material/${id}/quiz`} className="btn btn-ghost">
                 <Icon name="replay" size={18} />
@@ -184,6 +237,20 @@ export default function Results() {
           )}
         </section>
 
+        {matchId && (
+          <section className="results-match panel">
+            <div className="results-match-head">
+              <div><p className="eyebrow">Multiplayer match</p><h2>{matchLobby?.status === 'finished' ? 'Final leaderboard' : 'Waiting for everyone to finish'}</h2></div>
+              <Link className="btn btn-ghost btn-sm" to={`/app/material/${id}/match/${matchId}`}><Icon name="groups" size={17} />Open room</Link>
+            </div>
+            <ol className="results-leaderboard">
+              {[...(matchLobby?.players || [])].sort((a, b) => (b.score || 0) - (a.score || 0)).map((player, index) => (
+                <li key={player.id}><span>{index + 1}</span><strong>{player.name}</strong><small>{player.submitted ? `${player.accuracy ?? 0}% accuracy` : `${player.answered || 0} answered`}</small><b>{player.submitted ? `${Number(player.score || 0).toLocaleString()} pts` : '—'}</b></li>
+              ))}
+            </ol>
+          </section>
+        )}
+
         <section className="results-topics panel">
           <h2>Where the marks went</h2>
           <MasteryBars topics={topicRows} />
@@ -192,7 +259,7 @@ export default function Results() {
         <section className="results-review panel">
           <h2>Every question, with the source</h2>
           <ul className="review-list">
-            {(material.quiz?.questions ?? [])
+            {(shown.questions ?? material.quiz?.questions ?? [])
               .filter((q) => q.id in (shown.answers ?? {}))
               .map((q) => {
                 const picked = shown.answers[q.id];

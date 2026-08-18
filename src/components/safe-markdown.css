@@ -1,0 +1,12 @@
+.safe-markdown { min-width: 0; overflow-wrap: anywhere; }
+.safe-markdown > :first-child { margin-top: 0; }
+.safe-markdown > :last-child { margin-bottom: 0; }
+.safe-markdown p, .safe-markdown ul, .safe-markdown ol, .safe-markdown blockquote { margin-block: 0.55em; }
+.safe-markdown ul, .safe-markdown ol { padding-left: 1.35em; }
+.safe-markdown table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+.safe-markdown th, .safe-markdown td { padding: 0.45em 0.65em; border: 1px solid currentColor; }
+.safe-markdown code:not(.math-inline) { padding: 0.08em 0.28em; border-radius: 4px; background: color-mix(in srgb, currentColor 9%, transparent); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.safe-markdown pre { max-width: 100%; padding: 14px; overflow-x: auto; border-radius: 10px; background: #17131d; color: #f0ebf5; }
+.safe-markdown .katex-display { max-width: 100%; margin: 1em 0; padding: 0.4em 0; overflow-x: auto; overflow-y: hidden; }
+.safe-markdown .katex { direction: ltr; text-indent: 0; font-size: 1.04em; }
+.safe-markdown.is-inline { display: inline; }

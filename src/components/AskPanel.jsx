@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { api } from '../lib/api.js';
+import { api, apiAssetUrl } from '../lib/api.js';
 import { Icon, Spinner } from './ui.jsx';
+import SafeMarkdown from './SafeMarkdown.jsx';
 
 /**
  * "Ask this material" — grounded Q&A.
@@ -65,6 +66,24 @@ export default function AskPanel({ material, open, onClose }) {
     }
   };
 
+  const createVisual = async (index, answerId) => {
+    setThread((items) => items.map((item, itemIndex) => (
+      itemIndex === index ? { ...item, visualBusy: true, visualError: null } : item
+    )));
+    try {
+      const illustration = await api.illustrations.createFromChat(material.id, answerId);
+      setThread((items) => items.map((item, itemIndex) => (
+        itemIndex === index ? { ...item, illustration, visualBusy: false } : item
+      )));
+    } catch (error) {
+      setThread((items) => items.map((item, itemIndex) => (
+        itemIndex === index
+          ? { ...item, visualBusy: false, visualError: error.message ?? 'Could not create a visual for this answer.' }
+          : item
+      )));
+    }
+  };
+
   if (!open) return null;
 
   return (
@@ -102,7 +121,7 @@ export default function AskPanel({ material, open, onClose }) {
             </p>
           ) : (
             <div key={i} className={`ask-a ${m.error ? 'is-error' : ''} ${m.grounded === false ? 'is-ungrounded' : ''}`}>
-              <p>{m.answer}</p>
+              <SafeMarkdown className="ask-answer-markdown">{m.answer}</SafeMarkdown>
               {m.citations?.length > 0 && (
                 <p className="ask-cites">
                   {m.citations.map((c) => (
@@ -112,6 +131,24 @@ export default function AskPanel({ material, open, onClose }) {
                   ))}
                 </p>
               )}
+              {m.answerId && !m.error && !m.illustration && (
+                <button
+                  className="ask-visual-button"
+                  type="button"
+                  onClick={() => createVisual(i, m.answerId)}
+                  disabled={m.visualBusy}
+                >
+                  {m.visualBusy ? <Spinner size={14} /> : <Icon name="image" size={15} />}
+                  {m.visualBusy ? 'Creating source-grounded visual…' : 'Generate visual from this answer'}
+                </button>
+              )}
+              {m.illustration && (
+                <figure className="ask-visual">
+                  <img src={apiAssetUrl(m.illustration.path)} alt={`Educational visual for ${m.illustration.topic}`} loading="lazy" />
+                  <figcaption>{m.illustration.provider} · {m.illustration.model}</figcaption>
+                </figure>
+              )}
+              {m.visualError && <p className="ask-visual-error">{m.visualError}</p>}
               {m.grounded === false && !m.error && (
                 <p className="ask-flag">
                   <Icon name="info" size={14} />

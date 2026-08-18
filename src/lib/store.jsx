@@ -52,9 +52,9 @@ export function StoreProvider({ children }) {
   }, []);
 
   const removeMaterial = useCallback(async (id) => {
+    await api.materials.remove(id);
     setMaterials((list) => list.filter((m) => m.id !== id));
     setAttempts((list) => list.filter((a) => a.materialId !== id));
-    await api.materials.remove(id);
   }, []);
 
   const renameMaterial = useCallback(async (id, title) => {

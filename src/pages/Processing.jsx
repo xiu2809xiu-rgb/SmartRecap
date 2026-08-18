@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
-import { api, pollJob, PIPELINE_STAGES } from '../lib/api.js';
-import { useStore } from '../lib/store.jsx';
+import { useEffect, useMemo, useState } from 'react';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
+import { PIPELINE_STAGES } from '../lib/api.js';
+import { useJobs } from '../lib/jobs.jsx';
 import { usePrefs } from '../lib/prefs.jsx';
-import { Icon, ProgressBar, useToast } from '../components/ui.jsx';
+import { Icon, ProgressBar } from '../components/ui.jsx';
 import AuroraBackdrop from '../components/AuroraBackdrop.jsx';
 import Mascot from '../mascot/Mascot.jsx';
 import { STAGE_STATE } from '../mascot/states.js';
@@ -23,52 +23,41 @@ export default function Processing() {
   const { jobId } = useParams();
   const [params] = useSearchParams();
   const materialId = params.get('material');
-  const navigate = useNavigate();
-  const toast = useToast();
-  const { upsertMaterial } = useStore();
+  const { jobById, registerJob } = useJobs();
   const { allowMascot } = usePrefs();
-
-  const [job, setJob] = useState({ stage: 'upload', progress: 0, log: [] });
-  const [error, setError] = useState(null);
-  const startedAt = useRef(Date.now());
+  const trackedJob = jobById(jobId);
+  const job = trackedJob ?? { stage: 'upload', progress: 0, log: [], status: 'running', startedAt: Date.now() };
+  const error = job.status === 'failed' ? (job.error || 'Processing failed.') : null;
+  const ready = job.status === 'ready';
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
-    const t = setInterval(() => setElapsed(Math.round((Date.now() - startedAt.current) / 1000)), 500);
-    return () => clearInterval(t);
-  }, []);
+    if (!trackedJob && materialId) {
+      registerJob({
+        id: jobId,
+        materialId,
+        kind: 'recap',
+        title: 'Uploaded material',
+        stage: 'upload',
+        stageLabel: 'Reading uploaded file',
+      });
+    }
+  }, [jobId, materialId, registerJob, trackedJob]);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        await pollJob(jobId, (j) => !cancelled && setJob(j));
-        if (cancelled) return;
-        const material = await api.materials.get(materialId);
-        upsertMaterial(material);
-        toast.success('Recap ready.');
-        navigate(`/app/material/${materialId}`, { replace: true });
-      } catch (e) {
-        if (!cancelled) {
-          setError(e.message ?? 'Processing failed.');
-          toast.error(e.message ?? 'Processing failed.');
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [jobId, materialId, navigate, upsertMaterial, toast]);
+    const startedAt = job.startedAt || Date.now();
+    const tick = () => setElapsed(Math.max(0, Math.round((Date.now() - startedAt) / 1000)));
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [job.startedAt]);
 
-  // The translation stage only runs when the student asked for a language
-  // other than their material's, so an English job should never see a step
-  // listed that is not going to happen.
   const stages = useMemo(
-    () => PIPELINE_STAGES.filter((s) => s.id !== 'translate' || (job.language && job.language !== 'en')),
+    () => PIPELINE_STAGES.filter((stage) => stage.id !== 'translate' || (job.language && job.language !== 'en')),
     [job.language],
   );
-  const stageIndex = stages.findIndex((s) => s.id === job.stage);
-  const mascotState = error ? 'confused' : (STAGE_STATE[job.stage] ?? 'thinking');
+  const stageIndex = stages.findIndex((stage) => stage.id === job.stage);
+  const mascotState = error ? 'confused' : ready ? 'celebrate' : (STAGE_STATE[job.stage] ?? 'thinking');
 
   return (
     <div className="processing">
@@ -87,16 +76,22 @@ export default function Processing() {
 
         <div className="processing-copy">
           <p className="eyebrow">
-            {error ? 'Something went wrong' : `Step ${Math.max(1, stageIndex + 1)} of ${stages.length}`}
+            {error
+              ? 'Something went wrong'
+              : ready
+                ? 'Processing complete'
+                : `Step ${Math.max(1, stageIndex + 1)} of ${stages.length}`}
           </p>
 
           <h1 className="processing-title" aria-live="polite">
             {error ? (
               'That did not go through'
+            ) : ready ? (
+              'Your notes are ready'
             ) : (
               <DecryptedText
                 key={job.stage}
-                text={stages[stageIndex]?.label ?? 'Starting up'}
+                text={stages[stageIndex]?.label ?? job.stageLabel ?? 'Starting up'}
                 animateOn="view"
                 sequential
                 speed={26}
@@ -107,7 +102,11 @@ export default function Processing() {
           </h1>
 
           <p className="processing-detail">
-            {error ? error : (stages[stageIndex]?.detail ?? 'Contacting the API')}
+            {error
+              ? error
+              : ready
+                ? 'The recap is grounded, formatted, and ready to study. Create your quiz afterwards when you choose.'
+                : (job.stageLabel || stages[stageIndex]?.detail || 'Contacting the API')}
           </p>
 
           {error ? (
@@ -116,9 +115,15 @@ export default function Processing() {
                 <Icon name="refresh" size={18} />
                 Try another file
               </Link>
-              <Link to="/app" className="btn btn-ghost">
-                Back to library
+              <Link to="/app" className="btn btn-ghost">Back to library</Link>
+            </div>
+          ) : ready ? (
+            <div className="row wrap gap-2 processing-actions">
+              <Link to={`/app/material/${materialId}`} className="btn btn-primary">
+                <Icon name="menu_book" size={18} />
+                Open my notes
               </Link>
+              <Link to="/app" className="btn btn-ghost">Back to library</Link>
             </div>
           ) : (
             <>
@@ -133,10 +138,10 @@ export default function Processing() {
               </div>
 
               <ol className="stage-list">
-                {stages.map((s, i) => {
-                  const state = i < stageIndex ? 'done' : i === stageIndex ? 'now' : 'todo';
+                {stages.map((stage, index) => {
+                  const state = index < stageIndex ? 'done' : index === stageIndex ? 'now' : 'todo';
                   return (
-                    <li key={s.id} className={`stage is-${state}`}>
+                    <li key={stage.id} className={`stage is-${state}`}>
                       <span className="stage-dot">
                         {state === 'done' ? (
                           <Icon name="check" size={14} />
@@ -145,19 +150,24 @@ export default function Processing() {
                         ) : null}
                       </span>
                       <div>
-                        <strong>{s.label}</strong>
-                        <span>{s.detail}</span>
+                        <strong>{stage.label}</strong>
+                        <span>{stage.detail}</span>
                       </div>
                     </li>
                   );
                 })}
               </ol>
 
-              <p className="processing-note">
-                <Icon name="info" size={15} />
-                You can leave this page. It keeps going in the background, and your recap will be waiting in your
-                library when it is done.
-              </p>
+              <div className="processing-background">
+                <p className="processing-note">
+                  <Icon name="notifications_active" size={15} />
+                  This task keeps running while you browse. We will notify you as soon as your notes are ready.
+                </p>
+                <Link to="/app" className="btn btn-ghost btn-sm">
+                  <Icon name="remove" size={17} />
+                  Minimize and continue browsing
+                </Link>
+              </div>
             </>
           )}
         </div>

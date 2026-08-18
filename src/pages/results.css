@@ -123,3 +123,17 @@
   .results-actions { justify-content: center; }
   .results-mascot { display: none; }
 }
+
+.results-match { padding: clamp(22px, 3vw, 30px); border-radius: var(--r-xl); }
+.results-match-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.results-match-head h2 { margin-top: 4px; font-size: var(--t-h3); }
+.results-leaderboard { display: flex; flex-direction: column; gap: 7px; }
+.results-leaderboard li { display: grid; grid-template-columns: 34px 1fr auto auto; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--r); background: var(--ground-sunken); }
+.results-leaderboard li > span { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: var(--series-1); background: var(--series-1-soft); font-weight: 850; }
+.results-leaderboard li > small { color: var(--ink-3); }
+.results-leaderboard li > b { min-width: 44px; text-align: right; color: var(--series-1); }
+@media (max-width: 620px) {
+  .results-match-head { align-items: flex-start; flex-direction: column; }
+  .results-leaderboard li { grid-template-columns: 32px 1fr auto; }
+  .results-leaderboard li > small { display: none; }
+}

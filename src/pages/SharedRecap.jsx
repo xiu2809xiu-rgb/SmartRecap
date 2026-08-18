@@ -95,35 +95,90 @@ export default function SharedRecap() {
                   <Icon name="bolt" size={19} />
                   The short version
                 </h2>
-                <p>{recap.summary}</p>
+                <p className="tldr-summary">{recap.summary}</p>
               </section>
 
               <p className="reader-hint">
                 <Icon name="touch_app" size={15} />
-                Hover any line to see the slide it came from.
+                Hover or select a note to reveal its exact source.
               </p>
 
-              {recap.sections.map((section) => (
-                <section key={section.id} className="recap-section">
-                  <h2 className="recap-heading">{section.heading}</h2>
-                  <ul className="claims">
-                    {section.points.map((p) => (
-                      <Claim key={p.id} id={p.id} citations={p.citations} confidence={p.confidence}>
-                        {p.text}
-                      </Claim>
-                    ))}
-                  </ul>
-                </section>
-              ))}
+              {recap.sections
+                .filter((section) => section.id === 'takeaways')
+                .map((section) => (
+                  <section key={section.id} className="recap-section takeaway-section">
+                    <header className="takeaway-head">
+                      <div>
+                        <p className="section-kicker">
+                          <Icon name="stars" size={16} />
+                          Essential ideas
+                        </p>
+                        <h2 className="recap-heading takeaway-heading">{section.heading}</h2>
+                      </div>
+                      <p className="section-lede">The most important concepts to remember from this material.</p>
+                    </header>
+                    <ul className="takeaway-grid">
+                      {section.points.map((p) => (
+                        <Claim key={p.id} id={p.id} citations={p.citations} confidence={p.confidence}>
+                          {p.text}
+                        </Claim>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+
+              {recap.sections
+                .filter((section) => section.id !== 'takeaways')
+                .map((section, index) => (
+                  <section key={section.id} className="recap-section topic-card">
+                    <header className="topic-card-head">
+                      <span className="topic-index" aria-hidden="true">
+                        {String(index + 1).padStart(2, '0')}
+                      </span>
+                      <div className="topic-heading-wrap">
+                        <p className="topic-eyebrow">Study topic</p>
+                        <h2 className="recap-heading">{section.heading}</h2>
+                      </div>
+                      <span className="topic-count">
+                        {section.points.length} {section.points.length === 1 ? 'point' : 'points'}
+                      </span>
+                    </header>
+                    <ul className="claims topic-claims">
+                      {section.points.map((p) => (
+                        <Claim key={p.id} id={p.id} citations={p.citations} confidence={p.confidence}>
+                          {p.text}
+                        </Claim>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
 
               {recap.keyTerms?.length > 0 && (
-                <section className="recap-section">
-                  <h2 className="recap-heading">Key terms</h2>
+                <section className="recap-section terms-section">
+                  <header className="terms-head">
+                    <div>
+                      <p className="section-kicker">
+                        <Icon name="dictionary" size={16} />
+                        Quick reference
+                      </p>
+                      <h2 className="recap-heading">Key terms</h2>
+                    </div>
+                    <p className="section-lede">Core vocabulary, explained in plain language.</p>
+                  </header>
                   <dl className="terms">
                     {recap.keyTerms.map((t) => (
                       <div key={t.term} className="term">
                         <dt>{t.term}</dt>
                         <dd>{t.definition}</dd>
+                        {t.citations?.length > 0 && (
+                          <div className="term-sources" aria-label={`Sources for ${t.term}`}>
+                            {t.citations.map((c) => (
+                              <a key={c} href={`#src-${c}`} className="cite term-cite">
+                                {chunks.find((x) => x.id === c)?.label ?? c}
+                              </a>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </dl>

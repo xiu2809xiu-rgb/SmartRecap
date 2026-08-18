@@ -127,3 +127,7 @@
   .processing-inner { grid-template-columns: minmax(0, 1fr); }
   .processing-visual { order: -1; }
 }
+
+.processing-background { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; max-width: 560px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--glass-line); }
+.processing-background .processing-note { flex: 1 1 280px; margin-top: 0; }
+.processing-background .btn { flex-shrink: 0; }

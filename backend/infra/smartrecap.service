@@ -1,51 +1,28 @@
-# systemd unit for the SmartRecap API on EC2.
-#
-# Why this instead of `node src/server.js` in an SSH session: that process dies
-# the moment the connection drops, and it does not come back when the instance
-# restarts. Learner Lab stops your instance at the end of every session, so
-# without this you are SSHing in to restart the API before every demo.
-#
-#   sudo cp infra/smartrecap.service /etc/systemd/system/
-#   sudo systemctl daemon-reload
-#   sudo systemctl enable --now smartrecap
-#   sudo systemctl status smartrecap
-#   sudo journalctl -u smartrecap -f          # follow the logs
-#
-# `enable` is the important word — it is what makes the API come back on boot.
-
+# Installed by setup-ec2.sh, which replaces __REPO_ROOT__ with the clone path.
 [Unit]
-Description=SmartRecap API
-Documentation=https://gitlab.com/LEBRONISGOAT23/smartrecap
+Description=SmartRecap FastAPI OCR and AI backend
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=ec2-user
-WorkingDirectory=/home/ec2-user/smartrecap/backend
-
-# Secrets live here, not in the unit file — a unit file is world-readable and
-# `systemctl cat` prints it. Create it with `sudo chmod 600`.
+WorkingDirectory=__REPO_ROOT__
 EnvironmentFile=/etc/smartrecap.env
-
-ExecStart=/usr/bin/node src/server.js
-
-# A generation job runs in-process, so a crash mid-job loses it. Restarting
-# promptly matters more than a clean shutdown here.
+Environment=HOME=/var/lib/smartrecap
+Environment=XDG_CACHE_HOME=/var/lib/smartrecap/cache
+ExecStart=__REPO_ROOT__/backend/.venv/bin/python -m uvicorn app.main:app --app-dir __REPO_ROOT__/backend --host 127.0.0.1 --port 8000 --workers 1
 Restart=always
 RestartSec=3
-
+TimeoutStopSec=30
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=smartrecap
-
-# The API reads and writes nothing on local disk — uploads go straight to S3 —
-# so it can be locked down hard.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/tmp
+ReadWritePaths=/tmp /var/lib/smartrecap
 
 [Install]
 WantedBy=multi-user.target

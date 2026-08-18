@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: SmartRecap durable FastAPI data resources only; no EC2, Lambda, or API Gateway.
+
+Parameters:
+  WebOrigin:
+    Type: String
+    Description: Exact Amplify frontend origin, for example https://main.example.amplifyapp.com
+  RetentionDays:
+    Type: Number
+    Default: 30
+    MinValue: 1
+    MaxValue: 365
+
+Resources:
+  AppTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: pk, AttributeType: S}
+        - {AttributeName: sk, AttributeType: S}
+      KeySchema:
+        - {AttributeName: pk, KeyType: HASH}
+        - {AttributeName: sk, KeyType: RANGE}
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      Tags:
+        - {Key: Project, Value: SmartRecap}
+
+  StorageBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['Content-Type']
+            AllowedMethods: [PUT]
+            AllowedOrigins: [!Ref WebOrigin]
+            ExposedHeaders: [ETag]
+            MaxAge: 900
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireSourceUploads
+            Status: Enabled
+            Prefix: smartrecap/uploads/
+            ExpirationInDays: !Ref RetentionDays
+          - Id: AbortIncompleteUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+      Tags:
+        - {Key: Project, Value: SmartRecap}
+
+Outputs:
+  TableName:
+    Description: Set as TABLE_NAME on the existing FastAPI EC2 instance.
+    Value: !Ref AppTable
+  StorageBucket:
+    Description: Set as S3_BUCKET on the existing FastAPI EC2 instance.
+    Value: !Ref StorageBucket
+  RequiredInstanceRoleActions:
+    Description: LabInstanceProfile needs DynamoDB item/query and scoped S3 object permissions.
+    Value: dynamodb:GetItem,PutItem,DeleteItem,Query; s3:GetObject,PutObject,DeleteObject

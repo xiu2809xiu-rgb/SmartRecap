@@ -231,12 +231,7 @@
 }
 
 .quiz-setup .lede { color: var(--ink-3); }
-
-.quiz-type-list {
-  display: grid;
-  gap: 11px;
-  margin: 28px 0;
-}
+.quiz-type-list { display: grid; gap: 11px; margin: 28px 0; }
 
 .quiz-type-choice {
   display: grid;
@@ -260,33 +255,9 @@
 .quiz-type-choice small { margin-top: 2px; color: var(--ink-3); }
 .quiz-start { width: 100%; justify-content: center; }
 
-.short-answer-field label {
-  display: block;
-  margin-bottom: 8px;
-  font-size: var(--t-sm);
-  font-weight: 750;
-}
-
-.short-answer-field textarea {
-  width: 100%;
-  resize: vertical;
-  min-height: 132px;
-  padding: 14px 16px;
-  color: var(--ink-1);
-  background: var(--ground);
-  border: 1.5px solid var(--glass-line);
-  border-radius: var(--r);
-  font: inherit;
-  line-height: 1.55;
-  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
-}
-
-.short-answer-field textarea:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--series-1-soft);
-}
-
+.short-answer-field label { display: block; margin-bottom: 8px; font-size: var(--t-sm); font-weight: 750; }
+.short-answer-field textarea { width: 100%; resize: vertical; min-height: 132px; padding: 14px 16px; color: var(--ink-1); background: var(--ground); border: 1.5px solid var(--glass-line); border-radius: var(--r); font: inherit; line-height: 1.55; transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+.short-answer-field textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--series-1-soft); }
 .short-answer-field textarea:disabled { opacity: 1; cursor: default; }
 .short-answer-field small { display: block; margin-top: 6px; text-align: right; color: var(--ink-4); }
 .explain.is-recorded { background: var(--series-1-soft); border-color: color-mix(in srgb, var(--accent) 26%, transparent); }
@@ -296,3 +267,21 @@
   .quiz-type-choice { grid-template-columns: auto 1fr; }
   .quiz-type-icon { display: none; }
 }
+
+.match-quiz-banner { display: flex; align-items: center; gap: 11px; margin-bottom: 18px; padding: 12px 14px; border-radius: var(--r); color: var(--series-1); background: var(--series-1-soft); border: 1px solid color-mix(in srgb, var(--series-1) 24%, transparent); }
+.match-quiz-banner strong, .match-quiz-banner span { display: block; }
+.match-quiz-banner strong { font-size: var(--t-sm); }
+.match-quiz-banner span { margin-top: 2px; color: var(--ink-3); font-size: var(--t-xs); }
+.round-leaderboard { margin-top: 18px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--series-1) 28%, transparent); border-radius: var(--r); background: var(--series-1-soft); animation: quiz-in 280ms var(--spring) both; }
+.round-leaderboard-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--glass-line); }
+.round-leaderboard-head span, .round-leaderboard-head strong { display: block; }
+.round-leaderboard-head span { color: var(--ink-3); font-size: 0.68rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.round-leaderboard-head strong { margin-top: 2px; font-size: var(--t-sm); }
+.round-leaderboard ol { display: grid; }
+.round-leaderboard li { display: grid; grid-template-columns: 28px minmax(100px, 1fr) auto auto; align-items: center; gap: 10px; padding: 10px 14px; }
+.round-leaderboard li + li { border-top: 1px solid var(--glass-line); }
+.round-leaderboard li > span { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; color: var(--series-1); background: var(--ground); font-size: 0.7rem; font-weight: 850; }
+.round-leaderboard li strong { overflow: hidden; font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
+.round-leaderboard li small { color: var(--ink-3); font-size: 0.68rem; }
+.round-leaderboard li b { color: var(--series-1); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) { .round-leaderboard li { grid-template-columns: 26px 1fr auto; } .round-leaderboard li small { display: none; } }

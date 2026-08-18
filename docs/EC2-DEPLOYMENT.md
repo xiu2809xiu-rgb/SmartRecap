@@ -1,5 +1,7 @@
 # Running the API on EC2
 
+> **Active backend:** use [`AWS-HACKATHON.md`](AWS-HACKATHON.md), `backend/infra/ec2-fastapi.yaml`, and `backend/infra/setup-ec2.sh`. The older Express details below describe the inactive Node/AWS implementation retained for reference.
+
 The SmartRecap API runs on EC2 behind Express, or on Lambda behind API Gateway.
 Both call the same `core/` functions, so behaviour is identical and you can
 switch later without rewriting anything.

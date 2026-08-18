@@ -1,134 +1,112 @@
 #!/usr/bin/env bash
-# ---------------------------------------------------------------------------
-# Provision a fresh Amazon Linux 2023 instance to run the SmartRecap API.
-#
-# Run it ON the instance, after SSHing in:
-#
-#   ssh -i labsuser.pem ec2-user@<public-ip>
-#   git clone https://gitlab.com/LEBRONISGOAT23/smartrecap.git
-#   cd smartrecap/backend
-#   bash infra/setup-ec2.sh
-#
-# It installs Node 20, nginx and dependencies, then writes the systemd unit and
-# the nginx config. It does NOT write your secrets — it creates
-# /etc/smartrecap.env as a template for you to fill in, because a script that
-# takes API keys as arguments puts them in your shell history.
-#
-# Idempotent: safe to re-run after a `git pull`.
-# ---------------------------------------------------------------------------
-
+# Provision the active Python/FastAPI backend on Amazon Linux 2023.
+# Run from the cloned repository: bash backend/infra/setup-ec2.sh
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+BACKEND_DIR="$REPO_ROOT/backend"
 ENV_FILE=/etc/smartrecap.env
+STATE_DIR=/var/lib/smartrecap
 
-say() { printf '\n\033[1;36m==>\033[0m %s\n' "$1"; }
+say() { printf '\n==> %s\n' "$1"; }
 
-# --- Node 20 --------------------------------------------------------------
-if ! command -v node >/dev/null 2>&1 || [ "$(node -v | cut -c2-3)" -lt 20 ]; then
-  say "Installing Node 20"
-  curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
-  sudo dnf install -y nodejs
-else
-  say "Node $(node -v) already present"
+say "Installing Python, nginx, and OCR runtime libraries"
+sudo dnf install -y python3.11 python3.11-pip nginx git gcc-c++ libgomp mesa-libGL
+
+say "Creating the isolated Python environment"
+if [ ! -x "$BACKEND_DIR/.venv/bin/python" ]; then
+  python3.11 -m venv "$BACKEND_DIR/.venv"
 fi
+"$BACKEND_DIR/.venv/bin/python" -m pip install --upgrade pip
+# Force CPU-only PyTorch wheels before Pix2Text resolves its dependencies; do not install CUDA or diffusers on t3.xlarge.
+"$BACKEND_DIR/.venv/bin/python" -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.7.1 torchvision==0.22.1
+"$BACKEND_DIR/.venv/bin/python" -m pip install -r "$BACKEND_DIR/requirements.txt"
 
-# --- nginx ----------------------------------------------------------------
-if ! command -v nginx >/dev/null 2>&1; then
-  say "Installing nginx"
-  sudo dnf install -y nginx
-fi
+say "Preparing writable OCR model caches"
+sudo install -d -o ec2-user -g ec2-user -m 0750 "$STATE_DIR" "$STATE_DIR/cache"
 
-# --- dependencies ---------------------------------------------------------
-say "Installing backend dependencies"
-cd "$REPO_DIR"
-npm ci --omit=dev 2>/dev/null || npm install --omit=dev
-
-# --- environment file -----------------------------------------------------
 if [ ! -f "$ENV_FILE" ]; then
-  say "Creating $ENV_FILE — you must fill this in"
+  say "Creating $ENV_FILE; add provider keys before starting"
   sudo tee "$ENV_FILE" >/dev/null <<'ENVEOF'
-# SmartRecap API environment. Read by systemd; never commit this file.
-#
-# Fill in the four values from the CloudFormation stack outputs:
-#   aws cloudformation describe-stacks --stack-name smartrecap-data \
-#     --query 'Stacks[0].Outputs' --output table
-
+# Never commit this file. Keep ownership root:root and mode 600.
+DEMO_MODE=false
+CORS_ORIGINS=https://main.YOUR_AMPLIFY_APP_ID.amplifyapp.com
+MAX_FILE_MB=25
+ENABLE_PADDLE_OCR=true
+ENABLE_MATH_OCR=true
+MATH_OCR_MAX_PAGES=8
+OCR_MAX_IMAGES=24
+OCR_TIME_BUDGET_SECONDS=120
+AI_TIMEOUT_SECONDS=300
 AWS_REGION=us-east-1
-TABLE_NAME=
-BUCKET_NAME=
-USER_POOL_ID=
-USER_POOL_CLIENT_ID=
+S3_BUCKET=
+S3_PREFIX=smartrecap
 
 # openssl rand -base64 32
 JWT_SECRET=
 
-# https://openrouter.ai/keys  — primary provider
+# Optional provider configuration. Keep credentials in /etc/smartrecap.env only.
 OPENROUTER_API_KEY=
 OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct:free
-
-# https://build.nvidia.com  — used when OpenRouter rate-limits or times out
 NVIDIA_API_KEY=
 NVIDIA_MODEL=meta/llama-3.3-70b-instruct
-
-# Google sign-in. Must be the SAME client id the frontend uses as
-# VITE_GOOGLE_CLIENT_ID — the server verifies the token's audience against it,
-# so a mismatch fails every Google login. Leave blank to disable it.
 GOOGLE_CLIENT_ID=
-
-# Your frontend URL once you have one. '*' is fine while developing.
 ALLOWED_ORIGIN=*
 PUBLIC_WEB_ORIGIN=
 
-PORT=3000
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-2.5-flash
+AZURE_AI_ENDPOINT=
+AZURE_AI_API_KEY=
+AZURE_OPENAI_DEPLOYMENT=gpt-5.6-sol
+AZURE_FAST_DEPLOYMENT=gpt-5.6-sol
+OPENAI_API_KEY=
+OPENAI_CHAT_MODEL=gpt-4.1-mini
+POLLINATIONS_API_KEY=
+POLLINATIONS_MODEL=zimage
+TABLE_NAME=
+PORT=8000
 ENVEOF
   sudo chmod 600 "$ENV_FILE"
-else
-  say "$ENV_FILE already exists — leaving it alone"
 fi
 
-# --- systemd --------------------------------------------------------------
 say "Installing the systemd unit"
-sudo cp "$REPO_DIR/infra/smartrecap.service" /etc/systemd/system/smartrecap.service
+sudo sed "s|__REPO_ROOT__|$REPO_ROOT|g" \
+  "$BACKEND_DIR/infra/smartrecap.service" \
+  | sudo tee /etc/systemd/system/smartrecap.service >/dev/null
 sudo systemctl daemon-reload
 sudo systemctl enable smartrecap
 
-# --- nginx config ---------------------------------------------------------
-say "Installing the nginx config"
-sudo cp "$REPO_DIR/infra/nginx.conf" /etc/nginx/conf.d/smartrecap.conf
+say "Installing nginx with API and WebSocket proxying"
+sudo cp "$BACKEND_DIR/infra/nginx.conf" /etc/nginx/conf.d/smartrecap.conf
 sudo rm -f /etc/nginx/conf.d/default.conf
 sudo nginx -t
 sudo systemctl enable --now nginx
 sudo systemctl reload nginx
 
-# --- done -----------------------------------------------------------------
+say "Validating the Python application imports"
+"$BACKEND_DIR/.venv/bin/python" -m compileall -q "$BACKEND_DIR/app"
+PYTHONPATH="$BACKEND_DIR" "$BACKEND_DIR/.venv/bin/python" -c "from app.main import app; print(app.title)" \
+  2>/dev/null || {
+    echo "Import failed. Review the Python dependency output above." >&2
+    exit 1
+  }
+
 cat <<'DONE'
 
-Setup complete. Two things left, in this order:
+FastAPI host setup is complete.
 
-  1. Fill in the secrets:
-       sudo nano /etc/smartrecap.env
+1. Add the three AI provider credentials and exact Amplify origin:
+     sudo vi /etc/smartrecap.env
+2. Start and inspect the service:
+     sudo systemctl restart smartrecap
+     sudo systemctl status smartrecap --no-pager
+     curl http://127.0.0.1:8000/api/health
+     curl http://127.0.0.1/api/health
+3. View logs without exposing /etc/smartrecap.env:
+     sudo journalctl -u smartrecap -n 100 --no-pager
 
-  2. Start the API:
-       sudo systemctl start smartrecap
-       sudo systemctl status smartrecap
-       curl localhost/health
-
-Then, from your laptop, confirm it is reachable:
-       curl http://<public-ip>/health
-
-If that hangs, the security group is not allowing port 80 inbound. If it is
-refused, nginx is not running. If it returns 502, the Node process is not —
-check `sudo journalctl -u smartrecap -n 50`.
-
-Reminders for Learner Lab:
-  - The instance STOPS when your lab session ends. `systemctl enable` means the
-    API restarts by itself when the instance boots again, but you still have to
-    start the instance.
-  - Allocate an Elastic IP and associate it, or the public IP changes on every
-    restart and the frontend's VITE_API_BASE_URL breaks each time.
-  - The instance needs LabInstanceProfile attached for DynamoDB, S3, Textract,
-    Polly and Cognito access. Set it at launch under Advanced Details, or add
-    it afterwards with Actions > Security > Modify IAM role.
-
+One Uvicorn worker is intentional: current quiz, material, and lobby state is
+in-memory. Multiple workers would split that state until durable storage is
+introduced.
 DONE

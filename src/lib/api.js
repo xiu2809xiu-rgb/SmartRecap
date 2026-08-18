@@ -9,8 +9,9 @@ import { mockApi, PIPELINE_STAGES } from './mockApi.js';
  * which one is behind it.
  */
 
-const BASE = import.meta.env?.VITE_API_BASE_URL?.replace(/\/$/, '') ?? '';
-export const isDemo = !BASE;
+const USE_MOCK = import.meta.env?.VITE_USE_MOCK_API === 'true';
+const BASE = (import.meta.env?.VITE_API_BASE_URL?.replace(/\/$/, '') || '/api');
+export const isDemo = USE_MOCK;
 export { PIPELINE_STAGES };
 
 const TOKEN_KEY = 'smartrecap.token';
@@ -72,7 +73,7 @@ async function request(path, { method = 'GET', body, signal, auth = true } = {})
 
   if (!res.ok) {
     if (res.status === 401) tokenStore.set(null);
-    throw new ApiError(payload?.message || `Request failed (${res.status})`, res.status, payload);
+    throw new ApiError(payload?.detail || payload?.message || `Request failed (${res.status})`, res.status, payload);
   }
   return payload;
 }
@@ -133,9 +134,11 @@ const live = {
 
   uploads: {
     create: (payload) => request('/uploads', { method: 'POST', body: payload }),
-    /** Direct-to-S3 PUT — the file never passes through Lambda. */
+    /** Resolve backend-relative upload URLs against the deployed API origin. */
     put: async (uploadUrl, file) => {
-      const res = await fetch(uploadUrl, {
+      const apiOrigin = BASE.startsWith('http') ? new URL(BASE).origin : window.location.origin;
+      const target = new URL(uploadUrl, apiOrigin).toString();
+      const res = await fetch(target, {
         method: 'PUT',
         headers: { 'Content-Type': file.type || 'application/octet-stream' },
         body: file,
@@ -164,7 +167,9 @@ const live = {
     create: (binderId, files) => request(`/binders/${binderId}/sources`, { method: 'POST', body: { files } }),
     /** Direct-to-S3 PUT — same shape as `uploads.put` for a single Material. */
     put: async (uploadUrl, file) => {
-      const res = await fetch(uploadUrl, {
+      const apiOrigin = BASE.startsWith('http') ? new URL(BASE).origin : window.location.origin;
+      const target = new URL(uploadUrl, apiOrigin).toString();
+      const res = await fetch(target, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/pdf' },
         body: file,
@@ -181,8 +186,33 @@ const live = {
   },
 
   quiz: {
+    generate: (materialId, payload) => request(`/materials/${materialId}/quiz`, { method: 'POST', body: payload }),
+    save: (materialId, payload) => request(`/materials/${materialId}/quiz`, { method: 'PUT', body: payload }),
     submit: (payload) => request('/quiz/attempts', { method: 'POST', body: payload }),
     attempts: (materialId) => request(`/quiz/attempts${materialId ? `?materialId=${materialId}` : ''}`),
+  },
+
+  lobbies: {
+    list: () => request('/lobbies'),
+    get: (id) => request(`/lobbies/${id}`),
+    create: (payload) => request('/lobbies', { method: 'POST', body: payload }),
+    join: (id, payload) => request(`/lobbies/${id}/join`, { method: 'POST', body: payload }),
+    ready: (id, payload) => request(`/lobbies/${id}/ready`, { method: 'POST', body: payload }),
+    start: (id, payload) => request(`/lobbies/${id}/start`, { method: 'POST', body: payload }),
+    answer: (id, payload) => request(`/lobbies/${id}/answer`, { method: 'POST', body: payload }),
+    score: (id, payload) => request(`/lobbies/${id}/score`, { method: 'POST', body: payload }),
+  },
+
+  forum: {
+    list: () => request('/forum/posts'),
+    create: (payload) => request('/forum/posts', { method: 'POST', body: payload }),
+    like: (id) => request(`/forum/posts/${id}/like`, { method: 'POST' }),
+    comment: (id, payload) => request(`/forum/posts/${id}/comments`, { method: 'POST', body: payload }),
+  },
+
+  illustrations: {
+    create: (materialId, payload = { count: 2 }) => request(`/materials/${materialId}/illustrations`, { method: 'POST', body: payload }),
+    createFromChat: (materialId, answerId) => request(`/materials/${materialId}/chat-illustrations`, { method: 'POST', body: { answerId } }),
   },
 
   flashcards: {
@@ -201,21 +231,50 @@ const live = {
   tts: (payload) => request('/tts', { method: 'POST', body: payload }),
 };
 
-export const api = isDemo ? mockApi : live;
+export const api = USE_MOCK ? mockApi : live;
 
-/**
- * Polls a job until it finishes. `onTick` fires on every poll so the pipeline
- * view can stream stage changes rather than jumping from 0 to 100.
- */
-export async function pollJob(jobId, onTick, { intervalMs = 700, timeoutMs = 180_000 } = {}) {
+export function apiAssetUrl(path) {
+  if (!path) return '';
+  if (/^https:\/\//i.test(path) || /^data:/i.test(path)) return path;
+  if (path.startsWith('/api/')) return `${BASE}${path.slice(4)}`;
+  return new URL(path, window.location.origin).toString();
+}
+
+export function openLobbySocket(lobbyId, playerId, reconnectToken) {
+  const apiUrl = BASE.startsWith('http') ? new URL(BASE, window.location.href) : null;
+  const protocol = (apiUrl?.protocol ?? window.location.protocol) === 'https:' ? 'wss:' : 'ws:';
+  const host = apiUrl?.host ?? window.location.host;
+  const params = new URLSearchParams({ player_id: playerId, token: reconnectToken });
+  return new WebSocket(`${protocol}//${host}/ws/lobbies/${encodeURIComponent(lobbyId)}?${params}`);
+}
+
+function abortableDelay(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const finish = () => {
+      signal?.removeEventListener('abort', abort);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    const abort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      reject(new DOMException('Polling cancelled', 'AbortError'));
+    };
+    if (signal?.aborted) abort();
+    else signal?.addEventListener('abort', abort, { once: true });
+  });
+}
+
+/** Polls a recap or quiz job until it finishes, even while routes change. */
+export async function pollJob(jobId, onTick, { intervalMs = 900, timeoutMs = 1_200_000, signal } = {}) {
   const startedAt = Date.now();
   for (;;) {
-    const job = await api.jobs.status(jobId);
+    const job = await api.jobs.status(jobId, signal);
     onTick?.(job);
     if (job.stage === 'done' || job.status === 'ready') return job;
     if (job.status === 'failed') throw new ApiError(job.error || 'Processing failed', 500, job);
     if (Date.now() - startedAt > timeoutMs) throw new ApiError('Processing timed out', 504, job);
-    await new Promise((r) => setTimeout(r, intervalMs));
+    await abortableDelay(intervalMs, signal);
   }
 }
 

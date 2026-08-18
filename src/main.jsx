@@ -5,6 +5,7 @@ import App from './App.jsx';
 import { PrefsProvider } from './lib/prefs.jsx';
 import { AuthProvider } from './lib/auth.jsx';
 import { StoreProvider } from './lib/store.jsx';
+import { JobsProvider } from './lib/jobs.jsx';
 import { ToastProvider } from './components/ui.jsx';
 import './styles/base.css';
 import './styles/app.css';
@@ -16,7 +17,9 @@ createRoot(document.getElementById('root')).render(
         <ToastProvider>
           <AuthProvider>
             <StoreProvider>
-              <App />
+              <JobsProvider>
+                <App />
+              </JobsProvider>
             </StoreProvider>
           </AuthProvider>
         </ToastProvider>
