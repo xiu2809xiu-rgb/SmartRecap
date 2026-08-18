@@ -154,6 +154,7 @@ export function MarketingShell({ children }) {
 
 const APP_LINKS = [
   { to: '/app', label: 'Library', icon: 'grid_view', end: true },
+  { to: '/app/binders', label: 'Binders', icon: 'folder' },
   { to: '/app/upload', label: 'New recap', icon: 'add_circle' },
   { to: '/app/progress', label: 'Progress', icon: 'insights' },
 ];

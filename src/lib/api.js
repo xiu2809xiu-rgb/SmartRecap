@@ -149,6 +149,37 @@ const live = {
     status: (jobId, signal) => request(`/jobs/${jobId}`, { signal }),
   },
 
+  binders: {
+    list: () => request('/binders'),
+    get: (id) => request(`/binders/${id}`),
+    create: (name) => request('/binders', { method: 'POST', body: { name } }),
+    update: (id, patch) => request(`/binders/${id}`, { method: 'PATCH', body: patch }),
+    remove: (id) => request(`/binders/${id}`, { method: 'DELETE' }),
+    generate: (id) => request(`/binders/${id}/generate`, { method: 'POST' }),
+  },
+
+  sources: {
+    list: (binderId) => request(`/binders/${binderId}/sources`),
+    /** Presigns one upload URL per accepted file; rejects non-PDF names up front, per file. */
+    create: (binderId, files) => request(`/binders/${binderId}/sources`, { method: 'POST', body: { files } }),
+    /** Direct-to-S3 PUT — same shape as `uploads.put` for a single Material. */
+    put: async (uploadUrl, file) => {
+      const res = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/pdf' },
+        body: file,
+      });
+      if (!res.ok) throw new ApiError('Could not upload your file. Check your connection and try again.', res.status, null);
+    },
+    commit: (binderId, sourceId) => request(`/binders/${binderId}/sources/${sourceId}/commit`, { method: 'POST' }),
+    retry: (binderId, sourceId) => request(`/binders/${binderId}/sources/${sourceId}/retry`, { method: 'POST' }),
+    rename: (sourceId, displayName) => request(`/sources/${sourceId}`, { method: 'PATCH', body: { displayName } }),
+    remove: (sourceId) => request(`/sources/${sourceId}`, { method: 'DELETE' }),
+    status: (sourceId, signal) => request(`/sources/${sourceId}/status`, { signal }),
+    /** A short-lived link to the source's original PDF, for a citation chip's "open this page" action. */
+    download: (sourceId) => request(`/sources/${sourceId}/download`),
+  },
+
   quiz: {
     submit: (payload) => request('/quiz/attempts', { method: 'POST', body: payload }),
     attempts: (materialId) => request(`/quiz/attempts${materialId ? `?materialId=${materialId}` : ''}`),
@@ -184,4 +215,30 @@ export async function pollJob(jobId, onTick, { intervalMs = 700, timeoutMs = 180
     if (Date.now() - startedAt > timeoutMs) throw new ApiError('Processing timed out', 504, job);
     await new Promise((r) => setTimeout(r, intervalMs));
   }
+}
+
+/**
+ * Polls one source's extraction status every `intervalMs` until it settles
+ * (`ready` or `failed`). Used from the binder detail page, one interval per
+ * pending/processing source — see `useSourcePolling` in `BinderDetail.jsx` for
+ * why this is deliberately a single poll rather than a loop: the page needs to
+ * start and stop polling per-source as sources individually settle, not wait
+ * for all of them at once.
+ */
+export async function pollSourceOnce(sourceId, signal) {
+  return api.sources.status(sourceId, signal);
+}
+
+/**
+ * Opens a source's original PDF at a given page, in a new tab.
+ *
+ * `#page=N` is a PDF open-parameter every major browser's built-in viewer
+ * honours (Chrome, Firefox, Safari and Edge all jump straight to that page),
+ * so a presigned download link plus this fragment is enough to land a
+ * citation chip on the right page with no PDF-rendering code on either side.
+ */
+export async function openSourcePage(sourceId, page) {
+  const { url } = await api.sources.download(sourceId);
+  const win = window.open(`${url}#page=${Math.max(1, Number(page) || 1)}`, '_blank', 'noopener,noreferrer');
+  if (!win) throw new ApiError('Your browser blocked opening that page. Allow pop-ups for this site and try again.', 0, null);
 }

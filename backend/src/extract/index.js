@@ -88,6 +88,57 @@ async function fromPdf(buffer, { key }) {
   };
 }
 
+/**
+ * Per-page extraction for a Binder Source.
+ *
+ * Unlike `fromPdf` above — which makes one OCR/no-OCR call for the whole
+ * document — a binder source records which extraction method *each page*
+ * needed, because a scanned appendix stapled onto a typed handout is a real
+ * document a student uploads, and "ocr": true/false for the whole file would
+ * hide that half of it is a photograph.
+ *
+ * Amazon Textract's async job already returns lines grouped by page, so
+ * getting a per-page decision costs nothing extra: `ocrPdf` runs once (only if
+ * at least one page is weak) and its pages are matched up against the text
+ * layer's pages by page number rather than swapping in the whole document.
+ *
+ * Known limitation, inherited from `ocrPdf`: a page Textract finds zero text
+ * on (a truly blank page) is simply absent from its result rather than
+ * present-with-empty-text, so the by-index match below can misalign on a
+ * document with blank pages mixed among scanned ones. Rare enough in lecture
+ * material not to block this feature on; worth revisiting if it shows up.
+ */
+export async function extractPdfPerPage(buffer, key) {
+  const pdf = await getDocumentProxy(new Uint8Array(buffer));
+  const { totalPages, text } = await extractText(pdf, { mergePages: false });
+  const textPages = (Array.isArray(text) ? text : [text]).map(clean);
+
+  const isWeak = textPages.map((t) => t.length < OCR_TRIGGER_CHARS_PER_PAGE);
+  const anyWeak = isWeak.some(Boolean);
+
+  // One Textract job covers every weak page at once — cheaper and simpler
+  // than one job per page, and it is the same call `fromPdf` already makes.
+  const ocrPages = anyWeak ? await ocrPdf(key) : [];
+
+  const pages = [];
+  for (let i = 0; i < totalPages; i += 1) {
+    const layerText = textPages[i] ?? '';
+    const ocrText = isWeak[i] ? clean(ocrPages[i] ?? '') : '';
+    const useOcr = isWeak[i] && ocrText.length > 0;
+    pages.push({
+      label: `Page ${i + 1}`,
+      page: i + 1,
+      text: useOcr ? ocrText : layerText,
+      ocr: useOcr,
+    });
+  }
+
+  const ocrCount = pages.filter((p) => p.ocr).length;
+  const extractionMethod = ocrCount === 0 ? 'text_layer' : ocrCount === pages.length ? 'ocr' : 'mixed';
+
+  return { pages, pageCount: totalPages, extractionMethod };
+}
+
 /* --------------------------------------------------------------------- PPTX */
 
 async function fromPptx(buffer) {
@@ -201,4 +252,36 @@ export async function extractDocument({ buffer, fileName, key }) {
   }
 }
 
-export { OCR_TRIGGER_CHARS_PER_PAGE };
+/* ------------------------------------------------------- binder text cache */
+
+// Separates pages inside the single .txt object a binder source caches to S3.
+// Chosen so it cannot collide with real extracted text: form-feed is a control
+// character no PDF or OCR text layer legitimately contains, and the page
+// number that follows is what lets a cached file be split back into the same
+// per-page shape `extractPdfPerPage` produced, without storing a second index
+// object alongside it.
+const PAGE_MARK = /\f--PAGE (\d+)--\f\n/;
+const markFor = (n) => `\f--PAGE ${n}--\f\n`;
+
+/** Serialises `{page, text}[]` into the one string written to `text_s3_key`. */
+export function encodeSourceText(pages) {
+  return pages.map((p) => `${markFor(p.page)}${p.text}`).join('\n\n');
+}
+
+/**
+ * Reverses `encodeSourceText`. Returns `[{page, text}]` — labels are not
+ * stored, because they are regenerated from `page` plus the source's own
+ * display name when a binder's pipeline rebuilds citable chunks.
+ */
+export function decodeSourceText(raw) {
+  const parts = String(raw ?? '').split(PAGE_MARK).slice(1); // drop text before the first marker, if any
+  const pages = [];
+  for (let i = 0; i < parts.length; i += 2) {
+    const page = Number(parts[i]);
+    const text = (parts[i + 1] ?? '').replace(/\n\n$/, '');
+    if (Number.isFinite(page)) pages.push({ page, text });
+  }
+  return pages;
+}
+
+export { OCR_TRIGGER_CHARS_PER_PAGE, clean };

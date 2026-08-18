@@ -8,7 +8,9 @@ import * as library from './core/library.js';
 import * as study from './core/study.js';
 import * as jobs from './core/jobs.js';
 import * as face from './core/face.js';
-import { runPipeline } from './core/pipeline.js';
+import * as binders from './core/binders.js';
+import * as sources from './core/sources.js';
+import { dispatchBackgroundJob } from './core/dispatch.js';
 import { configuredProviders } from './ai/provider.js';
 
 /**
@@ -96,7 +98,7 @@ function requireUser(req) {
  * instead of letting it take the process down.
  */
 const dispatchInProcess = async (payload) => {
-  runPipeline(payload).catch((e) => console.error('Pipeline threw outside its own handler', payload.jobId, e));
+  dispatchBackgroundJob(payload).catch((e) => console.error('Pipeline threw outside its own handler', payload.jobId, e));
 };
 
 /* ---------------------------------------------------------------- routes */
@@ -147,6 +149,38 @@ app.get('/shared/:token', send((req) => library.getShared(req.params.token)));
 app.post('/uploads', send((req) => jobs.createUpload(requireUser(req).id, req.body), 201));
 app.post('/jobs', send((req) => jobs.startJob(requireUser(req).id, req.body, dispatchInProcess), 202));
 app.get('/jobs/:id', send((req) => jobs.getJob(requireUser(req).id, req.params.id)));
+
+app.post('/binders', send((req) => binders.createBinder(requireUser(req).id, req.body), 201));
+app.get('/binders', send((req) => binders.listBinders(requireUser(req).id)));
+app.get('/binders/:id', send((req) => binders.getBinder(requireUser(req).id, req.params.id)));
+app.patch('/binders/:id', send((req) => binders.updateBinder(requireUser(req).id, req.params.id, req.body)));
+app.delete(
+  '/binders/:id',
+  send(async (req) => {
+    await binders.deleteBinder(requireUser(req).id, req.params.id);
+  }),
+);
+
+app.post('/binders/:id/sources', send((req) => sources.createSources(requireUser(req).id, req.params.id, req.body?.files), 201));
+app.get('/binders/:id/sources', send((req) => sources.listSources(requireUser(req).id, req.params.id)));
+app.post(
+  '/binders/:id/sources/:sourceId/commit',
+  send((req) => sources.commitSource(requireUser(req).id, req.params.id, req.params.sourceId, dispatchInProcess)),
+);
+app.post(
+  '/binders/:id/sources/:sourceId/retry',
+  send((req) => sources.retrySource(requireUser(req).id, req.params.id, req.params.sourceId, dispatchInProcess)),
+);
+app.patch('/sources/:id', send((req) => sources.renameSource(requireUser(req).id, req.params.id, req.body?.displayName)));
+app.delete(
+  '/sources/:id',
+  send(async (req) => {
+    await sources.deleteSource(requireUser(req).id, req.params.id);
+  }),
+);
+app.get('/sources/:id/status', send((req) => sources.getSourceStatus(requireUser(req).id, req.params.id)));
+app.get('/sources/:id/download', send((req) => sources.getSourceDownloadUrl(requireUser(req).id, req.params.id)));
+app.post('/binders/:id/generate', send((req) => binders.generateBinder(requireUser(req).id, req.params.id, dispatchInProcess), 202));
 
 app.post('/quiz/attempts', send((req) => study.submitAttempt(requireUser(req).id, req.body), 201));
 app.get('/quiz/attempts', send((req) => study.listAttempts(requireUser(req).id, req.query.materialId)));

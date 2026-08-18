@@ -431,6 +431,28 @@
   cursor: default;
 }
 
+/* A resolved Binder citation ("Lecture 3 – Hashing · p.12") opens the source
+   PDF at that page rather than pinning the hover-thread ribbon, so it gets
+   its own colour to read as a different kind of control from `.cite`. */
+.cite-source {
+  color: var(--series-3);
+  background: var(--series-3-soft);
+  border-color: color-mix(in srgb, var(--series-3) 30%, transparent);
+  cursor: pointer;
+}
+
+.cite-source:hover { background: var(--series-3); color: #fff; }
+
+/* Subtle, not a hidden state: the point still reads as an ordinary claim,
+   with a small flag next to it saying its citation did not survive
+   server-side resolution. */
+.unverified-flag {
+  display: inline-flex;
+  vertical-align: -2px;
+  margin-left: 6px;
+  color: var(--warn);
+}
+
 .source-card {
   padding: 15px 17px;
   border-radius: var(--r);

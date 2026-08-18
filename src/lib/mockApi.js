@@ -27,7 +27,7 @@ function read() {
   } catch {
     /* fall through to a fresh store */
   }
-  return { user: null, materials: [SAMPLE_MATERIAL], attempts: [], flashcards: {}, shares: {}, faceEnrolled: false };
+  return { user: null, materials: [SAMPLE_MATERIAL], attempts: [], flashcards: {}, shares: {}, faceEnrolled: false, binders: [], sources: {} };
 }
 
 function write(db) {
@@ -40,6 +40,9 @@ function write(db) {
 }
 
 let db = read();
+// A store persisted before binders existed will be missing these keys.
+db.binders ??= [];
+db.sources ??= {};
 const jobs = new Map();
 
 const persist = () => write(db);
@@ -113,6 +116,71 @@ async function runJob(jobId, material) {
 }
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
+
+/**
+ * Demo-mode stand-in for `core/citations.js`'s server-side resolution pass.
+ *
+ * There is no real generation here (see the module comment above), so this
+ * distributes the bundled sample recap's existing chunk-id citations across
+ * the binder's actual ready sources round-robin, purely so the citation-chip
+ * UI (source name, page, the sources strip) has real per-source data to
+ * render against in demo mode rather than nothing at all. It follows the same
+ * `resolvedCitations` / `unverified` / `sourcesSummary` shape the real
+ * backend produces, so the components never need to know which one they're
+ * looking at.
+ */
+function attributeSampleRecap(readySources) {
+  const recap = clone(SAMPLE_MATERIAL.recap);
+  const quiz = clone(SAMPLE_MATERIAL.quiz);
+  const counts = new Map(readySources.map((s) => [s.id, 0]));
+
+  // Every sample chunk's page, spread across the ready sources round-robin so
+  // demo mode still shows citations landing on more than one source once a
+  // binder has more than one.
+  const pageForChunk = new Map(SAMPLE_CHUNKS.map((c, i) => [c.id, ((c.page - 1) % Math.max(1, readySources[0]?.pageCount || 12)) + 1]));
+
+  const resolve = (citations) => {
+    if (!readySources.length || !citations?.length) return [];
+    const resolved = citations.map((chunkId, i) => {
+      const source = readySources[i % readySources.length];
+      const page = Math.min(pageForChunk.get(chunkId) ?? 1, Math.max(1, source.pageCount || 1));
+      counts.set(source.id, (counts.get(source.id) ?? 0) + 1);
+      return { sourceId: source.id, displayName: source.displayName, page };
+    });
+    // Same de-duplication rule as the real resolver: one chip per source+page.
+    const seen = new Set();
+    return resolved.filter((c) => {
+      const key = `${c.sourceId}:${c.page}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
+  for (const section of recap.sections ?? []) {
+    for (const point of section.points ?? []) {
+      point.resolvedCitations = resolve(point.citations);
+      point.unverified = point.resolvedCitations.length === 0;
+    }
+  }
+  for (const term of recap.keyTerms ?? []) {
+    term.resolvedCitations = resolve(term.citations);
+    term.unverified = term.resolvedCitations.length === 0;
+  }
+  for (const question of quiz.questions ?? []) {
+    question.resolvedCitations = resolve(question.citations);
+    question.unverified = question.resolvedCitations.length === 0;
+  }
+
+  const sourcesSummary = readySources.map((s) => ({
+    sourceId: s.id,
+    displayName: s.displayName,
+    pageCount: s.pageCount,
+    citationCount: counts.get(s.id) ?? 0,
+  }));
+
+  return { recap, quiz, sourcesSummary };
+}
 
 export const mockApi = {
   mode: 'demo',
@@ -349,6 +417,220 @@ export const mockApi = {
       const material = db.materials.find((m) => m.id === id);
       if (!material) throw Object.assign(new Error('Shared recap not found'), { status: 404 });
       return clone(material);
+    },
+  },
+
+  /* ---------------------------------------------------------------- binders */
+
+  binders: {
+    async list() {
+      await sleep(200);
+      return clone(db.binders)
+        .map(({ recap, quiz, chunks, ...rest }) => rest)
+        .sort((a, b) => (b.isFavourite === a.isFavourite ? new Date(b.updatedAt) - new Date(a.updatedAt) : b.isFavourite ? 1 : -1));
+    },
+    async get(id) {
+      await sleep(160);
+      const found = db.binders.find((b) => b.id === id);
+      if (!found) throw Object.assign(new Error('Binder not found'), { status: 404 });
+      return clone(found);
+    },
+    async create(name) {
+      await sleep(300);
+      const clean = String(name ?? '').trim();
+      if (!clean) throw Object.assign(new Error('A binder name is required.'), { status: 400 });
+      if (clean.length > 100) throw Object.assign(new Error('Binder names must be 100 characters or fewer.'), { status: 400 });
+      const now = new Date().toISOString();
+      const binder = { id: makeId('binder'), name: clean, isFavourite: false, sourceCount: 0, recap: null, generatedAt: null, createdAt: now, updatedAt: now };
+      db.binders = [binder, ...db.binders];
+      persist();
+      return clone(binder);
+    },
+    async update(id, patch) {
+      await sleep(180);
+      const binder = db.binders.find((b) => b.id === id);
+      if (!binder) throw Object.assign(new Error('Binder not found'), { status: 404 });
+      if (patch.name !== undefined) {
+        const clean = String(patch.name ?? '').trim();
+        if (!clean) throw Object.assign(new Error('A binder name is required.'), { status: 400 });
+        binder.name = clean;
+      }
+      if (patch.isFavourite !== undefined) binder.isFavourite = !!patch.isFavourite;
+      binder.updatedAt = new Date().toISOString();
+      persist();
+      return clone(binder);
+    },
+    async remove(id) {
+      await sleep(200);
+      db.binders = db.binders.filter((b) => b.id !== id);
+      delete db.sources[id];
+      persist();
+    },
+    async generate(id) {
+      const binder = db.binders.find((b) => b.id === id);
+      if (!binder) throw Object.assign(new Error('Binder not found'), { status: 404 });
+      const ready = (db.sources[id] ?? []).filter((s) => s.status === 'ready');
+      if (!ready.length) throw Object.assign(new Error('Add at least one processed source before generating a recap.'), { status: 400 });
+
+      const jobId = makeId('job');
+      jobs.set(jobId, { id: jobId, binderId: id, status: 'running', stage: 'read', stageLabel: '', progress: 0, log: [] });
+      (async () => {
+        const job = jobs.get(jobId);
+        for (const stage of PIPELINE_STAGES.slice(1, 6)) {
+          job.stage = stage.id;
+          job.stageLabel = stage.label;
+          await sleep(Math.min(stage.ms, 900));
+          job.progress = Math.min(99, job.progress + 18);
+        }
+        const { recap, quiz, sourcesSummary } = attributeSampleRecap(ready);
+        binder.recap = recap;
+        binder.quiz = quiz;
+        binder.chunks = clone(SAMPLE_CHUNKS);
+        binder.sourcesSummary = sourcesSummary;
+        binder.generatedAt = new Date().toISOString();
+        binder.updatedAt = binder.generatedAt;
+        job.progress = 100;
+        job.stage = 'done';
+        job.status = 'ready';
+        persist();
+      })();
+      await sleep(150);
+      return { jobId, binderId: id };
+    },
+  },
+
+  sources: {
+    async list(binderId) {
+      await sleep(160);
+      return clone(db.sources[binderId] ?? []);
+    },
+    /** Demo mode has no S3, so "upload" is simulated with a short local delay in `put`. */
+    async create(binderId, files) {
+      await sleep(250);
+      const created = [];
+      const rejected = [];
+      for (const file of files ?? []) {
+        const fileName = String(file?.fileName ?? '').trim();
+        if (!fileName) {
+          rejected.push({ fileName: fileName || '(unnamed)', reason: 'A file name is required.' });
+          continue;
+        }
+        if (!/\.pdf$/i.test(fileName)) {
+          rejected.push({ fileName, reason: 'Only PDF files are accepted.' });
+          continue;
+        }
+        const source = {
+          id: makeId('src'),
+          binderId,
+          displayName: fileName.replace(/\.pdf$/i, ''),
+          originalFilename: fileName,
+          pageCount: 0,
+          sizeBytes: Number(file?.sizeBytes ?? 0),
+          status: 'pending',
+          extractionMethod: null,
+          errorMessage: null,
+          uploadedAt: new Date().toISOString(),
+        };
+        db.sources[binderId] = [...(db.sources[binderId] ?? []), source];
+        created.push({ ...source, uploadUrl: null });
+      }
+      if (created.length) {
+        const binder = db.binders.find((b) => b.id === binderId);
+        if (binder) {
+          binder.sourceCount += created.length;
+          binder.updatedAt = new Date().toISOString();
+        }
+      }
+      persist();
+      return { created, rejected };
+    },
+    async put() {
+      await sleep(500);
+    },
+    async commit(binderId, sourceId) {
+      const source = (db.sources[binderId] ?? []).find((s) => s.id === sourceId);
+      if (!source) throw Object.assign(new Error('Source not found'), { status: 404 });
+      if (source.status !== 'pending') return clone(source);
+      source.status = 'processing';
+      persist();
+      (async () => {
+        await sleep(1800 + Math.random() * 1200);
+        source.status = 'ready';
+        source.extractionMethod = 'text_layer';
+        source.pageCount = 3 + Math.floor(Math.random() * 10);
+        persist();
+      })();
+      return clone(source);
+    },
+    async retry(binderId, sourceId) {
+      const source = (db.sources[binderId] ?? []).find((s) => s.id === sourceId);
+      if (!source) throw Object.assign(new Error('Source not found'), { status: 404 });
+      source.status = 'processing';
+      source.errorMessage = null;
+      persist();
+      (async () => {
+        await sleep(1500);
+        source.status = 'ready';
+        source.extractionMethod = 'text_layer';
+        source.pageCount = 3 + Math.floor(Math.random() * 10);
+        persist();
+      })();
+      return clone(source);
+    },
+    async rename(sourceId, displayName) {
+      await sleep(150);
+      const clean = String(displayName ?? '').trim();
+      if (!clean) throw Object.assign(new Error('A name is required.'), { status: 400 });
+      for (const list of Object.values(db.sources)) {
+        const source = list.find((s) => s.id === sourceId);
+        if (source) {
+          source.displayName = clean;
+          persist();
+          return clone(source);
+        }
+      }
+      throw Object.assign(new Error('Source not found'), { status: 404 });
+    },
+    async remove(sourceId) {
+      await sleep(180);
+      for (const [binderId, list] of Object.entries(db.sources)) {
+        const idx = list.findIndex((s) => s.id === sourceId);
+        if (idx !== -1) {
+          list.splice(idx, 1);
+          const binder = db.binders.find((b) => b.id === binderId);
+          if (binder) {
+            binder.sourceCount = Math.max(0, binder.sourceCount - 1);
+            binder.updatedAt = new Date().toISOString();
+          }
+          persist();
+          return;
+        }
+      }
+      throw Object.assign(new Error('Source not found'), { status: 404 });
+    },
+    async status(sourceId) {
+      await sleep(120);
+      for (const list of Object.values(db.sources)) {
+        const source = list.find((s) => s.id === sourceId);
+        if (source) {
+          const { id, status, extractionMethod, errorMessage, pageCount } = source;
+          return clone({ id, status, extractionMethod, errorMessage, pageCount });
+        }
+      }
+      throw Object.assign(new Error('Source not found'), { status: 404 });
+    },
+    /**
+     * Demo mode has no S3 object to link to — the original bytes were never
+     * actually stored anywhere, only the file name. Failing honestly here
+     * (rather than opening a fake URL) is the same choice `ask()` and `tts()`
+     * make elsewhere in this file.
+     */
+    async download() {
+      await sleep(150);
+      throw Object.assign(
+        new Error('Opening the original PDF needs a real backend — demo mode never stores your file.'),
+        { status: 501 },
+      );
     },
   },
 

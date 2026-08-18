@@ -9,6 +9,16 @@ export const sourceKey = (userId, materialId, fileName) =>
 
 export const audioKey = (userId, materialId) => `audio/${userId}/${materialId}.mp3`;
 
+/** A binder source's original PDF. Extension is fixed — sources are PDF-only. */
+export const binderSourceKey = (userId, binderId, sourceId) => `uploads/${userId}/${binderId}/${sourceId}.pdf`;
+
+/**
+ * Cached extracted text for a source, written once by ingestion and read by
+ * every later generate — see the note on `Source.text_s3_key` in
+ * `core/sourceExtract.js` for why this must never be regenerated silently.
+ */
+export const binderTextKey = (userId, binderId, sourceId) => `extracted/${userId}/${binderId}/${sourceId}.txt`;
+
 /**
  * The browser PUTs the file directly to S3 with this URL, so the file never
  * passes through Lambda. That keeps a 25 MB deck off the request path and out
