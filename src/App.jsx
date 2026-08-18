@@ -20,6 +20,9 @@ import Signup from './pages/Signup.jsx';
 // Everything behind the app shell is split out: the marketing route is what
 // most first visits load, and it should not pay for the reader or the charts.
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
+const Binders = lazy(() => import('./pages/Binders.jsx'));
+const BinderDetail = lazy(() => import('./pages/BinderDetail.jsx'));
+const BinderRecap = lazy(() => import('./pages/BinderRecap.jsx'));
 const Upload = lazy(() => import('./pages/Upload.jsx'));
 const Processing = lazy(() => import('./pages/Processing.jsx'));
 const Recap = lazy(() => import('./pages/Recap.jsx'));
@@ -90,11 +93,24 @@ export default function App() {
               }
             >
               <Route index element={<Dashboard />} />
+              <Route path="binders" element={<Binders />} />
+              <Route path="binders/:id" element={<BinderDetail />} />
               <Route path="upload" element={<Upload />} />
               <Route path="processing/:jobId" element={<Processing />} />
               <Route path="progress" element={<Progress />} />
               <Route path="settings" element={<Settings />} />
             </Route>
+
+            {/* Same reasoning as the Material recap route below: the study
+                surface runs its own light chrome outside the app shell. */}
+            <Route
+              path="/app/binders/:id/recap"
+              element={
+                <RequireAuth>
+                  <BinderRecap />
+                </RequireAuth>
+              }
+            />
 
             {/* The study surface sits outside the app shell — it swaps the whole
                 token set to the light luminance and runs its own slim chrome. */}

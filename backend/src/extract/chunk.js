@@ -40,12 +40,25 @@ function splitLong(text) {
   return out;
 }
 
+/**
+ * `sourceRef` is optional and opaque to this function — a single-Material
+ * pipeline never sets it, so every page shares `undefined` and behaves
+ * exactly as before. A Binder pipeline sets it to that page's short source
+ * ref ("S1", "S2", ...), and the one rule this adds is: two thin pages are
+ * only ever merged forward into one chunk when they carry the *same*
+ * `sourceRef`. Without that, a one-line "Continued..." slide at the end of
+ * Source A could merge into the first slide of Source B, producing a chunk
+ * that is genuinely two files' text glued together — which would make the
+ * source half of "which source, which page" citation attribution a lie for
+ * that one chunk. Every chunk this returns therefore belongs to exactly one
+ * source, which `core/citations.js` depends on when resolving citations.
+ */
 export function chunkPages(pages) {
   const chunks = [];
   let counter = 0;
-  const push = (label, page, text) => {
+  const push = (label, page, text, sourceRef) => {
     counter += 1;
-    chunks.push({ id: `c${counter}`, label, page, text });
+    chunks.push({ id: `c${counter}`, label, page, text, ...(sourceRef !== undefined ? { sourceRef } : null) });
   };
 
   let pending = null; // a short page waiting to be merged forward
@@ -53,30 +66,32 @@ export function chunkPages(pages) {
   for (const page of pages) {
     const text = (page.text ?? '').trim();
     if (text.length < MIN_CHARS) continue; // title slides, page numbers, blanks
+    const sourceRef = page.sourceRef;
 
     if (pending) {
-      // Two consecutive thin slides are one idea split across a build.
-      if (pending.text.length + text.length <= MAX_CHARS) {
-        push(`${pending.label}–${page.label.replace(/^\D+/, '')}`, pending.page, `${pending.text}\n\n${text}`);
+      // Two consecutive thin slides are one idea split across a build — but
+      // only within the same source. A source boundary always flushes.
+      if (pending.sourceRef === sourceRef && pending.text.length + text.length <= MAX_CHARS) {
+        push(`${pending.label}–${page.label.replace(/^\D+/, '')}`, pending.page, `${pending.text}\n\n${text}`, sourceRef);
         pending = null;
         continue;
       }
-      push(pending.label, pending.page, pending.text);
+      push(pending.label, pending.page, pending.text, pending.sourceRef);
       pending = null;
     }
 
     if (text.length < MERGE_UNDER) {
-      pending = { label: page.label, page: page.page, text };
+      pending = { label: page.label, page: page.page, text, sourceRef };
       continue;
     }
 
     const parts = splitLong(text);
     parts.forEach((part, i) => {
-      push(parts.length > 1 ? `${page.label} (${i + 1}/${parts.length})` : page.label, page.page, part);
+      push(parts.length > 1 ? `${page.label} (${i + 1}/${parts.length})` : page.label, page.page, part, sourceRef);
     });
   }
 
-  if (pending) push(pending.label, pending.page, pending.text);
+  if (pending) push(pending.label, pending.page, pending.text, pending.sourceRef);
   return chunks;
 }
 

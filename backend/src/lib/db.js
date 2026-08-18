@@ -27,6 +27,20 @@ export const keys = {
   job: (jobId) => ({ pk: `JOB#${jobId}`, sk: 'JOB' }),
   share: (token) => ({ pk: `SHARE#${token}`, sk: 'SHARE' }),
   emailIndex: (email) => ({ pk: `EMAIL#${email.toLowerCase()}`, sk: 'INDEX' }),
+
+  // A binder is a folder of sources with one recap. Sources live in the same
+  // partition as their binder (not their own), keyed by binderId, so listing
+  // "every source in this binder" and "delete this binder's sources" are both
+  // the one query the table already knows how to do — no GSI needed, and
+  // ownership is still just "is this pk mine".
+  binder: (userId, binderId) => ({ pk: `USER#${userId}`, sk: `BINDER#${binderId}` }),
+  binderPrefix: (userId) => ({ pk: `USER#${userId}`, prefix: 'BINDER#' }),
+  source: (userId, binderId, sourceId) => ({ pk: `USER#${userId}`, sk: `SOURCE#${binderId}#${sourceId}` }),
+  sourcePrefix: (userId, binderId) => ({ pk: `USER#${userId}`, prefix: `SOURCE#${binderId}#` }),
+  // Routes like `PATCH /sources/{id}` only have a source id, not its binder.
+  // Rather than a GSI, this is a one-item pointer to {binderId} in the same
+  // partition — the same trick `share` uses to point at a material.
+  sourceIndex: (userId, sourceId) => ({ pk: `USER#${userId}`, sk: `SOURCEIDX#${sourceId}` }),
 };
 
 export const newId = (prefix) => `${prefix}_${randomBytes(9).toString('base64url')}`;
@@ -75,6 +89,27 @@ export async function updateItem(key, patch) {
       UpdateExpression: `SET ${sets.join(', ')}`,
       ExpressionAttributeNames: names,
       ExpressionAttributeValues: values,
+      ReturnValues: 'ALL_NEW',
+    }),
+  );
+  return Attributes;
+}
+
+/**
+ * Adds `delta` to a numeric attribute in place and returns the new item.
+ * Used for `Binder.source_count`, which is denormalised specifically so the
+ * binder list does not need a Query per card just to say "3 sources" — but a
+ * denormalised counter is only trustworthy if it is never read-then-written
+ * from the caller, which is what this atomic `ADD` avoids.
+ */
+export async function incrementItem(key, attr, delta) {
+  const { Attributes } = await client.send(
+    new UpdateCommand({
+      TableName: TABLE(),
+      Key: key,
+      UpdateExpression: `SET #a = if_not_exists(#a, :zero) + :delta`,
+      ExpressionAttributeNames: { '#a': attr },
+      ExpressionAttributeValues: { ':zero': 0, ':delta': delta },
       ReturnValues: 'ALL_NEW',
     }),
   );

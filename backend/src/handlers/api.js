@@ -7,6 +7,8 @@ import * as library from '../core/library.js';
 import * as study from '../core/study.js';
 import * as jobs from '../core/jobs.js';
 import * as face from '../core/face.js';
+import * as binders from '../core/binders.js';
+import * as sources from '../core/sources.js';
 
 /**
  * Lambda adapter.
@@ -80,6 +82,43 @@ const ROUTES = [
   ['POST', /^\/uploads$/, async (e) => json(201, await jobs.createUpload(requireUser(e).id, parseBody(e)))],
   ['POST', /^\/jobs$/, async (e) => json(202, await jobs.startJob(requireUser(e).id, parseBody(e), dispatchToProcessor))],
   ['GET', /^\/jobs\/([^/]+)$/, async (e, id) => json(200, await jobs.getJob(requireUser(e).id, id))],
+
+  ['POST', /^\/binders$/, async (e) => json(201, await binders.createBinder(requireUser(e).id, parseBody(e)))],
+  ['GET', /^\/binders$/, async (e) => json(200, await binders.listBinders(requireUser(e).id))],
+  ['GET', /^\/binders\/([^/]+)$/, async (e, id) => json(200, await binders.getBinder(requireUser(e).id, id))],
+  ['PATCH', /^\/binders\/([^/]+)$/, async (e, id) => json(200, await binders.updateBinder(requireUser(e).id, id, parseBody(e)))],
+  [
+    'DELETE',
+    /^\/binders\/([^/]+)$/,
+    async (e, id) => {
+      await binders.deleteBinder(requireUser(e).id, id);
+      return noContent();
+    },
+  ],
+  ['POST', /^\/binders\/([^/]+)\/sources$/, async (e, id) => json(201, await sources.createSources(requireUser(e).id, id, parseBody(e).files))],
+  ['GET', /^\/binders\/([^/]+)\/sources$/, async (e, id) => json(200, await sources.listSources(requireUser(e).id, id))],
+  [
+    'POST',
+    /^\/binders\/([^/]+)\/sources\/([^/]+)\/commit$/,
+    async (e, binderId, sourceId) => json(200, await sources.commitSource(requireUser(e).id, binderId, sourceId, dispatchToProcessor)),
+  ],
+  [
+    'POST',
+    /^\/binders\/([^/]+)\/sources\/([^/]+)\/retry$/,
+    async (e, binderId, sourceId) => json(200, await sources.retrySource(requireUser(e).id, binderId, sourceId, dispatchToProcessor)),
+  ],
+  ['PATCH', /^\/sources\/([^/]+)$/, async (e, id) => json(200, await sources.renameSource(requireUser(e).id, id, parseBody(e).displayName))],
+  [
+    'DELETE',
+    /^\/sources\/([^/]+)$/,
+    async (e, id) => {
+      await sources.deleteSource(requireUser(e).id, id);
+      return noContent();
+    },
+  ],
+  ['GET', /^\/sources\/([^/]+)\/status$/, async (e, id) => json(200, await sources.getSourceStatus(requireUser(e).id, id))],
+  ['GET', /^\/sources\/([^/]+)\/download$/, async (e, id) => json(200, await sources.getSourceDownloadUrl(requireUser(e).id, id))],
+  ['POST', /^\/binders\/([^/]+)\/generate$/, async (e, id) => json(202, await binders.generateBinder(requireUser(e).id, id, dispatchToProcessor))],
 
   ['POST', /^\/quiz\/attempts$/, async (e) => json(201, await study.submitAttempt(requireUser(e).id, parseBody(e)))],
   ['GET', /^\/quiz\/attempts$/, async (e) => json(200, await study.listAttempts(requireUser(e).id, e.queryStringParameters?.materialId))],

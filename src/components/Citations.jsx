@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { Icon } from './ui.jsx';
 
 /**
  * The citation ribbon.
@@ -75,8 +76,34 @@ export function useCitations() {
 
 /* ------------------------------------------------------------------------- */
 
-/** One recap line, tethered to the slides it came from. */
-export function Claim({ id, citations = [], confidence = 'grounded', children }) {
+/**
+ * One recap line, tethered to the slides — or, inside a Binder, the source
+ * and page — it came from.
+ *
+ * `resolvedCitations` is the Binder path: `{ sourceId, displayName, page }[]`
+ * already produced server-side by `core/citations.js` (see that file's
+ * header for why the model itself never sees or emits a source id). When it
+ * is provided, the chip shown is source-aware and clicking it opens that
+ * exact page of the original PDF via `onOpenSource` — this is deliberately a
+ * *different* control from the legacy `cite` button below, which pins the
+ * hover-thread ribbon instead. A resolved chip has real page identity to
+ * jump to; a bare chunk-id chip does not.
+ *
+ * When `resolvedCitations` is omitted entirely — every existing single-
+ * Material recap, and any Binder recap generated before this feature existed
+ * — this falls straight back to the original chunk-id rendering below,
+ * unchanged.
+ */
+export function Claim({
+  id,
+  citations = [],
+  confidence = 'grounded',
+  resolvedCitations,
+  unverified = false,
+  singleSource = false,
+  onOpenSource,
+  children,
+}) {
   const { chunkById, registerClaim, setActive, togglePin, shown, pinned } = useCitations();
   const ref = useRef(null);
 
@@ -86,7 +113,15 @@ export function Claim({ id, citations = [], confidence = 'grounded', children })
   }, [id, registerClaim]);
 
   const resolved = citations.filter((c) => chunkById.has(c));
-  const unsupported = resolved.length === 0;
+  const hasResolvedCitations = Array.isArray(resolvedCitations);
+  // Two different failure states, deliberately rendered differently:
+  //   - legacy "unsupported" (no citations at all, single-Material path) is
+  //     the strong warning treatment that already existed.
+  //   - Binder "unverified" (lost its citation during server-side resolution,
+  //     but `ground.js` already decided the point itself was safe to keep) is
+  //     the spec's "subtle warning icon, not a hidden state" — same claim,
+  //     same background, just a small flag next to the text.
+  const unsupported = hasResolvedCitations ? false : resolved.length === 0;
   const isActive = shown === id;
 
   return (
@@ -100,22 +135,41 @@ export function Claim({ id, citations = [], confidence = 'grounded', children })
       onMouseEnter={() => setActive(id)}
       onMouseLeave={() => setActive((a) => (a === id ? null : a))}
     >
-      <p className="claim-text">{children}</p>
+      <p className="claim-text">
+        {children}
+        {unverified && (
+          <span className="unverified-flag" title="This line lost its citation during verification — treat it as unconfirmed, not necessarily wrong.">
+            <Icon name="error" size={15} />
+          </span>
+        )}
+      </p>
       <span className="claim-cites">
-        {resolved.map((c) => (
-          <button
-            key={c}
-            type="button"
-            className="cite"
-            onFocus={() => setActive(id)}
-            onBlur={() => setActive((a) => (a === id ? null : a))}
-            onClick={() => togglePin(id)}
-            aria-pressed={pinned === id}
-            aria-label={`${pinned === id ? 'Unpin' : 'Pin'} source ${chunkById.get(c).label}`}
-          >
-            {chunkById.get(c).label}
-          </button>
-        ))}
+        {hasResolvedCitations
+          ? resolvedCitations.map((c) => (
+              <button
+                key={`${c.sourceId}-${c.page}`}
+                type="button"
+                className="cite cite-source"
+                onClick={() => onOpenSource?.(c.sourceId, c.page)}
+                title={`Open page ${c.page} of ${c.displayName}`}
+              >
+                {singleSource ? `p.${c.page}` : `${c.displayName} · p.${c.page}`}
+              </button>
+            ))
+          : resolved.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className="cite"
+                onFocus={() => setActive(id)}
+                onBlur={() => setActive((a) => (a === id ? null : a))}
+                onClick={() => togglePin(id)}
+                aria-pressed={pinned === id}
+                aria-label={`${pinned === id ? 'Unpin' : 'Pin'} source ${chunkById.get(c).label}`}
+              >
+                {chunkById.get(c).label}
+              </button>
+            ))}
         {unsupported && (
           <span className="cite cite-missing" title="Nothing in your file backs this line up">
             Unsupported

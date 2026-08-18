@@ -1,0 +1,64 @@
+/* --------------------------------------------------------- sources strip */
+
+.sources-strip {
+  padding: 18px 20px;
+  border-radius: var(--r-lg);
+  background: var(--ground-raised);
+  border: 1px solid var(--glass-line);
+  margin-bottom: 20px;
+}
+
+.sources-strip-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.sources-strip-head h2 { font-size: var(--t-sm); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-4); }
+.sources-strip-total { font-size: var(--t-xs); color: var(--ink-4); }
+
+.sources-strip-list { display: flex; flex-direction: column; gap: 8px; }
+
+.sources-strip-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--r);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sources-strip-item .material-symbols-rounded:first-child { color: var(--ink-4); flex-shrink: 0; }
+
+.sources-strip-name { flex: 1; min-width: 0; font-size: var(--t-sm); font-weight: 600; }
+
+.sources-strip-count { font-size: var(--t-xs); color: var(--ink-3); flex-shrink: 0; white-space: nowrap; }
+
+.sources-strip-item.is-light { border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); }
+
+.sources-strip-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  cursor: default;
+}
+
+/* --------------------------------------------------------- quiz reference */
+
+.quiz-reference-list { display: flex; flex-direction: column; gap: 14px; list-style: none; padding: 0; margin: 14px 0 0; }
+
+.quiz-reference-item {
+  padding: 12px 14px;
+  border-radius: var(--r);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-line);
+}
+
+.quiz-reference-item.is-unverified { background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+
+.quiz-reference-prompt { font-size: 0.9375rem; line-height: 1.55; color: var(--ink); margin-bottom: 8px; }
+
+.term-cites { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: 8px; vertical-align: middle; }
