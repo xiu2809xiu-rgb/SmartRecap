@@ -1,0 +1,41 @@
+# Light dependency set — what the API actually needs to RUN.
+#
+# The OCR stack in requirements.txt (torch, paddlepaddle, paddleocr, pix2text,
+# opencv) is several GB, takes 20-40 minutes, and does not publish wheels for
+# every interpreter. It is also imported LAZILY, inside the functions that use
+# it (extractors.py:301, :428) — so the API starts and serves without it.
+#
+# What you give up: OCR of scanned PDFs and photos of handwritten notes. Text
+# PDFs, PowerPoint, Word, plain text and Markdown all extract normally, which
+# is every demo path.
+#
+# For the full stack (needed on the deployed instance):
+#   npm run backend:setup -- --full
+#
+# Versions are deliberately unpinned here. requirements.txt pins exact builds
+# for reproducible deployment; this file has to install on whatever interpreter
+# a teammate happens to have.
+
+fastapi
+uvicorn[standard]
+pydantic-settings
+python-multipart
+
+# Document extraction — the only heavy-ish imports that are top-level.
+PyMuPDF
+python-docx
+python-pptx
+
+# Model providers and AWS.
+openai
+boto3
+httpx
+
+# Google sign-in: verifies the ID token against Google's JWKS.
+google-auth
+requests
+
+# Shared utilities the extractors and image paths import.
+numpy
+Pillow
+filetype

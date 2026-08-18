@@ -10,8 +10,8 @@
     "predev": "node scripts/copy-pyodide.mjs",
     "prebuild": "node scripts/copy-pyodide.mjs",
     "prepreview": "node scripts/copy-pyodide.mjs",
-    "backend:setup": "python -m pip install -r backend/requirements.txt",
-    "backend:dev": "python -m uvicorn app.main:app --app-dir backend --port 8000"
+    "backend:setup": "node scripts/backend.mjs setup",
+    "backend:dev": "node scripts/backend.mjs dev"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.0",
