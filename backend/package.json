@@ -1,0 +1,26 @@
+{
+  "name": "smartrecap-backend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "SmartRecap serverless API — Lambda behind API Gateway, DynamoDB, S3.",
+  "scripts": {
+    "build": "sam build",
+    "deploy": "sam deploy --guided",
+    "logs": "sam logs --stack-name smartrecap --tail",
+    "local": "sam local start-api --port 3001"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.699.0",
+    "@aws-sdk/client-dynamodb": "^3.699.0",
+    "@aws-sdk/client-lambda": "^3.699.0",
+    "@aws-sdk/client-polly": "^3.699.0",
+    "@aws-sdk/client-s3": "^3.699.0",
+    "@aws-sdk/client-textract": "^3.699.0",
+    "@aws-sdk/lib-dynamodb": "^3.699.0",
+    "@aws-sdk/s3-request-presigner": "^3.699.0",
+    "fast-xml-parser": "^4.5.0",
+    "jszip": "^3.10.1",
+    "unpdf": "^0.12.1"
+  }
+}

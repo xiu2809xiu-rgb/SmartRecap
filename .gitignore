@@ -17,3 +17,6 @@ dist/
 Thumbs.db
 .vscode/
 .idea/
+# SAM build artefacts and deploy config (samconfig.toml holds parameter values)
+backend/.aws-sam/
+backend/samconfig.toml
