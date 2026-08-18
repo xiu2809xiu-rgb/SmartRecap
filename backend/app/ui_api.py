@@ -20,6 +20,7 @@ from .ai_service import (
     hard_quiz_provider_error,
 )
 from .config import Settings
+from .google_auth import verify_google_id_token
 from .image_service import generate_image, verify_raster_image
 from .models import ChatIllustrationRequest, Citation, IllustrationGenerationRequest, MaterialAskRequest, QuizGenerationRequest, SourceRecord, StudyPack
 from .repository import DurableRepository
@@ -47,6 +48,7 @@ _user = {
     "id": "local-student",
     "email": None,
     "name": "Student",
+    "picture": None,
     "guest": True,
     "createdAt": datetime.now(timezone.utc).isoformat(),
 }
@@ -428,11 +430,37 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
     @router.post("/auth/guest")
     async def authenticate(request: Request) -> Dict[str, Any]:
         body = await request.json() if request.headers.get("content-length") not in {None, "0"} else {}
-        user = dict(_user)
-        user["email"] = body.get("email")
-        user["name"] = body.get("name") or (body.get("email", "Student").split("@")[0])
-        user["guest"] = not bool(body.get("email"))
-        return {"token": "local-development-token", "user": user}
+        email = body.get("email")
+        _user["email"] = email
+        _user["name"] = body.get("name") or ((email or "Student").split("@")[0])
+        _user["guest"] = not bool(email)
+        _user["picture"] = None
+        return {"token": "local-development-token", "user": dict(_user)}
+
+    @router.post("/auth/google")
+    async def authenticate_with_google(request: Request) -> Dict[str, Any]:
+        """Sign in with a Google ID token.
+
+        The credential is verified server-side before it is believed — see
+        `google_auth.py`. The account details a student sees afterwards come
+        from the verified claims, never from anything the browser asserted.
+        """
+        body = await request.json() if request.headers.get("content-length") not in {None, "0"} else {}
+        credential = body.get("credential")
+        if not credential:
+            raise HTTPException(status_code=422, detail="A Google credential is required.")
+
+        profile = await run_in_threadpool(verify_google_id_token, credential, settings)
+
+        # Written back to the module-level record rather than a copy. The
+        # earlier stub built a throwaway dict, so `GET /auth/me` still answered
+        # with the untouched default and every signed-in student was shown the
+        # placeholder account on the next page load.
+        _user["email"] = profile["email"]
+        _user["name"] = profile["name"]
+        _user["picture"] = profile.get("picture")
+        _user["guest"] = False
+        return {"token": "local-development-token", "user": dict(_user)}
 
     @router.get("/auth/me")
     async def auth_me() -> Dict[str, Any]:

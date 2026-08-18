@@ -2,6 +2,8 @@ import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MarketingShell } from '../components/layout/Shells.jsx';
 import AuroraBackdrop from '../components/AuroraBackdrop.jsx';
+import ScrollProgress from '../components/ScrollProgress.jsx';
+import PipelineScroll from '../components/PipelineScroll.jsx';
 import Mascot from '../mascot/Mascot.jsx';
 import { Icon } from '../components/ui.jsx';
 import { usePrefs } from '../lib/prefs.jsx';
@@ -127,6 +129,8 @@ export default function Landing() {
 
   return (
     <MarketingShell>
+      <ScrollProgress />
+
       {/* ------------------------------------------------------------ hero */}
       <section className="hero">
         <div className="shell hero-grid">
@@ -225,6 +229,9 @@ export default function Landing() {
           </div>
         </div>
       </section>
+
+      {/* --------------------------------------------- scroll-driven pipeline */}
+      <PipelineScroll />
 
       {/* ------------------------------------------------------ how it works */}
       <section id="how" className="section how">
