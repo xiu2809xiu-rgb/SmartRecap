@@ -466,6 +466,32 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
     async def auth_me() -> Dict[str, Any]:
         return dict(_user)
 
+    # Face sign-in is designed and built on the client but has no
+    # implementation on this backend. It previously had no routes at all, so
+    # every call 404'd — and a 404 is indistinguishable from a bug. The client
+    # already treats 501 as "not available yet" and hides the feature
+    # (components/auth/FaceEnrolment.jsx), so answering honestly is what makes
+    # it disappear from the UI instead of failing in someone's face.
+    _FACE_UNAVAILABLE = "Face sign-in is not available on this deployment."
+
+    @router.get("/auth/face/status")
+    async def face_status() -> Dict[str, Any]:
+        # Deliberately 200 rather than 501: this endpoint's whole job is to
+        # report capability, and it is answering that question correctly.
+        return {"enrolled": False, "available": False, "reason": _FACE_UNAVAILABLE}
+
+    @router.post("/auth/face")
+    async def face_sign_in() -> None:
+        raise HTTPException(status_code=501, detail=_FACE_UNAVAILABLE)
+
+    @router.post("/auth/face/enrol")
+    async def face_enrol() -> None:
+        raise HTTPException(status_code=501, detail=_FACE_UNAVAILABLE)
+
+    @router.delete("/auth/face")
+    async def face_remove() -> None:
+        raise HTTPException(status_code=501, detail=_FACE_UNAVAILABLE)
+
     @router.get("/materials")
     async def list_materials() -> List[Dict[str, Any]]:
         return sorted((_public_material(item) for item in _materials.values()), key=lambda item: item.get("createdAt", ""), reverse=True)

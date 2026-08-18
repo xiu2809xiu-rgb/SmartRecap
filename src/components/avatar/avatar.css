@@ -1,0 +1,81 @@
+.avatar-section { padding-block: clamp(60px, 9vw, 110px); }
+
+.avatar-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 460px);
+  gap: clamp(30px, 5vw, 70px);
+  align-items: center;
+}
+
+.avatar-copy { max-width: 52ch; }
+.avatar-copy .lede { margin-top: 14px; }
+
+.avatar-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+  font-size: var(--t-sm);
+  color: var(--ink-4);
+}
+
+/* A fixed aspect box so the canvas mounting does not shift the page. Reserving
+   the space up front is the whole point of loading this lazily — a 17 MB model
+   that arrives and pushes the copy sideways is worse than one that never
+   arrives. */
+.avatar-frame {
+  position: relative;
+  aspect-ratio: 4 / 5;
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  background:
+    radial-gradient(60% 55% at 50% 30%, color-mix(in srgb, var(--aurora-violet) 34%, transparent), transparent 72%),
+    linear-gradient(160deg, var(--glass-strong), var(--glass));
+  border: 1px solid var(--glass-line);
+  box-shadow: var(--shadow-panel);
+}
+
+.avatar-stage {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 700ms var(--ease);
+}
+
+/* Faded in only once the model has been measured and framed, so the first
+   painted frame is never the un-normalised mesh at whatever scale it exported
+   at — which is usually enormous and off-centre. */
+.avatar-stage.is-ready { opacity: 1; }
+
+.avatar-stage canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  /* The global `canvas { max-width: 100% }` rule would otherwise fight r3f's
+     own sizing, which is what broke ElectricBorder once already. */
+  max-width: none !important;
+}
+
+.avatar-loading,
+.avatar-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--ink-4);
+  font-size: var(--t-sm);
+  text-align: center;
+  padding: 24px;
+}
+
+.avatar-placeholder p { max-width: 24ch; line-height: 1.5; }
+
+@media (max-width: 900px) {
+  .avatar-grid { grid-template-columns: 1fr; }
+  /* Squarer on a phone: a 4:5 portrait plus the copy above it pushes the next
+     section entirely off the fold. */
+  .avatar-frame { aspect-ratio: 1 / 1; max-width: 420px; }
+}

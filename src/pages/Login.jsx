@@ -5,6 +5,7 @@ import { Icon, Spinner } from '../components/ui.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import GoogleButton from '../components/auth/GoogleButton.jsx';
 import FaceSignIn from '../components/auth/FaceSignIn.jsx';
+import useFaceAvailability from '../components/auth/useFaceAvailability.js';
 import '../components/auth/auth-methods.css';
 
 export default function Login() {
@@ -16,6 +17,7 @@ export default function Login() {
   const [error, setError] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [faceOpen, setFaceOpen] = useState(false);
+  const faceAvailable = useFaceAvailability();
 
   const from = location.state?.from ?? '/app';
   const go = () => navigate(from, { replace: true });
@@ -61,10 +63,12 @@ export default function Login() {
       methods={
         <div className="auth-methods">
           <GoogleButton onCredential={onGoogle} onError={setError} disabled={busy} />
-          <button type="button" className="face-btn" onClick={() => setFaceOpen(true)} disabled={busy}>
-            <Icon name="face_retouching_natural" size={19} />
-            Sign in with your face
-          </button>
+          {faceAvailable && (
+            <button type="button" className="face-btn" onClick={() => setFaceOpen(true)} disabled={busy}>
+              <Icon name="face_retouching_natural" size={19} />
+              Sign in with your face
+            </button>
+          )}
         </div>
       }
     >

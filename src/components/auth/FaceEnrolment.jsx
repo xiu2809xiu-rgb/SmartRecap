@@ -22,7 +22,11 @@ export default function FaceEnrolment({ isGuest }) {
   const refresh = useCallback(async () => {
     try {
       const res = await api.auth.faceStatus();
-      setStatus({ loading: false, enrolled: !!res?.enrolled, available: true });
+      // `available` is the endpoint's own answer about whether the feature
+      // works here. Assuming true whenever the call succeeded meant a backend
+      // that answers "no" was still shown as ready, and the failure only
+      // surfaced once someone had opened their camera.
+      setStatus({ loading: false, enrolled: !!res?.enrolled, available: res?.available !== false });
     } catch (e) {
       // 501 means the backend has not implemented it yet; anything else means
       // it is there but unhappy. Both render as "not available right now".
