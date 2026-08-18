@@ -83,7 +83,10 @@ const live = {
   auth: {
     me: () => request('/auth/me'),
     signup: async (payload) => {
-      const r = await request('/auth/signup', { method: 'POST', body: payload, auth: false });
+      // Sent WITH the current token on purpose: if the caller is a guest, the
+      // API moves their library onto the new account. The route itself stays
+      // unauthenticated, so a missing token is fine.
+      const r = await request('/auth/signup', { method: 'POST', body: payload, auth: true });
       tokenStore.set(r.token);
       return r.user;
     },
@@ -97,6 +100,25 @@ const live = {
       tokenStore.set(r.token);
       return r.user;
     },
+    /**
+     * The Google ID token is passed straight through — it is verified on the
+     * server against Google's keys, never here. Sent with the current token so
+     * a guest signing in with Google keeps the work they already did.
+     */
+    google: async (credential) => {
+      const r = await request('/auth/google', { method: 'POST', body: { credential }, auth: true });
+      tokenStore.set(r.token);
+      return r.user;
+    },
+    /** Face sign-in. See docs/FACE-AUTH-CONTRACT.md. */
+    face: async (image) => {
+      const r = await request('/auth/face', { method: 'POST', body: { image }, auth: false });
+      tokenStore.set(r.token);
+      return r.user;
+    },
+    enrolFace: (image) => request('/auth/face/enrol', { method: 'POST', body: { image } }),
+    faceStatus: () => request('/auth/face/status'),
+    removeFace: () => request('/auth/face', { method: 'DELETE' }),
     logout: async () => {
       tokenStore.set(null);
     },
@@ -118,7 +140,7 @@ const live = {
         headers: { 'Content-Type': file.type || 'application/octet-stream' },
         body: file,
       });
-      if (!res.ok) throw new ApiError('Upload to S3 failed', res.status, null);
+      if (!res.ok) throw new ApiError('Could not upload your file. Check your connection and try again.', res.status, null);
     },
   },
 

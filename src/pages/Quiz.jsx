@@ -300,7 +300,7 @@ export default function Quiz() {
           <Empty
             icon="quiz"
             title="No quiz for this material"
-            body="The pipeline did not produce any questions it could ground in the source. Try re-running it in Deep revision mode."
+            body="No questions could be written that your material clearly answers. Uploading a fuller version of the file, or re-running it in Deep revision mode, usually fixes it."
             action={
               <Link to={`/app/material/${id}`} className="btn btn-primary">
                 Back to the recap
@@ -425,7 +425,8 @@ export default function Quiz() {
 
           {!question.verified && (
             <p className="quiz-unverified">
-              Your material does not settle this one, so it is excluded from your percentage. Answer it anyway — the explanation still tells you what the source does and does not establish.
+              Your material does not clearly answer this one, so it does not count toward your score. Answer it
+              anyway — the explanation still tells you what your slides do and do not settle.
             </p>
           )}
 

@@ -21,14 +21,17 @@ import { generateRecap, generateQuiz } from '../ai/generate.js';
  * what the backend is actually doing rather than a timer.
  */
 
+// Shown to a student on the processing screen, so they say what is happening in
+// their terms rather than ours. The infrastructure detail belongs in the logs
+// and in docs/ARCHITECTURE.md, not on a screen someone is waiting at.
 const STAGES = [
-  { id: 'upload', label: 'Reading the uploaded file', weight: 5 },
-  { id: 'extract', label: 'Extracting text layer', weight: 20 },
-  { id: 'chunk', label: 'Segmenting into citable chunks', weight: 5 },
-  { id: 'recap', label: 'Generating structured recap', weight: 35 },
-  { id: 'quiz', label: 'Writing quiz items', weight: 25 },
-  { id: 'ground', label: 'Verifying claims against source', weight: 5 },
-  { id: 'store', label: 'Saving to DynamoDB', weight: 5 },
+  { id: 'upload', label: 'Uploading your file', weight: 5 },
+  { id: 'extract', label: 'Reading the text', weight: 20 },
+  { id: 'chunk', label: 'Sorting it by slide', weight: 5 },
+  { id: 'recap', label: 'Writing your recap', weight: 35 },
+  { id: 'quiz', label: 'Writing your quiz', weight: 25 },
+  { id: 'ground', label: 'Checking every claim', weight: 5 },
+  { id: 'store', label: 'Saving to your library', weight: 5 },
 ];
 
 export const PIPELINE_STAGES = STAGES;
@@ -61,16 +64,18 @@ export async function runPipeline({ jobId, userId, materialId, fileName, key, mo
 
   try {
     /* ---------------------------------------------------------- 1. fetch */
-    await record('upload', STAGES[0].label, 'Reading from the private S3 bucket');
+    await record('upload', STAGES[0].label, 'Stored privately — only you can open it');
     const buffer = await getObjectBytes(key);
 
     /* -------------------------------------------------------- 2. extract */
-    await record('extract', STAGES[1].label, 'Page and slide boundaries preserved');
+    await record('extract', STAGES[1].label, 'Keeping track of which slide each part came from');
     const { pages, pageCount, ocr } = await extractDocument({ buffer, fileName, key });
-    if (ocr) await record('extract', 'No text layer found — running Amazon Textract', `${pageCount} pages OCR'd`);
+    // A scan or a photo has no selectable text, so the words are read off the
+    // image instead. Worth surfacing, because it is noticeably slower.
+    if (ocr) await record('extract', 'No selectable text — reading it off the page', `${pageCount} pages read`);
 
     /* ---------------------------------------------------------- 3. chunk */
-    await record('chunk', STAGES[2].label, 'Each chunk keeps its slide number');
+    await record('chunk', STAGES[2].label, 'So every point can link back to where it came from');
     const allChunks = chunkPages(pages);
     if (!allChunks.length) {
       await fail('No readable text was found in that file. If it is a scan, try a sharper copy.');
@@ -82,8 +87,8 @@ export async function runPipeline({ jobId, userId, materialId, fileName, key, mo
       // Never silently summarise part of a file and present it as the whole.
       await record(
         'chunk',
-        `Sampled ${chunks.length} of ${allChunks.length} chunks to fit the model's context`,
-        `${dropped} chunks were left out, spread evenly across the document`,
+        `This file is long — covering ${chunks.length} of ${allChunks.length} sections`,
+        `${dropped} were left out, spread evenly so the whole file is still represented`,
       );
     }
 
@@ -96,11 +101,11 @@ export async function runPipeline({ jobId, userId, materialId, fileName, key, mo
     };
 
     /* ---------------------------------------------------------- 4. recap */
-    await record('recap', STAGES[3].label, 'Constrained JSON, citations required');
+    await record('recap', STAGES[3].label, 'Every point has to name the slide it came from');
     const { recap, meta: recapMeta, report: recapReport } = await generateRecap({ chunks, mode, moduleName, onAttempt });
 
     /* ----------------------------------------------------------- 5. quiz */
-    await record('quiz', STAGES[4].label, `${quizLength} questions, every option traced to a chunk`);
+    await record('quiz', STAGES[4].label, `${quizLength} questions, every answer traced back to your material`);
     const { quiz, meta: quizMeta, report: quizReport } = await generateQuiz({
       chunks,
       count: quizLength,
@@ -118,7 +123,7 @@ export async function runPipeline({ jobId, userId, materialId, fileName, key, mo
     );
 
     /* ---------------------------------------------------------- 7. store */
-    await record('store', STAGES[6].label, 'Recap, quiz and chunk index');
+    await record('store', STAGES[6].label, 'Recap, quiz and sources');
 
     const existing = (await getItem(keys.material(userId, materialId))) ?? {};
     const material = {

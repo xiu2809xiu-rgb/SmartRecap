@@ -1,0 +1,309 @@
+/* ===========================================================================
+   Google button and face sign-in
+   ======================================================================== */
+
+/* ------------------------------------------------------------ Google ---- */
+
+/* Google's branding rules govern the mark, the wording and the contrast of the
+   surface it sits on. The radius, width and typeface are ours; the logo is
+   unmodified and the label is one of their sanctioned strings. */
+.google-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  width: 100%;
+  padding: 13px 20px;
+  border-radius: var(--r-pill);
+  background: #fff;
+  color: #1f1f1f;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  border: 1px solid #dadce0;
+  transition:
+    transform var(--dur) var(--spring),
+    box-shadow var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.google-btn:hover:not(:disabled) {
+  background: #f7f8f8;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 26px -12px rgba(0, 0, 0, 0.6);
+}
+
+.google-btn:active:not(:disabled) { transform: translateY(0); }
+.google-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.google-btn .spinner { color: #1f1f1f; }
+.google-mark { flex-shrink: 0; }
+
+.google-demo-note {
+  font-size: var(--t-xs);
+  color: var(--ink-4);
+  line-height: 1.5;
+  margin-top: 8px;
+  text-align: center;
+}
+
+.google-demo-note code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.95em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* -------------------------------------------------------------- Face ---- */
+
+.face-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 13px 20px;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-line);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 650;
+  transition:
+    transform var(--dur) var(--spring),
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.face-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--accent-cool);
+  background: rgba(0, 240, 255, 0.08);
+}
+
+.face-btn .material-symbols-rounded { color: var(--accent-cool); }
+
+.face-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(5, 2, 12, 0.78);
+  backdrop-filter: blur(8px);
+  animation: face-fade 220ms var(--ease) both;
+}
+
+@keyframes face-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.face-modal {
+  width: 100%;
+  max-width: 460px;
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  animation: face-rise 320ms var(--spring) both;
+}
+
+@keyframes face-rise {
+  from { opacity: 0; transform: translateY(18px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+
+.face-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 20px 20px 14px;
+  border-bottom: 1px solid var(--glass-line);
+}
+
+.face-head h2 { font-size: var(--t-h3); }
+.face-head p { font-size: var(--t-xs); color: var(--ink-3); margin-top: 4px; }
+
+.face-body { padding: 20px; }
+
+/* ---- consent ---- */
+
+.face-intro { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+
+.face-intro-icon {
+  width: 62px;
+  height: 62px;
+  display: grid;
+  place-items: center;
+  border-radius: 20px;
+  color: #fff;
+  background: linear-gradient(140deg, var(--aurora-violet), var(--aurora-cyan));
+  box-shadow: 0 14px 32px -14px rgba(0, 240, 255, 0.8);
+}
+
+.face-facts { display: flex; flex-direction: column; gap: 13px; width: 100%; }
+
+.face-facts li { display: flex; gap: 11px; }
+.face-facts .material-symbols-rounded { color: var(--accent-cool); flex-shrink: 0; margin-top: 1px; }
+.face-facts span { font-size: var(--t-xs); color: var(--ink-2); line-height: 1.55; }
+
+.face-actions { display: flex; gap: 10px; width: 100%; margin-top: 4px; }
+.face-actions .btn { flex: 1; }
+
+/* ---- camera stage ---- */
+
+.face-stage { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+
+.face-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  max-width: 320px;
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  background: #0a0616;
+  border: 1px solid var(--glass-line);
+}
+
+.face-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Mirrored: an unmirrored selfie makes people move the wrong way when they
+     try to centre themselves. */
+  transform: scaleX(-1);
+}
+
+.face-oval {
+  position: absolute;
+  inset: 12% 18%;
+  border: 2px dashed rgba(255, 255, 255, 0.45);
+  border-radius: 50%;
+  transition: border-color var(--dur) var(--ease);
+}
+
+.face-frame.is-live .face-oval { border-color: var(--accent-cool); border-style: solid; }
+
+/* The sweep is the whole "it is scanning" signal — it only runs when live. */
+.face-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 34%;
+  top: -34%;
+  background: linear-gradient(180deg, transparent, rgba(0, 240, 255, 0.28) 65%, rgba(0, 240, 255, 0.7));
+  opacity: 0;
+}
+
+.face-frame.is-live .face-scan {
+  opacity: 1;
+  animation: face-sweep 2.1s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+
+@keyframes face-sweep {
+  0% { top: -34%; }
+  100% { top: 100%; }
+}
+
+.face-corners i {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--accent-cool);
+  opacity: 0.85;
+}
+
+.face-corners i:nth-child(1) { top: 14px; left: 14px; border-right: 0; border-bottom: 0; border-radius: 8px 0 0 0; }
+.face-corners i:nth-child(2) { top: 14px; right: 14px; border-left: 0; border-bottom: 0; border-radius: 0 8px 0 0; }
+.face-corners i:nth-child(3) { bottom: 14px; left: 14px; border-right: 0; border-top: 0; border-radius: 0 0 0 8px; }
+.face-corners i:nth-child(4) { bottom: 14px; right: 14px; border-left: 0; border-top: 0; border-radius: 0 0 8px 0; }
+
+.face-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(10, 6, 22, 0.82);
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+  text-align: center;
+  padding: 20px;
+}
+
+.face-count {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 4.5rem;
+  font-weight: 850;
+  letter-spacing: -0.06em;
+  color: #fff;
+  text-shadow: 0 0 40px rgba(0, 240, 255, 0.9);
+  background: rgba(10, 6, 22, 0.25);
+}
+
+.face-count .material-symbols-rounded { color: var(--accent-cool); }
+.face-hint { font-size: var(--t-xs); color: var(--ink-3); text-align: center; }
+
+/* ---- result ---- */
+
+.face-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  padding: 14px 0 4px;
+}
+
+.face-result strong { font-size: 1.125rem; font-weight: 750; }
+.face-result p { font-size: var(--t-sm); color: var(--ink-2); max-width: 34ch; line-height: 1.55; }
+
+.face-result-icon {
+  width: 62px;
+  height: 62px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+}
+
+.face-result.is-good .face-result-icon { background: var(--good); }
+.face-result.is-bad .face-result-icon { background: var(--bad); }
+
+/* Three expanding rings while the match is in flight. */
+.face-pulse { position: relative; width: 62px; height: 62px; }
+
+.face-pulse span {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--accent-cool);
+  animation: face-ripple 1.6s ease-out infinite;
+}
+
+.face-pulse span:nth-child(2) { animation-delay: 0.5s; }
+.face-pulse span:nth-child(3) { animation-delay: 1s; }
+
+@keyframes face-ripple {
+  0% { transform: scale(0.4); opacity: 1; }
+  100% { transform: scale(1.15); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .face-scrim, .face-modal { animation: none; }
+  .face-frame.is-live .face-scan { animation: none; opacity: 0.35; top: 33%; }
+  .face-pulse span { animation: none; opacity: 0.5; }
+}
+
+[data-motion='reduced'] .face-frame.is-live .face-scan { animation: none; opacity: 0.35; top: 33%; }
+[data-motion='reduced'] .face-pulse span { animation: none; opacity: 0.5; }
+
+/* ---- the divider between password and the alternatives ---- */
+
+.auth-methods { display: flex; flex-direction: column; gap: 10px; }

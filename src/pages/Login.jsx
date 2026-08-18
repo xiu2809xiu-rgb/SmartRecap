@@ -3,17 +3,22 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import AuthLayout from './AuthLayout.jsx';
 import { Icon, Spinner } from '../components/ui.jsx';
 import { useAuth } from '../lib/auth.jsx';
+import GoogleButton from '../components/auth/GoogleButton.jsx';
+import FaceSignIn from '../components/auth/FaceSignIn.jsx';
+import '../components/auth/auth-methods.css';
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, loginWithGoogle, loginWithFace } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [form, setForm] = useState({ email: '', password: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [faceOpen, setFaceOpen] = useState(false);
 
   const from = location.state?.from ?? '/app';
+  const go = () => navigate(from, { replace: true });
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -21,12 +26,26 @@ export default function Login() {
     setError(null);
     try {
       await login(form);
-      navigate(from, { replace: true });
+      go();
     } catch (err) {
       setError(err.status === 401 ? 'That email and password do not match an account.' : (err.message ?? 'Sign in failed.'));
     } finally {
       setBusy(false);
     }
+  };
+
+  const onGoogle = async (credential) => {
+    setError(null);
+    await loginWithGoogle(credential);
+    go();
+  };
+
+  // Thrown back to FaceSignIn on purpose: the modal owns the retry UI, and it
+  // needs the failure to stay in its own state machine rather than being
+  // reported behind it on a page the user cannot see.
+  const onFace = async (image) => {
+    await loginWithFace(image);
+    setTimeout(go, 900);
   };
 
   return (
@@ -38,6 +57,15 @@ export default function Login() {
         <>
           New here? <Link to="/signup">Create an account</Link>
         </>
+      }
+      methods={
+        <div className="auth-methods">
+          <GoogleButton onCredential={onGoogle} onError={setError} disabled={busy} />
+          <button type="button" className="face-btn" onClick={() => setFaceOpen(true)} disabled={busy}>
+            <Icon name="face_retouching_natural" size={19} />
+            Sign in with your face
+          </button>
+        </div>
       }
     >
       <form className="auth-form" onSubmit={onSubmit} noValidate>
@@ -89,6 +117,8 @@ export default function Login() {
           Sign in
         </button>
       </form>
+
+      <FaceSignIn open={faceOpen} onClose={() => setFaceOpen(false)} onCapture={onFace} mode="signin" />
     </AuthLayout>
   );
 }
