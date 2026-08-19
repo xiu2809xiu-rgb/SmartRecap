@@ -24,6 +24,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 const Binders = lazy(() => import('./pages/Binders.jsx'));
 const BinderDetail = lazy(() => import('./pages/BinderDetail.jsx'));
 const BinderRecap = lazy(() => import('./pages/BinderRecap.jsx'));
+const BinderFlashcards = lazy(() => import('./pages/BinderFlashcards.jsx'));
 const Upload = lazy(() => import('./pages/Upload.jsx'));
 const Processing = lazy(() => import('./pages/Processing.jsx'));
 const Recap = lazy(() => import('./pages/Recap.jsx'));
@@ -117,6 +118,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <BinderRecap />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/app/binders/:id/flashcards"
+              element={
+                <RequireAuth>
+                  <BinderFlashcards />
                 </RequireAuth>
               }
             />

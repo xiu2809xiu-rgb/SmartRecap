@@ -156,6 +156,9 @@ app.delete(
   }),
 );
 
+app.get('/binders/:id/flashcards', send((req) => library.getCards(requireUser(req).id, req.params.id)));
+app.put('/binders/:id/flashcards', send((req) => library.saveCards(requireUser(req).id, req.params.id, req.body?.cards)));
+
 app.post('/binders/:id/sources', send((req) => sources.createSources(requireUser(req).id, req.params.id, req.body?.files), 201));
 app.get('/binders/:id/sources', send((req) => sources.listSources(requireUser(req).id, req.params.id)));
 app.post(
