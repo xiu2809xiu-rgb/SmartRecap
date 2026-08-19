@@ -52,3 +52,6 @@
   .match-room-actions { align-items: stretch; flex-direction: column; }
   .match-room-actions .btn { justify-content: center; }
 }
+
+.player-rank .match-avatar { margin: -2px; }
+.match-create .custom-select, .match-open .custom-select { width: 100%; }

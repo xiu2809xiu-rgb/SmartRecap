@@ -62,3 +62,11 @@
 .quiz-reference-prompt { font-size: 0.9375rem; line-height: 1.55; color: var(--ink); margin-bottom: 8px; }
 
 .term-cites { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: 8px; vertical-align: middle; }
+
+.sources-strip-head > div { min-width: 0; }
+.sources-strip-head .sources-strip-total { display: block; margin-top: 3px; }
+.sources-strip-item.is-active { border-color: color-mix(in srgb, var(--series-3) 38%, transparent); background: var(--series-3-soft); }
+.sources-strip-toggle { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; text-align: left; color: inherit; }
+.sources-strip-toggle > .material-symbols-rounded { color: var(--series-3); flex: 0 0 auto; }
+.sources-strip-summary { margin-top: 10px; color: var(--ink-4); font-size: .7rem; line-height: 1.45; }
+@media (max-width: 620px) { .sources-strip-item { align-items: flex-start; flex-wrap: wrap; } .sources-strip-count { display: none; } }

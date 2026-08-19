@@ -285,3 +285,15 @@
 .round-leaderboard li small { color: var(--ink-3); font-size: 0.68rem; }
 .round-leaderboard li b { color: var(--series-1); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
 @media (max-width: 520px) { .round-leaderboard li { grid-template-columns: 26px 1fr auto; } .round-leaderboard li small { display: none; } }
+
+.round-leaderboard li { grid-template-columns: 28px 30px minmax(100px, 1fr) auto auto; }
+.short-feedback { display: grid; gap: 9px; margin-top: 18px; padding: 16px; border: 1px solid color-mix(in srgb, var(--series-1) 28%, transparent); border-radius: var(--r); background: var(--series-1-soft); }
+.short-feedback-head { display: flex; align-items: center; gap: 9px; }
+.short-feedback-head strong, .short-feedback-head span { display: block; }
+.short-feedback-head span { color: var(--ink-3); font-size: var(--t-xs); }
+.short-feedback > div:not(.short-feedback-head) { padding: 11px 12px; border-left: 3px solid var(--bad); border-radius: var(--r-sm); background: var(--ground); }
+.short-feedback > div.is-right { border-left-color: var(--good); }
+.short-feedback > div > strong { font-size: var(--t-xs); }
+.short-feedback > div > p { margin-top: 4px; color: var(--ink-2); font-size: var(--t-xs); line-height: 1.5; }
+.short-feedback > div > small { color: var(--ink-4); font-size: .68rem; }
+@media (max-width: 520px) { .round-leaderboard li { grid-template-columns: 26px 30px 1fr auto; } .round-leaderboard li small { display: none; } }

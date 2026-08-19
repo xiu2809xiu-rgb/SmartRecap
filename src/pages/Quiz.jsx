@@ -5,6 +5,7 @@ import { useStore } from '../lib/store.jsx';
 import { usePrefs } from '../lib/prefs.jsx';
 import { StudyShell } from '../components/layout/Shells.jsx';
 import { Icon, Spinner, Empty, ProgressBar, Modal, useToast } from '../components/ui.jsx';
+import { MatchAvatar } from '../components/MatchAvatar.jsx';
 import BlurText from '../reactbits/BlurText.jsx';
 import { TIME_LIMIT_SECONDS, pointsForAnswer, streakMultiplier } from '../lib/quizLogic.js';
 import { questionType, exactSetMatch } from '../lib/quizScoring.js';
@@ -85,7 +86,7 @@ export default function Quiz() {
   const cached = materialById(id);
   const [material, setMaterial] = useState(cached ?? null);
   const [error, setError] = useState(null);
-  const [selectedTypes, setSelectedTypes] = useState(() => new Set(TYPE_OPTIONS.map((type) => type.id)));
+  const [quizSnapshot, setQuizSnapshot] = useState(null);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState({});
   const [selected, setSelected] = useState(null);
@@ -93,6 +94,8 @@ export default function Quiz() {
   const [checking, setChecking] = useState(false);
   const [matchLobby, setMatchLobby] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [submittedAttempt, setSubmittedAttempt] = useState(null);
+  const [submittedStats, setSubmittedStats] = useState(null);
   const [confirmExit, setConfirmExit] = useState(false);
   const [timeLeft, setTimeLeft] = useState(TIME_LIMIT_SECONDS);
   const [streak, setStreak] = useState(0);
@@ -127,8 +130,34 @@ export default function Quiz() {
 
   const topicFilter = params.get('topics');
   const typeFilter = params.get('types');
+  const quizId = params.get('quizId');
   const matchId = params.get('match');
-  const allQuestions = material?.quiz?.questions ?? [];
+  const activeQuiz = quizSnapshot ?? material?.quiz;
+  const allQuestions = activeQuiz?.questions ?? [];
+
+  useEffect(() => {
+    if (!matchId && !quizId) {
+      setQuizSnapshot(null);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        let value;
+        if (matchId) {
+          const session = JSON.parse(localStorage.getItem(`smartrecap.lobby.${matchId}`) || 'null');
+          if (!session) throw new Error('Your lobby session expired. Rejoin the party to load its fixed quiz snapshot.');
+          value = await api.lobbies.quiz(matchId, session.playerId, session.reconnectToken);
+        } else {
+          value = await api.quiz.get(quizId);
+        }
+        if (!cancelled) setQuizSnapshot(value);
+      } catch (cause) {
+        if (!cancelled) setError(cause);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [matchId, quizId]);
 
   useEffect(() => {
     if (!matchId) return undefined;
@@ -161,8 +190,8 @@ export default function Quiz() {
     .filter((item) => item.verified && answerIsCorrect(item, answers[item.id])).length;
 
   useEffect(() => {
-    if (typeFilter && question && startedAt.current == null) startedAt.current = Date.now();
-  }, [question, typeFilter]);
+    if (question && startedAt.current == null) startedAt.current = Date.now();
+  }, [question]);
 
   const selectOption = (optionIndex) => {
     if (checked) return;
@@ -176,8 +205,9 @@ export default function Quiz() {
     }
   };
 
-  const check = async () => {
-    if (checked || checking || !question || !hasSelection(question, selected)) return;
+  const check = async (options = {}) => {
+    const allowEmpty = options?.allowEmpty === true;
+    if (checked || checking || !question || (!allowEmpty && !hasSelection(question, selected))) return;
     const answer = normaliseSelection(question, selected);
     setAnswers((current) => ({ ...current, [question.id]: answer }));
     timeByQuestion.current[question.id] = timeLeft;
@@ -219,6 +249,10 @@ export default function Quiz() {
   };
 
   const advance = async () => {
+    if (submittedAttempt) {
+      navigate(`/app/material/${id}/results/${submittedAttempt.id}${matchId ? `?match=${encodeURIComponent(matchId)}` : ''}`, { replace: true, state: submittedStats });
+      return;
+    }
     if (!isLast) {
       const nextQuestion = questions[index + 1];
       setIndex((current) => current + 1);
@@ -233,7 +267,7 @@ export default function Quiz() {
     try {
       const attempt = await api.quiz.submit({
         materialId: id,
-        quizId: material.quiz?.id,
+        quizId: activeQuiz?.id,
         answers: finalAnswers,
         questionIds: questions.map((item) => item.id),
         durationMs: Date.now() - (startedAt.current ?? Date.now()),
@@ -255,7 +289,13 @@ export default function Quiz() {
       }
       addAttempt(attempt);
       const stats = finalGameStats(questions, finalAnswers, timeByQuestion.current, attempt.judgements);
-      navigate(`/app/material/${id}/results/${attempt.id}${matchId ? `?match=${encodeURIComponent(matchId)}` : ''}`, { replace: true, state: stats });
+      if (questions.some((item) => questionType(item) === 'short')) {
+        setSubmittedAttempt(attempt);
+        setSubmittedStats(stats);
+        setSubmitting(false);
+      } else {
+        navigate(`/app/material/${id}/results/${attempt.id}${matchId ? `?match=${encodeURIComponent(matchId)}` : ''}`, { replace: true, state: stats });
+      }
     } catch (e) {
       toast.error(e.message ?? 'Could not save your attempt.');
       setSubmitting(false);
@@ -266,7 +306,7 @@ export default function Quiz() {
   // fields keep their native keyboard behaviour for short answers.
   useEffect(() => {
     const onKey = (event) => {
-      if (!typeFilter || !question || event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+      if (!question || event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
       if (/^[1-9]$/.test(event.key) && !checked && questionType(question) !== 'short') {
         const optionIndex = Number(event.key) - 1;
         if (optionIndex < question.options.length) selectOption(optionIndex);
@@ -282,36 +322,18 @@ export default function Quiz() {
   });
 
   useEffect(() => {
-    if (typeFilter) setTimeLeft(TIME_LIMIT_SECONDS);
-  }, [question?.id, typeFilter]);
+    setTimeLeft(TIME_LIMIT_SECONDS);
+  }, [question?.id]);
 
   useEffect(() => {
-    if (!typeFilter || !question || checked) return undefined;
+    if (!question || checked) return undefined;
     if (timeLeft <= 0) {
-      check();
+      check({ allowEmpty: true });
       return undefined;
     }
     const timer = setTimeout(() => setTimeLeft((value) => value - 1), 1000);
     return () => clearTimeout(timer);
-  }, [question, checked, timeLeft, typeFilter]);
-
-  const startQuiz = () => {
-    if (!selectedTypes.size) return;
-    const next = new URLSearchParams(params);
-    next.set('types', TYPE_OPTIONS.filter((type) => selectedTypes.has(type.id)).map((type) => type.id).join(','));
-    startedAt.current = Date.now();
-    questionStartedAt.current = Date.now();
-    navigate({ search: `?${next.toString()}` }, { replace: true });
-  };
-
-  const toggleType = (type) => {
-    setSelectedTypes((current) => {
-      const next = new Set(current);
-      if (next.has(type)) next.delete(type);
-      else next.add(type);
-      return next;
-    });
-  };
+  }, [question, checked, timeLeft]);
 
   if (error) {
     return (
@@ -343,8 +365,16 @@ export default function Quiz() {
     );
   }
 
+  if ((quizId || matchId) && !quizSnapshot) {
+    return (
+      <StudyShell title={material.title} backTo={`/app/material/${id}`}>
+        <div className="shell quiz-loading" role="status"><Spinner size={22} /><span>Loading the saved quiz version…</span></div>
+      </StudyShell>
+    );
+  }
+
   if (!allQuestions.length) {
-    const generating = material.quiz?.status === 'generating' || material.quiz?.generationStatus === 'generating';
+    const generating = activeQuiz?.status === 'generating' || activeQuiz?.generationStatus === 'generating';
     return (
       <StudyShell title={material.title} backTo={`/app/material/${id}`}>
         <div className="shell">
@@ -367,56 +397,17 @@ export default function Quiz() {
     );
   }
 
-  if (!typeFilter) {
-    return (
-      <StudyShell
-        title={material.title}
-        subtitle={topicFilter ? `Retrying: ${topicFilter}` : 'Set up your knowledge check'}
-        backTo={`/app/material/${id}`}
-      >
-        <div className="shell quiz quiz-setup-wrap">
-          <section className="quiz-setup panel-solid">
-            <span className="quiz-setup-icon"><Icon name="tune" size={24} /></span>
-            <p className="eyebrow">Quiz setup</p>
-            <h1>Which question types do you want?</h1>
-            <p className="lede">Choose one or more. You can change the mix each time you practise.</p>
-            <div className="quiz-type-list">
-              {TYPE_OPTIONS.map((type) => (
-                <label key={type.id} className={`quiz-type-choice ${selectedTypes.has(type.id) ? 'is-selected' : ''}`}>
-                  <input
-                    type="checkbox"
-                    checked={selectedTypes.has(type.id)}
-                    onChange={() => toggleType(type.id)}
-                  />
-                  <span className="quiz-type-icon"><Icon name={type.icon} size={22} /></span>
-                  <span>
-                    <strong>{type.label}</strong>
-                    <small>{type.description}</small>
-                  </span>
-                </label>
-              ))}
-            </div>
-            <button className="btn btn-primary quiz-start" onClick={startQuiz} disabled={!selectedTypes.size}>
-              Start quiz
-              <Icon name="arrow_forward" size={18} />
-            </button>
-          </section>
-        </div>
-      </StudyShell>
-    );
-  }
-
   if (!question) {
     return (
       <StudyShell title={material.title} backTo={`/app/material/${id}`}>
         <div className="shell">
           <Empty
             icon="quiz"
-            title="No questions match those filters"
-            body="Choose a different question type or return to the recap."
+            title="No questions match these filters"
+            body="Clear the saved topic/type filters to play the complete quiz version. Question types are selected when the quiz is created, not after play starts."
             action={
-              <button className="btn btn-primary" onClick={() => navigate({ search: topicFilter ? `?topics=${encodeURIComponent(topicFilter)}` : '' }, { replace: true })}>
-                Change question types
+              <button className="btn btn-primary" onClick={() => navigate({ search: quizId ? `?quizId=${encodeURIComponent(quizId)}` : '' }, { replace: true })}>
+                Clear quiz filters
               </button>
             }
           />
@@ -437,7 +428,7 @@ export default function Quiz() {
   return (
     <StudyShell
       title={material.title}
-      subtitle={topicFilter ? `Retrying: ${topicFilter}` : matchId ? `Live match · ${questions.length} shared questions` : `${material.quiz?.difficulty ?? 'Conceptual'} · ${questions.length} questions`}
+      subtitle={topicFilter ? `Retrying: ${topicFilter}` : matchId ? `Live match · ${questions.length} shared questions` : `${activeQuiz?.difficulty ?? 'Conceptual'} · ${questions.length} questions`}
       backTo={`/app/material/${id}`}
       actions={
         <button className="btn btn-ghost btn-sm" onClick={() => setConfirmExit(true)}>
@@ -475,6 +466,7 @@ export default function Quiz() {
             <span className="chip">{question.topic}</span>
             <span className="chip">{typeLabel}</span>
             <span className="chip">{['Recall', 'Applied', 'Stretch'][question.difficulty - 1] ?? 'Applied'}</span>
+            {activeQuiz?.providers?.length > 0 && <span className="chip" title={activeQuiz.providers.map((provider) => `${provider.name || 'Provider'}${provider.model ? ` · ${provider.model}` : ''}`).join(' + ')}><Icon name="verified" size={13} />{activeQuiz.providers.map((provider) => provider.model || provider.name).filter(Boolean).join(' + ')}</span>}
             {!question.verified && (
               <span className="chip chip-warn"><Icon name="info" size={13} />Not scored</span>
             )}
@@ -532,11 +524,21 @@ export default function Quiz() {
             </ul>
           )}
 
-          {checked && type === 'short' && (
+          {checked && type === 'short' && !submittedAttempt && (
             <div className="explain is-recorded">
               <p className="explain-verdict"><Icon name="task_alt" size={18} fill />Answer recorded</p>
-              <p>Your short answer will be graded when you submit the quiz. Its verdict, feedback and points will appear on Results.</p>
+              <p>Your short answer will be graded by the server when the full quiz is submitted.</p>
             </div>
+          )}
+
+          {submittedAttempt && (
+            <section className="short-feedback" aria-live="polite">
+              <div className="short-feedback-head"><Icon name="rate_review" size={20} /><div><strong>Server feedback</strong><span>Your written responses are graded and saved.</span></div></div>
+              {(submittedAttempt.questions || questions).filter((item) => questionType(item) === 'short').map((item) => {
+                const judgement = submittedAttempt.judgements?.[item.id];
+                return <div key={item.id} className={judgement?.correct ? 'is-right' : 'is-wrong'}><strong>{item.prompt}</strong><p>{judgement?.feedback || 'No feedback was returned, so this response was not scored.'}</p><small>{judgement?.correct === true ? 'Correct' : judgement?.correct === false ? 'Needs revision' : 'Not scored'}{judgement?.gradedBy ? ` · ${judgement.gradedBy}` : ''}</small></div>;
+              })}
+            </section>
           )}
 
           {checked && type !== 'short' && (
@@ -569,6 +571,7 @@ export default function Quiz() {
                   .map((player, rank) => (
                     <li key={player.id}>
                       <span>{rank + 1}</span>
+                      <MatchAvatar avatarId={player.avatarId ?? player.avatar_id} size="sm" label={`${player.name}'s avatar`} />
                       <strong>{player.name}</strong>
                       <small>{player.answered || 0} answered · {player.accuracy || 0}%</small>
                       <b>{Number(player.score || 0).toLocaleString()} pts</b>

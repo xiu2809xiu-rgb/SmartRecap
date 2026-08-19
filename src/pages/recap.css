@@ -511,3 +511,7 @@
 .ask-visual img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: var(--ground-sunken); }
 .ask-visual figcaption { padding: 8px 10px; color: var(--ink-4); font-size: 0.68rem; }
 .ask-visual-error { margin-top: 9px; color: var(--bad); font-size: var(--t-xs); line-height: 1.45; }
+
+.quiz-generation-options { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.quiz-type-picker button { display: inline-flex; align-items: center; gap: 4px; }
+@media (max-width: 720px) { .quiz-generation-options { align-items: flex-start; flex-direction: column; } .quiz-type-picker { flex-wrap: wrap; } }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Spinner } from '../ui.jsx';
-import { isGoogleConfigured } from '../../lib/google.js';
+import { isGoogleConfigured, requestGoogleCredential } from '../../lib/google.js';
 import { isDemo } from '../../lib/api.js';
 
 /**
@@ -45,11 +45,10 @@ function GoogleMark() {
 export default function GoogleButton({ onCredential, onError, disabled, label = 'Continue with Google' }) {
   const [busy, setBusy] = useState(false);
 
-  // Hidden rather than broken: a real student clicking a button that cannot
-  // work is worse than not offering it.
-  if (!isGoogleConfigured && !isDemo) return null;
+  const configured = isGoogleConfigured || isDemo;
 
   const run = async () => {
+    if (!configured) return;
     setBusy(true);
     try {
       if (!isGoogleConfigured) {
@@ -59,7 +58,6 @@ export default function GoogleButton({ onCredential, onError, disabled, label = 
         await onCredential('demo-google-credential');
         return;
       }
-      const { requestGoogleCredential } = await import('../../lib/google.js');
       await onCredential(await requestGoogleCredential());
     } catch (e) {
       onError?.(e?.message ?? 'Google sign-in failed.');
@@ -70,16 +68,15 @@ export default function GoogleButton({ onCredential, onError, disabled, label = 
 
   return (
     <>
-      <button type="button" className="google-btn" onClick={run} disabled={busy || disabled}>
+      <button type="button" className="google-btn" onClick={run} disabled={busy || disabled || !configured} aria-describedby={!configured ? 'google-setup-note' : undefined}>
         {busy ? <Spinner size={18} /> : <GoogleMark />}
         <span>{busy ? 'Opening Google…' : label}</span>
       </button>
-      {!isGoogleConfigured && (
-        <p className="google-demo-note">
-          Demo mode — this signs you in with a placeholder Google account. Set <code>VITE_GOOGLE_CLIENT_ID</code> to
-          connect a real one.
-        </p>
-      )}
+      {!configured ? (
+        <p className="google-demo-note" id="google-setup-note">Google sign-in is visible but unavailable until an administrator finishes setup.</p>
+      ) : !isGoogleConfigured ? (
+        <p className="google-demo-note">Demo mode uses a clearly marked placeholder Google account.</p>
+      ) : null}
     </>
   );
 }

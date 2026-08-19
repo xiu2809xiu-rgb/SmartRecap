@@ -1,8 +1,11 @@
 import asyncio
+import hashlib
+import hmac
 import logging
 import re
 import secrets
 import time
+import unicodedata
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,6 +14,10 @@ from typing import Any, Awaitable, Callable, Dict, List
 from fastapi import APIRouter, HTTPException, Request, Response
 from starlette.concurrency import run_in_threadpool
 
+from .auth import (
+    AuthenticatedRoute, OwnerList, OwnerMap, OwnerSet, auth_service, configure_auth,
+    current_owner_id, current_user, optional_user, public_user, register_owner_hydrator,
+)
 from .ai_service import (
     answer_notebook_question,
     normalise_language,
@@ -32,29 +39,22 @@ from .storage import ObjectStorage
 ExtractSource = Callable[[bytes, str, str, bool], Awaitable[SourceRecord]]
 logger = logging.getLogger("smartrecap.ui")
 
-_uploads: Dict[str, Dict[str, Any]] = {}
-_jobs: Dict[str, Dict[str, Any]] = {}
-_materials: Dict[str, Dict[str, Any]] = {}
-_sources: Dict[str, List[SourceRecord]] = {}
-_quizzes: Dict[str, Dict[str, Any]] = {}
-_attempts: List[Dict[str, Any]] = []
-_cards: Dict[str, List[Dict[str, Any]]] = {}
-_shares: Dict[str, str] = {}
+_uploads: OwnerMap = OwnerMap()
+_jobs: OwnerMap = OwnerMap()
+_materials: OwnerMap = OwnerMap()
+_sources: OwnerMap = OwnerMap()
+_quizzes: OwnerMap = OwnerMap()
+_attempts: OwnerList = OwnerList()
+_cards: OwnerMap = OwnerMap()
+# Shares and community posts are explicit public/capability records.
+_shares: Dict[str, Dict[str, str]] = {}
 _forum_posts: List[Dict[str, Any]] = []
-_illustration_bytes: Dict[str, tuple[bytes, str]] = {}
-_illustrations_inflight: set[str] = set()
-_illustration_last_generated: Dict[str, float] = {}
-_chat_illustration_last_generated: Dict[str, float] = {}
-_chat_answers: Dict[str, Dict[str, Any]] = {}
+_illustration_bytes: OwnerMap = OwnerMap()
+_illustrations_inflight: OwnerSet = OwnerSet()
+_illustration_last_generated: OwnerMap = OwnerMap()
+_chat_illustration_last_generated: OwnerMap = OwnerMap()
+_chat_answers: OwnerMap = OwnerMap()
 _tasks: set[asyncio.Task] = set()
-_user = {
-    "id": "local-student",
-    "email": None,
-    "name": "Student",
-    "picture": None,
-    "guest": True,
-    "createdAt": datetime.now(timezone.utc).isoformat(),
-}
 
 
 def _now() -> str:
@@ -65,6 +65,76 @@ def _id(prefix: str) -> str:
     return "{}_{}".format(prefix, secrets.token_urlsafe(7))
 
 
+def _question_type(question: Dict[str, Any]) -> str:
+    return str(question.get("type") or "single")
+
+
+def _normalized_answer(value: Any) -> str:
+    text = unicodedata.normalize("NFKC", str(value or "")).casefold()
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s-]", " ", text, flags=re.UNICODE)).strip()
+
+
+def _score_quiz_question(question: Dict[str, Any], submitted: Any) -> tuple[bool, Dict[str, Any]]:
+    """Score one stored question without trusting or contacting a provider."""
+    kind = _question_type(question)
+    if kind == "multi":
+        expected = question.get("answer")
+        valid = (
+            isinstance(submitted, list)
+            and isinstance(expected, list)
+            and all(isinstance(item, int) and not isinstance(item, bool) for item in submitted)
+            and len(submitted) == len(set(submitted))
+        )
+        correct = valid and set(submitted) == set(expected) and len(submitted) == len(expected)
+        return correct, {
+            "correct": correct,
+            "feedback": "All correct options were selected." if correct else "Select every correct option and no incorrect options.",
+            "gradedBy": "exact-set-match",
+            "verified": True,
+        }
+    if kind == "short":
+        answer = _normalized_answer(submitted)
+        answer_tokens = set(answer.split())
+        concepts = [
+            _normalized_answer(item)
+            for item in question.get("keyConcepts", [])
+            if _normalized_answer(item)
+        ]
+
+        def includes(concept: str) -> bool:
+            if concept in answer:
+                return True
+            tokens = {token for token in concept.split() if len(token) > 2}
+            return bool(tokens) and tokens.issubset(answer_tokens)
+
+        matched = [concept for concept in concepts if includes(concept)]
+        correct = bool(answer and concepts) and len(matched) == len(concepts)
+        missing = [concept for concept in concepts if concept not in matched]
+        feedback = (
+            "Your answer includes every required key concept."
+            if correct
+            else "Your answer is missing required key concepts: {}.".format(", ".join(missing))
+            if answer and missing
+            else "Write a substantive answer that includes the required key concepts."
+        )
+        return correct, {
+            "correct": correct,
+            "feedback": feedback,
+            "gradedBy": "deterministic-key-concept-match",
+            "verified": True,
+            "matchedConcepts": len(matched),
+            "requiredConcepts": len(concepts),
+        }
+    expected = question.get("answer")
+    correct = isinstance(submitted, int) and not isinstance(submitted, bool) and submitted == expected
+    return correct, {
+        "correct": correct,
+        "feedback": "Correct option selected." if correct else "The selected option does not match the stored answer.",
+        "gradedBy": "exact-index-match",
+        "verified": True,
+    }
+
+
 def _require_material(material_id: str) -> Dict[str, Any]:
     material = _materials.get(material_id)
     if not material:
@@ -72,8 +142,30 @@ def _require_material(material_id: str) -> Dict[str, Any]:
     return material
 
 
+def owned_quiz_snapshot(material_id: str, quiz_id: str) -> Dict[str, Any]:
+    """Return only the selected owner-scoped quiz for lobby snapshotting."""
+    material = _require_material(material_id)
+    quiz = _quizzes.get(quiz_id)
+    if not quiz or quiz.get("materialId") != material.get("id"):
+        raise HTTPException(status_code=404, detail="That quiz version is not in your library.")
+    snapshot = deepcopy(quiz)
+    unsupported = [
+        str(question.get("type") or "single")
+        for question in snapshot.get("questions", [])
+        if str(question.get("type") or "single") not in {"single", "multi"}
+    ]
+    if unsupported:
+        raise HTTPException(
+            status_code=422,
+            detail="Multiplayer lobbies support only objectively scored single- and multi-select questions; remove short-answer questions from this quiz snapshot.",
+        )
+    snapshot.pop("ownerId", None)
+    return snapshot
+
+
 def _public_material(material: Dict[str, Any]) -> Dict[str, Any]:
     value = deepcopy(material)
+    value.pop("ownerId", None)
     for collection in ("illustrations", "chatIllustrations"):
         for illustration in value.get(collection, []):
             illustration.pop("_storageKey", None)
@@ -187,13 +279,13 @@ def _material_from_pack(
         "quiz": {"status": "not_generated", "questions": []},
         "provider": {
             "name": (
-                "Local grounded fallback"
-                if any("fallback" in warning.casefold() for warning in pack.warnings)
+                " + ".join(item.get("name", "AI provider") for item in pack.providers)
+                if pack.providers
                 else "Google Gemini"
             ),
             "model": (
-                "filtered-extractive"
-                if any("fallback" in warning.casefold() for warning in pack.warnings)
+                " + ".join(item.get("model", "unknown model") for item in pack.providers)
+                if pack.providers
                 else settings.gemini_model
             ),
             "latencyMs": round((time.monotonic() - started_at) * 1000),
@@ -201,6 +293,7 @@ def _material_from_pack(
             "tokensOut": 0,
             "costUsd": 0.0,
         },
+        "providers": deepcopy(pack.providers),
     }
 
 
@@ -252,54 +345,71 @@ def _translate_material(material: Dict[str, Any], language: str, settings: Setti
 
 
 def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRouter:
-    router = APIRouter(prefix="/api")
+    router = APIRouter(prefix="/api", route_class=AuthenticatedRoute)
     storage = ObjectStorage(settings)
     repository = DurableRepository(settings, storage)
+    configure_auth(settings, repository)
+    loaded_owners: set[str] = set()
+    public_loaded = False
 
-    if repository.ready:
-        def load_mapping(kind: str, target: Dict[str, Any]) -> None:
-            for item in repository.load_kind(kind):
-                try:
-                    if not isinstance(item["value"], (dict, list)):
-                        raise ValueError("record value has an invalid shape")
-                    target[item["id"]] = item["value"]
-                except Exception as exc:
-                    logger.warning("Skipping invalid hydrated %s record %s: %s", kind, item.get("id"), exc)
+    async def hydrate_owner(owner_id: str) -> None:
+        if owner_id in loaded_owners:
+            return
+        if repository.ready:
+            for kind, target in (("material", _materials), ("quiz", _quizzes), ("cards", _cards)):
+                for item in await run_in_threadpool(repository.load_kind, owner_id, kind):
+                    if isinstance(item.get("value"), (dict, list)):
+                        target.owner_data(owner_id)[item["id"]] = item["value"]
+            for item in await run_in_threadpool(repository.load_kind, owner_id, "attempt"):
+                if isinstance(item.get("value"), dict):
+                    _attempts.owner_data(owner_id).append(item["value"])
+            for item in await run_in_threadpool(repository.load_kind, owner_id, "source"):
+                values = item.get("value")
+                if isinstance(values, list):
+                    try:
+                        _sources.owner_data(owner_id)[item["id"]] = [SourceRecord.model_validate(value) for value in values]
+                    except Exception as exc:
+                        logger.warning("Skipping invalid owner source record %s: %s", item.get("id"), exc)
+            _attempts.owner_data(owner_id).sort(key=lambda item: item.get("at", ""), reverse=True)
+        loaded_owners.add(owner_id)
 
-        load_mapping("material", _materials)
-        load_mapping("quiz", _quizzes)
-        load_mapping("cards", _cards)
-        for item in repository.load_kind("share"):
-            try:
-                _shares[item["id"]] = str(item["value"])
-            except Exception as exc:
-                logger.warning("Skipping invalid hydrated share %s: %s", item.get("id"), exc)
-        _forum_posts[:] = [
-            item["value"] for item in repository.load_kind("forum")
-            if isinstance(item.get("value"), dict)
-        ]
-        _attempts[:] = [
-            item["value"] for item in repository.load_kind("attempt")
-            if isinstance(item.get("value"), dict)
-        ]
-        for item in repository.load_kind("source"):
-            try:
-                values = item["value"]
-                if not isinstance(values, list):
-                    raise ValueError("source record value must be a list")
-                _sources[item["id"]] = [SourceRecord.model_validate(value) for value in values]
-            except Exception as exc:
-                logger.warning("Skipping invalid hydrated source %s: %s", item.get("id"), exc)
+    async def hydrate_public() -> None:
+        nonlocal public_loaded
+        if public_loaded or not repository.ready:
+            public_loaded = True
+            return
+        for item in await run_in_threadpool(repository.load_public_kind, "share"):
+            if isinstance(item.get("value"), dict):
+                _shares[item["id"]] = item["value"]
+        for item in await run_in_threadpool(repository.load_public_kind, "forum"):
+            if isinstance(item.get("value"), dict):
+                _forum_posts.append(item["value"])
         _forum_posts.sort(key=lambda item: item.get("createdAt", ""), reverse=True)
-        _attempts.sort(key=lambda item: item.get("at", ""), reverse=True)
+        public_loaded = True
+
+    register_owner_hydrator(hydrate_owner)
 
     async def persist(kind: str, record_id: str, value: Any) -> None:
+        owner_id = current_owner_id()
+        stored = deepcopy(value)
+        if isinstance(stored, dict):
+            stored["ownerId"] = owner_id
+            if isinstance(value, dict):
+                value["ownerId"] = owner_id
         if repository.ready:
-            await run_in_threadpool(repository.save, kind, record_id, deepcopy(value))
+            await run_in_threadpool(repository.save, owner_id, kind, record_id, stored)
+
+    async def persist_public(kind: str, record_id: str, value: Any) -> None:
+        if repository.ready:
+            await run_in_threadpool(repository.save_public, kind, record_id, deepcopy(value))
 
     async def remove_persisted(kind: str, record_id: str) -> None:
         if repository.ready:
-            await run_in_threadpool(repository.delete, kind, record_id)
+            await run_in_threadpool(repository.delete, current_owner_id(), kind, record_id)
+
+    async def remove_public(kind: str, record_id: str) -> None:
+        if repository.ready:
+            await run_in_threadpool(repository.delete_public, kind, record_id)
 
     async def run_job(job_id: str, payload: Dict[str, Any]) -> None:
         job = _jobs[job_id]
@@ -421,34 +531,47 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
                     settings,
                     topics,
                     excluded_prompts,
+                    payload.get("questionTypes", ["single"]),
                 ),
                 timeout=timeout,
             )
             job.update(stage="ground", progress=88, stageLabel="Validating exact quiz citations")
             chunks = material.get("chunks", [])
             numeric_difficulty = {"easy": 1, "medium": 2, "hard": 3}[difficulty]
-            questions = [
-                {
+
+            def generated_question(item, index: int) -> Dict[str, Any]:
+                kind = item.type or "single"
+                question = {
                     "id": "q{}".format(index + 1),
+                    "type": kind,
                     "topic": item.topic,
                     "difficulty": numeric_difficulty,
                     "prompt": item.prompt,
-                    "options": item.options,
-                    "answer": item.answer,
                     "explanation": item.explanation,
                     "citations": [_citation_id(item.citation, chunks)],
                     "verified": True,
                 }
-                for index, item in enumerate(pack.questions)
-            ]
+                if kind == "short":
+                    question.update(
+                        modelAnswer=item.model_answer,
+                        keyConcepts=list(item.key_concepts),
+                        rubric=item.rubric,
+                    )
+                else:
+                    question.update(options=list(item.options), answer=deepcopy(item.answer))
+                return question
+
+            questions = [generated_question(item, index) for index, item in enumerate(pack.questions)]
             quiz_id = _id("quiz")
             quiz_version = {
                 "id": quiz_id,
+                "ownerId": current_owner_id(),
                 "materialId": material_id,
                 "status": "ready",
                 "generationStatus": "ready",
                 "difficulty": difficulty,
                 "questionCount": question_count,
+                "questionTypes": list(payload.get("questionTypes", ["single"])),
                 "generatedAt": _now(),
                 "providers": providers,
                 "questions": questions,
@@ -489,46 +612,34 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
         _tasks.add(task)
         task.add_done_callback(_tasks.discard)
 
-    @router.post("/auth/signup")
-    @router.post("/auth/login")
     @router.post("/auth/guest")
-    async def authenticate(request: Request) -> Dict[str, Any]:
-        body = await request.json() if request.headers.get("content-length") not in {None, "0"} else {}
-        email = body.get("email")
-        _user["email"] = email
-        _user["name"] = body.get("name") or ((email or "Student").split("@")[0])
-        _user["guest"] = not bool(email)
-        _user["picture"] = None
-        return {"token": "local-development-token", "user": dict(_user)}
+    async def authenticate_guest() -> Dict[str, Any]:
+        return auth_service().guest()
+
+    @router.post("/auth/signup")
+    async def authenticate_signup(request: Request) -> Dict[str, Any]:
+        body = await request.json()
+        guest = optional_user(request)
+        return auth_service().signup(body.get("email"), body.get("password"), body.get("name"), guest)
+
+    @router.post("/auth/login")
+    async def authenticate_login(request: Request) -> Dict[str, Any]:
+        body = await request.json()
+        return auth_service().login(body.get("email"), body.get("password"))
 
     @router.post("/auth/google")
     async def authenticate_with_google(request: Request) -> Dict[str, Any]:
-        """Sign in with a Google ID token.
-
-        The credential is verified server-side before it is believed — see
-        `google_auth.py`. The account details a student sees afterwards come
-        from the verified claims, never from anything the browser asserted.
-        """
-        body = await request.json() if request.headers.get("content-length") not in {None, "0"} else {}
+        body = await request.json()
         credential = body.get("credential")
         if not credential:
             raise HTTPException(status_code=422, detail="A Google credential is required.")
-
         profile = await run_in_threadpool(verify_google_id_token, credential, settings)
-
-        # Written back to the module-level record rather than a copy. The
-        # earlier stub built a throwaway dict, so `GET /auth/me` still answered
-        # with the untouched default and every signed-in student was shown the
-        # placeholder account on the next page load.
-        _user["email"] = profile["email"]
-        _user["name"] = profile["name"]
-        _user["picture"] = profile.get("picture")
-        _user["guest"] = False
-        return {"token": "local-development-token", "user": dict(_user)}
+        guest = optional_user(request)
+        return auth_service().google(profile, guest if guest and guest.get("guest") else None)
 
     @router.get("/auth/me")
     async def auth_me() -> Dict[str, Any]:
-        return dict(_user)
+        return public_user(current_user())
 
     # Face sign-in is designed and built on the client but has no
     # implementation on this backend. It previously had no routes at all, so
@@ -576,6 +687,7 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
 
     @router.delete("/materials/{material_id}", status_code=204)
     async def delete_material(material_id: str) -> Response:
+        await hydrate_public()
         material = _require_material(material_id)
         if material_id in _illustrations_inflight or any(
             job.get("materialId") == material_id and job.get("status") == "running"
@@ -593,7 +705,10 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
             for attempt in _attempts
             if attempt.get("materialId") == material_id and attempt.get("id")
         ]
-        share_tokens = [token for token, owner in _shares.items() if owner == material_id]
+        share_tokens = [
+            token for token, index in _shares.items()
+            if index.get("ownerId") == current_owner_id() and index.get("materialId") == material_id
+        ]
         all_illustrations = material.get("illustrations", []) + material.get("chatIllustrations", [])
         illustration_ids = [
             str(item.get("id")) for item in all_illustrations if item.get("id")
@@ -617,7 +732,7 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
             for attempt_id in attempt_ids:
                 await remove_persisted("attempt", attempt_id)
             for token in share_tokens:
-                await remove_persisted("share", token)
+                await remove_public("share", token)
             await remove_persisted("material", material_id)
             await remove_persisted("source", material_id)
             await remove_persisted("cards", material_id)
@@ -658,7 +773,7 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
             raise HTTPException(status_code=413, detail="That file exceeds the configured upload limit.")
         material_id = _id("m")
         content_type = str(body.get("contentType") or "application/octet-stream")
-        upload = {**body, "content": b"", "contentType": content_type}
+        upload = {**body, "ownerId": current_owner_id(), "content": b"", "contentType": content_type}
         if storage.ready:
             try:
                 object_key, upload_url = await run_in_threadpool(
@@ -693,6 +808,7 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
         job_id = _id("job")
         _jobs[job_id] = {
             "id": job_id,
+            "ownerId": current_owner_id(),
             "materialId": material_id,
             "kind": "recap",
             "status": "running",
@@ -703,6 +819,7 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
         }
         _materials[material_id] = {
             "id": material_id,
+            "ownerId": current_owner_id(),
             "title": Path(payload.get("fileName", "Upload")).stem,
             "fileName": payload.get("fileName", "upload"),
             "fileType": Path(payload.get("fileName", "upload")).suffix.lstrip("."),
@@ -723,6 +840,21 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
         if not job:
             raise HTTPException(status_code=404, detail="That job has expired or never existed.")
         return job
+
+    @router.get("/quizzes")
+    async def list_quizzes() -> List[Dict[str, Any]]:
+        return sorted(
+            (deepcopy(quiz) for quiz in _quizzes.values()),
+            key=lambda quiz: str(quiz.get("generatedAt") or ""),
+            reverse=True,
+        )
+
+    @router.get("/quizzes/{quiz_id}")
+    async def get_quiz(quiz_id: str) -> Dict[str, Any]:
+        quiz = _quizzes.get(quiz_id)
+        if not quiz:
+            raise HTTPException(status_code=404, detail="That quiz version does not exist.")
+        return deepcopy(quiz)
 
     @router.post("/materials/{material_id}/quiz", status_code=202)
     async def generate_material_quiz(
@@ -755,11 +887,13 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
             "difficulty": quiz_request.difficulty,
             "questionCount": quiz_request.question_count,
             "topics": quiz_request.topics,
+            "questionTypes": quiz_request.question_types,
             "fresh": quiz_request.fresh,
             "excludedPrompts": list(dict.fromkeys(excluded_prompts))[-60:],
         }
         _jobs[job_id] = {
             "id": job_id,
+            "ownerId": current_owner_id(),
             "materialId": material_id,
             "kind": "quiz",
             "status": "running",
@@ -786,46 +920,83 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
         for index, raw in enumerate(questions, start=1):
             if not isinstance(raw, dict):
                 raise HTTPException(status_code=422, detail="Question {} must be an object.".format(index))
+            kind = str(raw.get("type") or "single").strip().casefold()
             topic = str(raw.get("topic") or "").strip()
             prompt = str(raw.get("prompt") or "").strip()
             explanation = str(raw.get("explanation") or "").strip()
-            options = raw.get("options")
-            answer = raw.get("answer")
+            if kind not in {"single", "multi", "short"}:
+                raise HTTPException(status_code=422, detail="Question {} has an unsupported type.".format(index))
             if not topic or len(topic) > 80 or not prompt or len(prompt) > 1000 or not explanation or len(explanation) > 2000:
                 raise HTTPException(status_code=422, detail="Question {} has incomplete or oversized text.".format(index))
-            normalized_prompt = prompt.casefold()
+            normalized_prompt = " ".join(prompt.casefold().split())
             if normalized_prompt in prompts:
                 raise HTTPException(status_code=422, detail="Manual quiz questions must be unique.")
             prompts.add(normalized_prompt)
-            if not isinstance(options, list) or not 2 <= len(options) <= 6:
-                raise HTTPException(status_code=422, detail="Question {} must have 2 to 6 options.".format(index))
-            clean_options = [str(option).strip() for option in options]
-            if any(not option or len(option) > 500 for option in clean_options):
-                raise HTTPException(status_code=422, detail="Question {} contains an empty or oversized option.".format(index))
-            if isinstance(answer, bool) or not isinstance(answer, int) or not 0 <= answer < len(clean_options):
-                raise HTTPException(status_code=422, detail="Question {} has an invalid answer index.".format(index))
-            saved_questions.append({
+            saved = {
                 "id": "q{}".format(index),
+                "type": kind,
                 "topic": topic,
                 "difficulty": 2,
                 "prompt": prompt,
-                "options": clean_options,
-                "answer": answer,
                 "explanation": explanation,
                 "citations": [],
                 "verified": True,
                 "authoring": "manual",
-            })
+            }
+            if kind == "short":
+                model_answer = str(raw.get("modelAnswer") or "").strip()
+                rubric = str(raw.get("rubric") or "").strip()
+                concepts = raw.get("keyConcepts")
+                if not model_answer or len(model_answer) > 2000 or not rubric or len(rubric) > 1000:
+                    raise HTTPException(status_code=422, detail="Short-answer question {} requires bounded modelAnswer and rubric text.".format(index))
+                if not isinstance(concepts, list):
+                    raise HTTPException(status_code=422, detail="Short-answer question {} requires 1 to 8 keyConcepts.".format(index))
+                clean_concepts = [" ".join(str(item).strip().split()) for item in concepts]
+                normalized_concepts = [item.casefold() for item in clean_concepts]
+                if (
+                    not 1 <= len(clean_concepts) <= 8
+                    or any(not item or len(item) > 120 for item in clean_concepts)
+                    or len(set(normalized_concepts)) != len(normalized_concepts)
+                ):
+                    raise HTTPException(status_code=422, detail="Short-answer question {} has invalid or duplicate keyConcepts.".format(index))
+                saved.update(modelAnswer=model_answer, keyConcepts=clean_concepts, rubric=rubric)
+            else:
+                options = raw.get("options")
+                answer = raw.get("answer")
+                if not isinstance(options, list) or not 2 <= len(options) <= 6:
+                    raise HTTPException(status_code=422, detail="Question {} must have 2 to 6 options.".format(index))
+                clean_options = [str(option).strip() for option in options]
+                if (
+                    any(not option or len(option) > 500 for option in clean_options)
+                    or len({" ".join(option.casefold().split()) for option in clean_options}) != len(clean_options)
+                ):
+                    raise HTTPException(status_code=422, detail="Question {} contains an empty, oversized, or duplicate option.".format(index))
+                if kind == "single":
+                    if isinstance(answer, bool) or not isinstance(answer, int) or not 0 <= answer < len(clean_options):
+                        raise HTTPException(status_code=422, detail="Question {} has an invalid answer index.".format(index))
+                else:
+                    if (
+                        not isinstance(answer, list)
+                        or len(answer) < 2
+                        or any(isinstance(item, bool) or not isinstance(item, int) or not 0 <= item < len(clean_options) for item in answer)
+                        or len(set(answer)) != len(answer)
+                    ):
+                        raise HTTPException(status_code=422, detail="Multi-select question {} requires unique valid answer indexes.".format(index))
+                    answer = sorted(answer)
+                saved.update(options=clean_options, answer=answer)
+            saved_questions.append(saved)
 
         quiz_id = _id("quiz")
         quiz_version = {
             "id": quiz_id,
+            "ownerId": current_owner_id(),
             "materialId": material_id,
             "title": title,
             "status": "ready",
             "generationStatus": "ready",
             "difficulty": "manual",
             "questionCount": len(saved_questions),
+            "questionTypes": list(dict.fromkeys(item["type"] for item in saved_questions)),
             "generatedAt": _now(),
             "authoring": "manual",
             "providers": [{"name": "Student authored", "model": "manual editor", "role": "author"}],
@@ -837,12 +1008,27 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
         await persist("material", material_id, material)
         return quiz_version
 
+    def forum_like_key(post_id: str, user_id: str) -> str:
+        secret = settings.jwt_secret.get_secret_value().encode("utf-8")
+        return hmac.new(secret, "{}:{}".format(post_id, user_id).encode("utf-8"), hashlib.sha256).hexdigest()
+
+    def public_forum_post(post: Dict[str, Any], user: Any = None) -> Dict[str, Any]:
+        value = deepcopy(post)
+        liked_keys = value.pop("_likedOwnerKeys", [])
+        value["likedByMe"] = bool(
+            user and forum_like_key(str(post.get("id") or ""), str(user["id"])) in liked_keys
+        )
+        return value
+
     @router.get("/forum/posts")
-    async def list_forum_posts() -> List[Dict[str, Any]]:
-        return deepcopy(_forum_posts)
+    async def list_forum_posts(request: Request) -> List[Dict[str, Any]]:
+        await hydrate_public()
+        user = optional_user(request)
+        return [public_forum_post(post, user) for post in _forum_posts]
 
     @router.post("/forum/posts", status_code=201)
     async def create_forum_post(request: Request) -> Dict[str, Any]:
+        await hydrate_public()
         body = await request.json()
         post_type = str(body.get("type") or "").strip().casefold()
         title = str(body.get("title") or "").strip()
@@ -853,23 +1039,24 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
         if not 1 <= len(title) <= 120 or not 1 <= len(content) <= 4000:
             raise HTTPException(status_code=422, detail="Post title and body are required and must fit the published limits.")
         material = _require_material(material_id) if material_id else None
+        user = current_user()
         post = {
             "id": _id("post"),
             "type": post_type,
             "title": title,
             "body": content,
-            "author": {"id": _user["id"], "name": _user["name"]},
+            "author": {"id": user["id"], "name": user["name"]},
             "materialId": material_id or None,
             "materialTitle": material.get("title") if material else None,
             "createdAt": _now(),
-            "likedByMe": False,
             "likeCount": 0,
+            "_likedOwnerKeys": [],
             "comments": [],
             "commentCount": 0,
         }
         _forum_posts.insert(0, post)
-        await persist("forum", post["id"], post)
-        return deepcopy(post)
+        await persist_public("forum", post["id"], post)
+        return public_forum_post(post, user)
 
     def require_forum_post(post_id: str) -> Dict[str, Any]:
         post = next((item for item in _forum_posts if item["id"] == post_id), None)
@@ -879,26 +1066,37 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
 
     @router.post("/forum/posts/{post_id}/like")
     async def toggle_forum_like(post_id: str) -> Dict[str, Any]:
+        await hydrate_public()
         post = require_forum_post(post_id)
-        post["likedByMe"] = not post.get("likedByMe", False)
-        post["likeCount"] = max(0, int(post.get("likeCount", 0)) + (1 if post["likedByMe"] else -1))
-        await persist("forum", post_id, post)
-        return deepcopy(post)
+        user = current_user()
+        key = forum_like_key(post_id, str(user["id"]))
+        liked_keys = set(post.get("_likedOwnerKeys") or [])
+        if key in liked_keys:
+            liked_keys.remove(key)
+        else:
+            liked_keys.add(key)
+        post.pop("likedByMe", None)  # discard the legacy global per-post flag
+        post["_likedOwnerKeys"] = sorted(liked_keys)
+        post["likeCount"] = len(liked_keys)
+        await persist_public("forum", post_id, post)
+        return public_forum_post(post, user)
 
     @router.post("/forum/posts/{post_id}/comments", status_code=201)
     async def add_forum_comment(post_id: str, request: Request) -> Dict[str, Any]:
+        await hydrate_public()
         post = require_forum_post(post_id)
         content = str((await request.json()).get("body") or "").strip()
         if not 1 <= len(content) <= 1000:
             raise HTTPException(status_code=422, detail="Comment body must be between 1 and 1,000 characters.")
+        user = current_user()
         post["comments"].append({
             "id": _id("comment"),
             "body": content,
-            "author": {"id": _user["id"], "name": _user["name"]},
+            "author": {"id": user["id"], "name": user["name"]},
             "createdAt": _now(),
         })
         post["commentCount"] = len(post["comments"])
-        await persist("forum", post_id, post)
+        await persist_public("forum", post_id, post)
         return deepcopy(post)
 
     @router.post("/materials/{material_id}/illustrations", status_code=201)
@@ -1169,14 +1367,22 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
             raise HTTPException(status_code=422, detail="The attempt contains an invalid or empty question scope.")
         questions = [available[question_id] for question_id in question_ids]
 
-        correct = sum(answers.get(item["id"]) == item["answer"] for item in questions)
+        judgements: Dict[str, Dict[str, Any]] = {}
+        correctness: Dict[str, bool] = {}
+        for item in questions:
+            is_correct, judgement = _score_quiz_question(item, answers.get(item["id"]))
+            correctness[item["id"]] = is_correct
+            judgements[item["id"]] = judgement
+
+        correct = sum(correctness.values())
         topic_totals: Dict[str, Dict[str, int]] = {}
         for item in questions:
             row = topic_totals.setdefault(item["topic"], {"correct": 0, "total": 0})
             row["total"] += 1
-            row["correct"] += int(answers.get(item["id"]) == item["answer"])
+            row["correct"] += int(correctness[item["id"]])
         attempt = {
             "id": _id("a"),
+            "ownerId": current_owner_id(),
             "materialId": material["id"],
             "quizId": quiz_id,
             "at": _now(),
@@ -1186,6 +1392,7 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
             "score": round(correct / len(questions) * 100),
             "byTopic": [{"topic": topic, **scores} for topic, scores in topic_totals.items()],
             "answers": deepcopy(answers),
+            "judgements": judgements,
             "questions": deepcopy(questions),
             "difficulty": quiz.get("difficulty"),
             "questionCount": len(questions),
@@ -1218,16 +1425,26 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
     async def create_share(material_id: str, request: Request) -> Dict[str, str]:
         _require_material(material_id)
         token = _id("s")
-        _shares[token] = material_id
-        await persist("share", token, material_id)
+        index = {"ownerId": current_owner_id(), "materialId": material_id}
+        _shares[token] = index
+        await persist_public("share", token, index)
         return {"token": token, "url": "{}s/{}".format(str(request.base_url), token)}
 
     @router.get("/shared/{token}")
     async def get_share(token: str) -> Dict[str, Any]:
-        material_id = _shares.get(token)
-        if not material_id:
+        await hydrate_public()
+        index = _shares.get(token)
+        if not index:
             raise HTTPException(status_code=404, detail="This share link is no longer valid.")
-        return _public_material(_require_material(material_id))
+        owner_id, material_id = index.get("ownerId", ""), index.get("materialId", "")
+        material = _materials.owner_data(owner_id).get(material_id)
+        if not material and repository.ready:
+            material = await run_in_threadpool(repository.get, owner_id, "material", material_id)
+            if isinstance(material, dict):
+                _materials.owner_data(owner_id)[material_id] = material
+        if not isinstance(material, dict):
+            raise HTTPException(status_code=404, detail="This share link is no longer valid.")
+        return _public_material(material)
 
     @router.post("/tts")
     async def tts_unavailable() -> None:

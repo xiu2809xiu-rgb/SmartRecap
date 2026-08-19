@@ -1,8 +1,9 @@
+import secrets
 from functools import lru_cache
 from pathlib import Path
 from typing import List
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,11 +19,14 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.5-flash"
     openai_api_key: SecretStr = SecretStr("")
     openai_chat_model: str = "gpt-4.1-mini"
+    openrouter_api_key: SecretStr = SecretStr("")
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_model: str = ""
+    nvidia_api_key: SecretStr = SecretStr("")
+    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
+    nvidia_model: str = ""
     # Must match VITE_GOOGLE_CLIENT_ID on the frontend exactly: the token's
     # audience is checked against it, so a mismatch rejects every sign-in.
-    # NVIDIA NIM. Powers the coding help in the practice panel
-    # (qwen2.5-coder-32b-instruct) and is the declared generation failover.
-    nvidia_api_key: SecretStr = SecretStr("")
     google_client_id: str = ""
     demo_mode: bool = False
     cors_origins: str = "http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:3000,http://localhost:3000"
@@ -41,6 +45,11 @@ class Settings(BaseSettings):
     pollinations_base_url: str = "https://gen.pollinations.ai"
     pollinations_model: str = "flux"
     pollinations_api_key: SecretStr = SecretStr("")
+    # If JWT_SECRET is absent, each process gets an unpredictable development-only
+    # key. Sessions intentionally stop working after a restart rather than using a
+    # checked-in or deterministic fallback.
+    jwt_secret: SecretStr = Field(default_factory=lambda: SecretStr(secrets.token_urlsafe(48)))
+    session_ttl_seconds: int = 60 * 60 * 24 * 14
 
     model_config = SettingsConfigDict(env_file=Path(__file__).resolve().parents[1] / ".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -64,6 +73,22 @@ class Settings(BaseSettings):
     @property
     def openai_ready(self) -> bool:
         return bool(self.openai_api_key.get_secret_value())
+
+    @property
+    def openrouter_ready(self) -> bool:
+        return bool(
+            self.openrouter_api_key.get_secret_value()
+            and self.openrouter_base_url.strip()
+            and self.openrouter_model.strip()
+        )
+
+    @property
+    def nvidia_ready(self) -> bool:
+        return bool(
+            self.nvidia_api_key.get_secret_value()
+            and self.nvidia_base_url.strip()
+            and self.nvidia_model.strip()
+        )
 
 
 @lru_cache

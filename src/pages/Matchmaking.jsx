@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, openLobbySocket } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
 import { useStore } from '../lib/store.jsx';
 import { StudyShell } from '../components/layout/Shells.jsx';
-import { CopyButton, Empty, Icon, Spinner, useToast } from '../components/ui.jsx';
+import { CopyButton, Empty, Icon, Select, Spinner, useToast } from '../components/ui.jsx';
+import { AvatarPicker, MatchAvatar, safeAvatarId } from '../components/MatchAvatar.jsx';
 import './matchmaking.css';
 
 const sessionKey = (id) => `smartrecap.lobby.${id}`;
+const isMatchCompatible = (quiz) => !(quiz?.questions || []).some((question) => (question?.type || 'single') === 'short');
 const saveSession = (id, session) => localStorage.setItem(sessionKey(id), JSON.stringify(session));
 const readSession = (id) => {
   try { return JSON.parse(localStorage.getItem(sessionKey(id)) || 'null'); } catch { return null; }
@@ -15,26 +17,45 @@ const readSession = (id) => {
 
 export default function Matchmaking() {
   const { id, lobbyId } = useParams();
+  const [searchParams] = useSearchParams();
+  const requestedQuizId = searchParams.get('quizId');
   const navigate = useNavigate();
   const toast = useToast();
   const { user } = useAuth();
   const { materialById, upsertMaterial } = useStore();
   const [material, setMaterial] = useState(materialById(id) ?? null);
+  const [quizzes, setQuizzes] = useState([]);
+  const [selectedQuizId, setSelectedQuizId] = useState(requestedQuizId || '');
   const [lobbies, setLobbies] = useState([]);
   const [lobby, setLobby] = useState(null);
   const [session, setSession] = useState(() => lobbyId ? readSession(lobbyId) : null);
   const [name, setName] = useState(user?.name || 'Student');
+  const [avatarId, setAvatarId] = useState('nova');
   const [roomName, setRoomName] = useState('Study showdown');
   const [maxPlayers, setMaxPlayers] = useState(4);
   const [visibility, setVisibility] = useState('public');
   const [roomPassword, setRoomPassword] = useState('');
   const [joinPassword, setJoinPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const [loadingQuizzes, setLoadingQuizzes] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    api.materials.get(id).then((value) => { setMaterial(value); upsertMaterial(value); }).catch(setError);
-  }, [id, upsertMaterial]);
+    setLoadingQuizzes(true);
+    Promise.all([api.materials.get(id), api.quiz.list()])
+      .then(([value, versions]) => {
+        setMaterial(value);
+        upsertMaterial(value);
+        const saved = (versions || []).filter((quiz) => String(quiz.materialId ?? quiz.material_id) === String(id));
+        const playable = saved.filter(isMatchCompatible);
+        setQuizzes(saved);
+        setSelectedQuizId((current) => current && playable.some((quiz) => quiz.id === current)
+          ? current
+          : (requestedQuizId && playable.some((quiz) => quiz.id === requestedQuizId) ? requestedQuizId : playable[0]?.id || ''));
+      })
+      .catch(setError)
+      .finally(() => setLoadingQuizzes(false));
+  }, [id, requestedQuizId, upsertMaterial]);
 
   useEffect(() => {
     if (lobbyId) {
@@ -84,28 +105,43 @@ export default function Matchmaking() {
   }, [lobbyId, session]);
 
   useEffect(() => {
+    const lobbyQuizId = lobby?.quizId ?? lobby?.quiz_id;
+    if (lobbyQuizId) setSelectedQuizId(lobbyQuizId);
     if (lobby?.status === 'playing' && session) navigate(`/app/material/${id}/quiz?match=${lobby.id}`);
   }, [id, lobby, navigate, session]);
 
+  const selectedQuiz = useMemo(() => quizzes.find((quiz) => quiz.id === selectedQuizId), [quizzes, selectedQuizId]);
+  const quizOptions = useMemo(() => quizzes.map((quiz) => {
+    const compatible = isMatchCompatible(quiz);
+    return {
+      value: quiz.id,
+      label: quiz.title || `${titleCase(quiz.difficulty || 'medium')} quiz`,
+      secondary: compatible
+        ? `${quiz.questionCount || quiz.questions?.length || 0} questions · ${quiz.generatedAt ? new Date(quiz.generatedAt).toLocaleDateString() : 'Saved version'}`
+        : 'Solo only · contains written-answer questions',
+      disabled: !compatible,
+    };
+  }), [quizzes]);
   const matchingRooms = useMemo(
-    () => lobbies.filter((item) => item.materialId === id && item.quizId === material?.quiz?.id),
-    [id, lobbies, material],
+    () => lobbies.filter((item) => String(item.materialId ?? item.material_id) === String(id) && item.quizId === selectedQuizId),
+    [id, lobbies, selectedQuizId],
   );
 
   const createRoom = async () => {
-    if (!material?.quiz?.id) return;
+    if (!selectedQuiz?.id) return;
     setBusy(true); setError(null);
     try {
       const result = await api.lobbies.create({
         name: roomName.trim() || 'Study showdown',
         host_name: name.trim() || 'Student',
         materialId: id,
-        quizId: material.quiz.id,
+        quizId: selectedQuiz.id,
+        avatarId: safeAvatarId(avatarId),
         max_players: maxPlayers,
-        difficulty: titleCase(material.quiz.difficulty || 'medium'),
+        difficulty: titleCase(selectedQuiz.difficulty || 'medium'),
         visibility,
         password: visibility === 'private' ? roomPassword : undefined,
-        questionCount: material.quiz.questions?.length || material.quiz.questionCount || 0,
+        questionCount: selectedQuiz.questions?.length || selectedQuiz.questionCount || 0,
       });
       const saved = { playerId: result.player_id, reconnectToken: result.reconnect_token };
       saveSession(result.lobby.id, saved);
@@ -121,6 +157,7 @@ export default function Matchmaking() {
     try {
       const result = await api.lobbies.join(targetId, {
         playerName: name.trim() || 'Student',
+        avatarId: safeAvatarId(avatarId),
         password: joinPassword || undefined,
       });
       const saved = { playerId: result.player_id, reconnectToken: result.reconnect_token };
@@ -140,9 +177,10 @@ export default function Matchmaking() {
     finally { setBusy(false); }
   };
 
-  if (!material) return <StudyShell title="Matchmaking"><div className="shell match-loading"><Spinner size={22} />Loading quiz…</div></StudyShell>;
-  if (!material.quiz?.id) {
-    return <StudyShell title={material.title} backTo={`/app/material/${id}`}><div className="shell"><Empty icon="quiz" title="Create a quiz first" body="A multiplayer room uses the current generated quiz so every player receives the same questions." action={<Link className="btn btn-primary" to={`/app/material/${id}`}>Create quiz</Link>} /></div></StudyShell>;
+  if (!material || loadingQuizzes) return <StudyShell title="Matchmaking"><div className="shell match-loading"><Spinner size={22} />Loading saved quiz versions…</div></StudyShell>;
+  if (!quizzes.length || !quizzes.some(isMatchCompatible)) {
+    const onlyWritten = quizzes.length > 0;
+    return <StudyShell title={material.title} backTo={`/app/material/${id}`}><div className="shell"><Empty icon="quiz" title={onlyWritten ? 'Create an objective quiz for matchmaking' : 'Create a quiz first'} body={onlyWritten ? 'Written answers are graded after submission, so they cannot drive a fair live speed leaderboard. Generate a saved version with Single and/or Multi question types.' : 'A multiplayer room uses one immutable saved quiz so every player receives the exact same questions.'} action={<Link className="btn btn-primary" to={`/app/material/${id}`}>{onlyWritten ? 'Create objective quiz' : 'Create quiz'}</Link>} /></div></StudyShell>;
   }
 
   if (lobbyId) {
@@ -158,6 +196,7 @@ export default function Matchmaking() {
               <h1>Join {lobby.name}</h1>
               <p>{lobby.players.length} of {lobby.max_players} players · {lobby.difficulty} · {lobby.visibility === 'private' ? 'Private' : 'Public'}</p>
               <label className="field"><span>Display name</span><input className="input" value={name} onChange={(event) => setName(event.target.value)} maxLength={24} /></label>
+              <AvatarPicker value={avatarId} onChange={setAvatarId} />
               {lobby.has_password && <label className="field"><span>Room password</span><input className="input" type="password" value={joinPassword} onChange={(event) => setJoinPassword(event.target.value)} maxLength={64} autoComplete="current-password" /></label>}
               <button className="btn btn-primary" onClick={() => joinRoom()} disabled={busy || (lobby.has_password && !joinPassword)}>{busy ? <Spinner size={17} /> : <Icon name="login" size={18} />}Join room</button>
             </section>
@@ -166,10 +205,10 @@ export default function Matchmaking() {
       );
     }
     return (
-      <StudyShell title={lobby?.name || 'Quiz room'} subtitle={`Room ${lobbyId} · ${lobby?.difficulty || material.quiz.difficulty}`} backTo={`/app/material/${id}/match`}>
+      <StudyShell title={lobby?.name || 'Quiz room'} subtitle={`Room ${lobbyId} · ${lobby?.difficulty || 'Quiz'}`} backTo={`/app/material/${id}/match`}>
         <div className="shell match-shell">
           <header className="match-room-head">
-            <div><p className="eyebrow">Live quiz lobby</p><h1>{lobby?.status === 'finished' ? 'Final standings' : 'Waiting for players'}</h1><p>Everyone receives the same {material.quiz.questionCount} conceptual questions.</p></div>
+            <div><p className="eyebrow">Live quiz lobby</p><h1>{lobby?.status === 'finished' ? 'Final standings' : 'Waiting for players'}</h1><p>Everyone receives the same immutable snapshot of {lobby?.total_questions || lobby?.totalQuestions || selectedQuiz?.questionCount || 0} questions.</p></div>
             <div className="room-code"><span>Room code</span><strong>{lobbyId}</strong><CopyButton value={lobbyId} /></div>
           </header>
           {error && <p className="field-error">{error.message}</p>}
@@ -178,7 +217,7 @@ export default function Matchmaking() {
             <ol>
               {[...(lobby?.players || [])].sort((a, b) => (b.score || 0) - (a.score || 0)).map((player, index) => (
                 <li key={player.id} className={player.id === session?.playerId ? 'is-me' : ''}>
-                  <span className="player-rank">{lobby.status === 'finished' ? index + 1 : <Icon name="person" size={18} />}</span>
+                  <span className="player-rank">{lobby.status === 'finished' ? index + 1 : <MatchAvatar avatarId={player.avatarId ?? player.avatar_id} size="sm" label={`${player.name}'s avatar`} />}</span>
                   <div><strong>{player.name}{(player.is_host ?? player.isHost) ? ' · Host' : ''}</strong><span>{player.submitted ? `${player.accuracy ?? 0}% accuracy` : player.answered ? `${player.answered} answered · ${player.accuracy ?? 0}% accuracy` : player.ready || (player.is_host ?? player.isHost) ? 'Ready' : 'Getting ready'}</span></div>
                   {lobby.status === 'finished' ? <strong className="player-score">{Number(player.score || 0).toLocaleString()} pts</strong> : <span className={`ready-dot ${player.ready || (player.is_host ?? player.isHost) ? 'is-on' : ''}`} />}
                 </li>
@@ -213,16 +252,20 @@ export default function Matchmaking() {
         <div className="match-browser-grid">
           <section className="match-create panel-solid">
             <span className="match-feature-icon"><Icon name="add_circle" size={25} /></span><h2>Create a room</h2><p>You host the lobby and start when everyone is ready.</p>
+            <div className="field"><span>Saved quiz version</span><Select label="Saved quiz version" value={selectedQuizId} onChange={setSelectedQuizId} options={quizOptions} /></div>
             <label className="field"><span>Your name</span><input className="input" value={name} onChange={(event) => setName(event.target.value)} maxLength={24} /></label>
+            <AvatarPicker value={avatarId} onChange={setAvatarId} />
             <label className="field"><span>Room name</span><input className="input" value={roomName} onChange={(event) => setRoomName(event.target.value)} maxLength={50} /></label>
-            <label className="field"><span>Maximum players</span><select className="input" value={maxPlayers} onChange={(event) => setMaxPlayers(Number(event.target.value))}>{[2, 4, 6, 8].map((value) => <option key={value} value={value}>{value} players</option>)}</select></label>
-            <label className="field"><span>Party visibility</span><select className="input" value={visibility} onChange={(event) => setVisibility(event.target.value)}><option value="public">Public · discoverable</option><option value="private">Private · password protected</option></select></label>
+            <div className="field"><span>Maximum players</span><Select label="Maximum players" value={maxPlayers} onChange={(value) => setMaxPlayers(Number(value))} options={[2, 4, 6, 8].map((value) => ({ value, label: `${value} players` }))} /></div>
+            <div className="field"><span>Party visibility</span><Select label="Party visibility" value={visibility} onChange={setVisibility} options={[{ value: 'public', label: 'Public', secondary: 'Discoverable by other students', icon: 'public' }, { value: 'private', label: 'Private', secondary: 'Protected by a room password', icon: 'lock' }]} /></div>
             {visibility === 'private' && <label className="field"><span>Party password</span><input className="input" type="password" value={roomPassword} onChange={(event) => setRoomPassword(event.target.value)} minLength={4} maxLength={64} placeholder="At least 4 characters" autoComplete="new-password" /></label>}
             <button className="btn btn-primary" onClick={createRoom} disabled={busy || (visibility === 'private' && roomPassword.trim().length < 4)}>{busy ? <Spinner size={17} /> : <Icon name={visibility === 'private' ? 'lock' : 'groups'} size={18} />}Create lobby</button>
           </section>
           <section className="match-open panel-solid">
             <span className="match-feature-icon"><Icon name="travel_explore" size={25} /></span><h2>Open rooms</h2><p>Rooms using this exact quiz version appear here.</p>
+            <div className="field"><span>Browse rooms for</span><Select label="Quiz version for open rooms" value={selectedQuizId} onChange={setSelectedQuizId} options={quizOptions} /></div>
             <label className="field"><span>Your name</span><input className="input" value={name} onChange={(event) => setName(event.target.value)} maxLength={24} /></label>
+            <AvatarPicker value={avatarId} onChange={setAvatarId} label="Your room avatar" />
             <div className="open-room-list">
               {matchingRooms.length ? matchingRooms.map((room) => (
                 <article key={room.id}>

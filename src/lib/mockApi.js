@@ -37,7 +37,9 @@ function read() {
     binders: [],
     sources: {},
     lobbies: [],
+    quizVersions: [],
     forumPosts: [],
+    social: { friends: [], requests: [], conversations: [], messages: {}, plans: {}, timer: null },
   };
 }
 
@@ -55,7 +57,9 @@ let db = read();
 db.binders ??= [];
 db.sources ??= {};
 db.lobbies ??= [];
+db.quizVersions ??= [];
 db.forumPosts ??= [];
+db.social ??= { friends: [], requests: [], conversations: [], messages: {}, plans: {}, timer: null };
 db.faceEnrolled ??= false;
 db.materials = db.materials.map((material) => {
   if (!material.quiz?.questions?.length || material.quiz.id) return material;
@@ -73,6 +77,9 @@ db.materials = db.materials.map((material) => {
     },
   };
 });
+for (const material of db.materials) {
+  if (material.quiz?.id && !db.quizVersions.some((quiz) => quiz.id === material.quiz.id)) db.quizVersions.push(JSON.parse(JSON.stringify(material.quiz)));
+}
 const jobs = new Map();
 const lobbyTokens = new Map();
 
@@ -484,6 +491,13 @@ export const mockApi = {
       if (!lobby) throw Object.assign(new Error('Lobby not found'), { status: 404 });
       return lobbyView(lobby);
     },
+    async quiz(id, playerId, reconnectToken) {
+      const lobby = db.lobbies.find((item) => item.id === id);
+      if (!lobby || lobbyTokens.get(playerId) !== reconnectToken) throw new Error('Invalid lobby session.');
+      const quiz = db.quizVersions.find((item) => item.id === lobby.quizId);
+      if (!quiz) throw Object.assign(new Error('This lobby quiz is unavailable.'), { status: 404 });
+      return clone(quiz);
+    },
     async create(payload) {
       const playerId = makeId('player');
       const token = makeId('token') + makeId('secure');
@@ -495,7 +509,7 @@ export const mockApi = {
         max_players: payload.max_players || 4, difficulty: payload.difficulty || 'Mixed', status: 'open',
         visibility, has_password: visibility === 'private', _passwordHash: await passwordHash(payload.password),
         current_question: 0, total_questions: payload.questionCount || 0,
-        players: [{ id: playerId, name: payload.host_name, score: 0, ready: false, submitted: false, is_host: true, answered: 0, correct: 0, accuracy: 0, last_correct: null }],
+        players: [{ id: playerId, name: payload.host_name, avatarId: payload.avatarId || 'nova', score: 0, ready: false, submitted: false, is_host: true, answered: 0, correct: 0, accuracy: 0, last_correct: null }],
         created_at: new Date().toISOString(),
       };
       lobbyTokens.set(playerId, token); db.lobbies.push(lobby); persist();
@@ -506,7 +520,7 @@ export const mockApi = {
       if (!lobby) throw Object.assign(new Error('This lobby is no longer open.'), { status: 404 });
       if (lobby.has_password && await passwordHash(payload.password) !== lobby._passwordHash) throw Object.assign(new Error('That room password is incorrect.'), { status: 403 });
       const playerId = makeId('player'); const token = makeId('token') + makeId('secure');
-      lobby.players.push({ id: playerId, name: payload.playerName, score: 0, ready: false, submitted: false, is_host: false, answered: 0, correct: 0, accuracy: 0, last_correct: null, _answeredIds: [] });
+      lobby.players.push({ id: playerId, name: payload.playerName, avatarId: payload.avatarId || 'nova', score: 0, ready: false, submitted: false, is_host: false, answered: 0, correct: 0, accuracy: 0, last_correct: null, _answeredIds: [] });
       lobbyTokens.set(playerId, token); persist();
       return clone({ lobby: lobbyView(lobby), player_id: playerId, reconnect_token: token });
     },
@@ -554,7 +568,14 @@ export const mockApi = {
   },
 
   quiz: {
-    async generate(materialId, { difficulty, questionCount, topics = [], fresh = false }) {
+    async list() { await sleep(120); return clone([...db.quizVersions].sort((a, b) => new Date(b.generatedAt || 0) - new Date(a.generatedAt || 0))); },
+    async get(quizId) {
+      await sleep(90);
+      const quiz = db.quizVersions.find((item) => item.id === quizId);
+      if (!quiz) throw Object.assign(new Error('That quiz version does not exist.'), { status: 404 });
+      return clone(quiz);
+    },
+    async generate(materialId, { difficulty, questionCount, questionTypes = ['single'], topics = [], fresh = false }) {
       const material = db.materials.find((m) => m.id === materialId);
       if (!material) throw Object.assign(new Error('Material not found'), { status: 404 });
       const jobId = makeId('job');
@@ -573,7 +594,10 @@ export const mockApi = {
         const questions = Array.from({ length: questionCount }, (_, index) => {
           const base = clone(pool[index % pool.length]);
           const prompt = fresh ? `Fresh practice ${index + 1}: ${base.prompt}` : base.prompt;
-          return { ...base, id: `${base.id}-${Date.now()}-${index + 1}`, prompt, difficulty: { easy: 1, medium: 2, hard: 3 }[difficulty] };
+          const type = questionTypes[index % questionTypes.length] || 'single';
+          if (type === 'short') return { ...base, type, id: `${base.id}-${Date.now()}-${index + 1}`, prompt, modelAnswer: base.options?.[base.answer] || base.explanation, options: [], answer: null, difficulty: { easy: 1, medium: 2, hard: 3 }[difficulty] };
+          if (type === 'multi') return { ...base, type, id: `${base.id}-${Date.now()}-${index + 1}`, prompt, answer: [base.answer], difficulty: { easy: 1, medium: 2, hard: 3 }[difficulty] };
+          return { ...base, type: 'single', id: `${base.id}-${Date.now()}-${index + 1}`, prompt, difficulty: { easy: 1, medium: 2, hard: 3 }[difficulty] };
         });
         const quizId = makeId('quiz');
         material.quiz = {
@@ -589,6 +613,7 @@ export const mockApi = {
             : [{ name: 'Google Gemini', model: 'gemini-2.5-flash' }],
           questions,
         };
+        db.quizVersions.unshift(clone(material.quiz));
         job.progress = 100;
         job.stage = 'done';
         job.status = 'ready';
@@ -617,6 +642,7 @@ export const mockApi = {
         providers: [{ name: 'Student authored', model: 'manual editor', role: 'author' }],
         questions: questions.map((question, index) => ({ ...clone(question), id: `q${index + 1}`, difficulty: 2, verified: true, citations: [], authoring: 'manual' })),
       };
+      db.quizVersions.unshift(clone(material.quiz));
       persist();
       return clone(material.quiz);
     },
@@ -624,8 +650,9 @@ export const mockApi = {
       await sleep(400);
       const material = db.materials.find((m) => m.id === materialId);
       if (!material) throw Object.assign(new Error('Material not found'), { status: 404 });
-      if (quizId && material.quiz?.id !== quizId) throw Object.assign(new Error('Quiz version not found'), { status: 404 });
-      const allQuestions = material.quiz?.questions ?? [];
+      const selectedQuiz = quizId ? db.quizVersions.find((item) => item.id === quizId && item.materialId === materialId) : material.quiz;
+      if (!selectedQuiz) throw Object.assign(new Error('Quiz version not found'), { status: 404 });
+      const allQuestions = selectedQuiz.questions ?? [];
       const knownIds = new Set(allQuestions.map((question) => question.id));
       const scope = questionIds ?? [...knownIds];
       if (!scope.length || scope.some((questionId) => !knownIds.has(questionId))) {
@@ -666,8 +693,8 @@ export const mockApi = {
         judgements,
         questions: clone(scored),
         questionCount: scored.length,
-        difficulty: material.quiz?.difficulty,
-        providers: clone(material.quiz?.providers ?? []),
+        difficulty: selectedQuiz?.difficulty,
+        providers: clone(selectedQuiz?.providers ?? []),
       };
       db.attempts = [attempt, ...db.attempts];
       persist();
@@ -677,6 +704,35 @@ export const mockApi = {
       await sleep(140);
       return clone(materialId ? db.attempts.filter((a) => a.materialId === materialId) : db.attempts);
     },
+  },
+
+  social: {
+    async search(query) {
+      await sleep(100);
+      const profile = { id: 'demo-friend', name: 'Demo Study Partner', email: 'partner@example.com' };
+      return String(query).trim() ? [profile] : [];
+    },
+    async friends() { return clone(db.social.friends); },
+    async requests() { return clone({ incoming: db.social.requests.filter((item) => item.direction === 'incoming'), outgoing: db.social.requests.filter((item) => item.direction !== 'incoming') }); },
+    async requestFriend(userId) { const request = { id: makeId('frq'), recipientId: userId, recipient: { id: userId, name: 'Demo Study Partner', email: 'partner@example.com' }, direction: 'outgoing' }; db.social.requests.push(request); persist(); return clone(request); },
+    async acceptRequest(requestId) { const request = db.social.requests.find((item) => item.id === requestId); const friend = { id: makeId('friend'), friendId: request?.requesterId || 'demo-friend', profile: request?.requester || { id: 'demo-friend', name: 'Demo Study Partner', email: 'partner@example.com' } }; db.social.requests = db.social.requests.filter((item) => item.id !== requestId); db.social.friends.push(friend); persist(); return clone(friend); },
+    async removeRequest(requestId) { db.social.requests = db.social.requests.filter((item) => item.id !== requestId); persist(); },
+    async removeFriend(friendId) { db.social.friends = db.social.friends.filter((item) => item.friendId !== friendId); persist(); },
+    async conversations() { return clone(db.social.conversations); },
+    async createConversation(payload) { const conversation = { id: makeId('con'), kind: payload.kind, name: payload.name || null, ownerId: db.user?.id, memberIds: [db.user?.id, ...payload.memberIds], members: [{ id: db.user?.id, name: db.user?.name }, ...payload.memberIds.map((id) => ({ id, name: id === 'demo-friend' ? 'Demo Study Partner' : 'Friend' }))], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }; db.social.conversations.unshift(conversation); db.social.messages[conversation.id] = []; db.social.plans[conversation.id] = { conversationId: conversation.id, title: 'Study plan', sessions: [], revision: 0 }; persist(); return clone(conversation); },
+    async conversation(id) { return clone(db.social.conversations.find((item) => item.id === id)); },
+    async messages(id) { return clone(db.social.messages[id] || []); },
+    async sendMessage(id, text) { const message = { id: makeId('msg'), conversationId: id, senderId: db.user?.id, text, createdAt: new Date().toISOString() }; (db.social.messages[id] ??= []).push(message); persist(); return clone(message); },
+    async plan(id) { return clone(db.social.plans[id] || { conversationId: id, title: 'Study plan', sessions: [], revision: 0 }); },
+    async savePlan(id, payload) { const current = db.social.plans[id] || { revision: 0 }; if ((payload.expectedRevision ?? 0) !== (current.revision || 0)) throw Object.assign(new Error('The collaborative plan changed; reload it before saving.'), { status: 409 }); const saved = { conversationId: id, title: payload.title, sessions: clone(payload.sessions), revision: (current.revision || 0) + 1, updatedAt: new Date().toISOString() }; db.social.plans[id] = saved; persist(); return clone(saved); },
+    async createInvite(id) { const code = Math.random().toString(36).slice(2, 8).toUpperCase(); return { id: makeId('invite'), conversationId: id, code, token: code, url: `${window.location.origin}/app/social?invite=${code}`, expiresAt: new Date(Date.now() + 604800000).toISOString() }; },
+    async redeemInvite() { const conversation = db.social.conversations.find((item) => item.kind === 'group'); if (!conversation) throw new Error('Create a demo group before redeeming its invite.'); return clone(conversation); },
+    async sessions(id) { return clone((db.social.sessions ||= {})[id] || []); },
+    async startTimer(id, title) { const session = { id: makeId('session'), conversationId: id, userId: db.user?.id, title, state: 'running', startedAt: new Date().toISOString(), lastResumedAt: new Date().toISOString(), elapsedSeconds: 0 }; ((db.social.sessions ||= {})[id] ??= []).push(session); persist(); return clone(session); },
+    async pauseTimer(id, sessionId) { const session = (db.social.sessions?.[id] || []).find((item) => item.id === sessionId); session.elapsedSeconds += Math.max(0, Math.floor((Date.now() - new Date(session.lastResumedAt).getTime()) / 1000)); session.state = 'paused'; persist(); return clone(session); },
+    async resumeTimer(id, sessionId) { const session = (db.social.sessions?.[id] || []).find((item) => item.id === sessionId); session.state = 'running'; session.lastResumedAt = new Date().toISOString(); persist(); return clone(session); },
+    async stopTimer(id, sessionId) { const session = (db.social.sessions?.[id] || []).find((item) => item.id === sessionId); if (session.state === 'running') session.elapsedSeconds += Math.max(0, Math.floor((Date.now() - new Date(session.lastResumedAt).getTime()) / 1000)); session.state = 'stopped'; session.stoppedAt = new Date().toISOString(); persist(); return clone(session); },
+    async analytics(id) { const sessions = (db.social.sessions?.[id] || []); const total = sessions.reduce((sum, item) => sum + Number(item.elapsedSeconds || 0), 0); const today = new Date().toISOString().slice(0, 10); return { ownTotalSeconds: total, groupTotalSeconds: total, dailyTotals: [{ date: today, totalSeconds: total }], weeklyTotals: [{ weekStart: today, totalSeconds: total }], memberTotals: [{ userId: db.user?.id, totalSeconds: total }] }; },
   },
 
   forum: {
@@ -791,10 +847,11 @@ export const mockApi = {
       delete db.sources[id];
       persist();
     },
-    async generate(id) {
+    async generate(id, sourceIds) {
       const binder = db.binders.find((b) => b.id === id);
       if (!binder) throw Object.assign(new Error('Binder not found'), { status: 404 });
-      const ready = (db.sources[id] ?? []).filter((s) => s.status === 'ready');
+      const wanted = new Set(sourceIds || []);
+      const ready = (db.sources[id] ?? []).filter((s) => s.status === 'ready' && (!wanted.size || wanted.has(s.id)));
       if (!ready.length) throw Object.assign(new Error('Add at least one processed source before generating a recap.'), { status: 400 });
 
       const jobId = makeId('job');
@@ -810,7 +867,7 @@ export const mockApi = {
         const { recap, quiz, sourcesSummary } = attributeSampleRecap(ready);
         binder.recap = recap;
         binder.quiz = quiz;
-        binder.chunks = clone(SAMPLE_CHUNKS);
+        binder.chunks = clone(SAMPLE_CHUNKS).map((chunk, index) => ({ ...chunk, sourceId: ready[index % ready.length].id, sourceName: ready[index % ready.length].displayName }));
         binder.sourcesSummary = sourcesSummary;
         binder.generatedAt = new Date().toISOString();
         binder.updatedAt = binder.generatedAt;
@@ -868,6 +925,26 @@ export const mockApi = {
       }
       persist();
       return { created, rejected };
+    },
+    async createText(binderId, title, text) {
+      await sleep(180);
+      const cleanTitle = String(title ?? '').trim();
+      const cleanText = String(text ?? '').trim();
+      if (!cleanTitle || cleanTitle.length > 200) throw Object.assign(new Error('A note title between 1 and 200 characters is required.'), { status: 422 });
+      if (!cleanText || cleanText.length > 100000) throw Object.assign(new Error('Note text must contain between 1 and 100000 characters.'), { status: 422 });
+      const source = {
+        id: makeId('src'), binderId, displayName: cleanTitle,
+        originalFilename: `${cleanTitle.replace(/[^A-Za-z0-9._ -]/g, '_')}.txt`,
+        contentType: 'text/plain', sourceType: 'text', pageCount: 1,
+        sizeBytes: new TextEncoder().encode(cleanText).length,
+        status: 'ready', extractionMethod: 'Plain text', errorMessage: null,
+        uploadedAt: new Date().toISOString(),
+      };
+      db.sources[binderId] = [...(db.sources[binderId] ?? []), source];
+      const binder = db.binders.find((item) => item.id === binderId);
+      if (binder) { binder.sourceCount = db.sources[binderId].length; binder.updatedAt = new Date().toISOString(); }
+      persist();
+      return clone(source);
     },
     async put() {
       await sleep(500);

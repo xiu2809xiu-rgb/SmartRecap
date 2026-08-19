@@ -51,7 +51,7 @@ export function JobsProvider({ children }) {
   const openJob = useCallback(
     (job) => {
       const path = job.kind === 'quiz' && job.status === 'ready'
-        ? `/app/material/${job.materialId}/quiz`
+        ? `/app/material/${job.materialId}/quiz${job.quizId ? `?quizId=${encodeURIComponent(job.quizId)}` : ''}`
         : job.kind === 'recap' && job.status === 'running'
           ? `/app/processing/${job.id}?material=${job.materialId}`
           : `/app/material/${job.materialId}`;
@@ -73,7 +73,7 @@ export function JobsProvider({ children }) {
           const ready = { ...descriptor, ...finished, status: 'ready', progress: 100, completedAt: Date.now() };
           patchJob(descriptor.id, ready);
           const isQuiz = descriptor.kind === 'quiz';
-          const path = isQuiz ? `/app/material/${descriptor.materialId}/quiz` : `/app/material/${descriptor.materialId}`;
+          const path = isQuiz ? `/app/material/${descriptor.materialId}/quiz${finished.quizId ? `?quizId=${encodeURIComponent(finished.quizId)}` : ''}` : `/app/material/${descriptor.materialId}`;
           toast.success(isQuiz ? 'Your quiz is ready.' : 'Your recap is ready.', {
             duration: 8000,
             action: (

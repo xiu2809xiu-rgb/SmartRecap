@@ -25,11 +25,17 @@ export default function BinderDetail() {
 
   const [binder, setBinder] = useState(null);
   const [sources, setSources] = useState([]);
+  const [selectedSourceIds, setSelectedSourceIds] = useState([]);
+  const [selectionTouched, setSelectionTouched] = useState(false);
   const [status, setStatus] = useState('loading'); // loading | ready | error
   const [renamingBinder, setRenamingBinder] = useState(false);
   const [binderNameDraft, setBinderNameDraft] = useState('');
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteTitle, setNoteTitle] = useState('');
+  const [noteText, setNoteText] = useState('');
+  const [noteSaving, setNoteSaving] = useState(false);
   const [confirmDeleteSource, setConfirmDeleteSource] = useState(null);
   const [confirmDeleteBinder, setConfirmDeleteBinder] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -41,6 +47,7 @@ export default function BinderDetail() {
       const [b, s] = await Promise.all([api.binders.get(binderId), api.sources.list(binderId)]);
       setBinder(b);
       setSources(s ?? []);
+      setSelectedSourceIds((s ?? []).filter((source) => source.status === 'ready').map((source) => source.id));
       setStatus('ready');
     } catch (e) {
       toast.error(e.message ?? 'Could not load that binder.');
@@ -91,6 +98,10 @@ export default function BinderDetail() {
     // on the next render rather than the next full-page refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sources.map((s) => `${s.id}:${s.status}`).join(',')]);
+
+  useEffect(() => {
+    if (!selectionTouched) setSelectedSourceIds(sources.filter((source) => source.status === 'ready').map((source) => source.id));
+  }, [selectionTouched, sources]);
 
   /* -------------------------------------------------------------- favourite */
 
@@ -176,6 +187,31 @@ export default function BinderDetail() {
     uploadFiles(e.dataTransfer.files);
   };
 
+  const addTextNote = async (event) => {
+    event?.preventDefault();
+    const title = noteTitle.trim();
+    const text = noteText.trim();
+    if (!title || !text) {
+      toast.error('Give the note a title and paste some study text.');
+      return;
+    }
+    setNoteSaving(true);
+    try {
+      const source = await api.sources.createText(binderId, title, text);
+      setSources((current) => [...current, source]);
+      setSelectedSourceIds((current) => [...new Set([...current, source.id])]);
+      setBinder((current) => ({ ...current, sourceCount: (current?.sourceCount ?? 0) + 1, updatedAt: source.uploadedAt }));
+      setNoteTitle('');
+      setNoteText('');
+      setNoteOpen(false);
+      toast.success('Note added and selected for the next consolidated recap.');
+    } catch (error) {
+      toast.error(error.message ?? 'Could not add that note.');
+    } finally {
+      setNoteSaving(false);
+    }
+  };
+
   /* -------------------------------------------------------------- retry */
 
   const retrySource = async (source) => {
@@ -218,14 +254,15 @@ export default function BinderDetail() {
   /* ------------------------------------------------------------ generate */
 
   const readyCount = sources.filter((s) => s.status === 'ready').length;
+  const selectedReadyCount = selectedSourceIds.filter((sourceId) => sources.some((source) => source.id === sourceId && source.status === 'ready')).length;
   const unsettledCount = sources.filter((s) => UNSETTLED.has(s.status)).length;
-  const canGenerate = readyCount > 0 && !generating;
+  const canGenerate = selectedReadyCount > 0 && !generating;
 
   const generate = async () => {
     setGenerating(true);
     setGenerateJob({ progress: 0, stageLabel: 'Starting…' });
     try {
-      const { jobId } = await api.binders.generate(binderId);
+      const { jobId } = await api.binders.generate(binderId, selectedSourceIds);
       const job = await pollJob(jobId, setGenerateJob);
       if (job.status === 'ready') {
         toast.success('Recap ready.');
@@ -295,7 +332,7 @@ export default function BinderDetail() {
             </button>
           </div>
           <p className="lede">
-            {sources.length === 0 ? 'No sources yet — drop in a PDF below.' : `${sources.length} ${sources.length === 1 ? 'source' : 'sources'}, updated ${relativeDay(binder.updatedAt)}`}
+            {sources.length === 0 ? 'No sources yet — add PDFs or paste notes below.' : `${sources.length} ${sources.length === 1 ? 'source' : 'sources'}, updated ${relativeDay(binder.updatedAt)}`}
           </p>
         </div>
 
@@ -341,12 +378,16 @@ export default function BinderDetail() {
             </>
           )}
         </div>
+        <div className="binder-add-note">
+          <div><Icon name="note_add" size={20} /><span><strong>Add your own notes</strong><small>Paste lecture notes, revision points, or a transcript as another selectable source.</small></span></div>
+          <button type="button" className="btn btn-ghost" onClick={() => setNoteOpen(true)}><Icon name="edit_note" size={18} />Paste notes</button>
+        </div>
       </section>
 
       <section aria-label="Sources">
         {sources.length === 0 ? (
           <div className="empty-wrap panel">
-            <Empty icon="description" title="No sources yet" body="Add PDFs above to start building this binder's recap." />
+            <Empty icon="description" title="No sources yet" body="Add PDFs or paste your own notes above to build this binder's consolidated recap." />
           </div>
         ) : (
           <div className="source-list">
@@ -354,6 +395,12 @@ export default function BinderDetail() {
               <SourceRow
                 key={s.id}
                 source={s}
+                selected={selectedSourceIds.includes(s.id)}
+                onSelect={() => {
+                  if (s.status !== 'ready') return;
+                  setSelectionTouched(true);
+                  setSelectedSourceIds((current) => current.includes(s.id) ? current.filter((sourceId) => sourceId !== s.id) : [...current, s.id]);
+                }}
                 onRename={async (displayName) => {
                   setSources((list) => list.map((x) => (x.id === s.id ? { ...x, displayName } : x)));
                   try {
@@ -369,6 +416,15 @@ export default function BinderDetail() {
             ))}
           </div>
         )}
+      </section>
+
+      <section className="generation-source-picker panel" aria-labelledby="generation-sources-title">
+        <div><p className="eyebrow">Generation scope</p><h2 id="generation-sources-title">Choose sources for this recap</h2><p>Select one file, a subset, or every ready source. Processing and failed files stay unavailable.</p></div>
+        <div className="generation-source-actions">
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setSelectionTouched(true); setSelectedSourceIds(sources.filter((source) => source.status === 'ready').map((source) => source.id)); }} disabled={!readyCount}>Select all ready</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setSelectionTouched(true); setSelectedSourceIds([]); }} disabled={!selectedSourceIds.length}>Clear selection</button>
+          <span>{selectedReadyCount} of {readyCount} ready sources selected</span>
+        </div>
       </section>
 
       <div className="generate-bar">
@@ -393,6 +449,26 @@ export default function BinderDetail() {
           </div>
         )}
       </div>
+
+      <Modal
+        open={noteOpen}
+        onClose={() => !noteSaving && setNoteOpen(false)}
+        title="Add notes to this binder"
+        footer={
+          <>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setNoteOpen(false)} disabled={noteSaving}>Cancel</button>
+            <button type="submit" form="binder-note-form" className="btn btn-primary btn-sm" disabled={noteSaving || !noteTitle.trim() || !noteText.trim()}>
+              {noteSaving ? <Spinner size={16} /> : <Icon name="note_add" size={17} />}Add note
+            </button>
+          </>
+        }
+      >
+        <form id="binder-note-form" className="binder-note-form" onSubmit={addTextNote}>
+          <label className="field"><span>Note title</span><input className="input" value={noteTitle} onChange={(event) => setNoteTitle(event.target.value)} maxLength={200} placeholder="Lecture 4 revision notes" autoFocus /></label>
+          <label className="field"><span>Study text</span><textarea className="input" value={noteText} onChange={(event) => setNoteText(event.target.value)} maxLength={100000} rows={12} placeholder="Paste notes, a transcript, worked explanations, or revision points…" /></label>
+          <small>{noteText.length.toLocaleString()} / 100,000 characters · This becomes a private source in this binder.</small>
+        </form>
+      </Modal>
 
       <Modal
         open={!!confirmDeleteSource}
@@ -445,7 +521,7 @@ const STATUS_META = {
   failed: { label: 'Failed', icon: 'error' },
 };
 
-function SourceRow({ source, onRename, onRetry, onDelete }) {
+function SourceRow({ source, selected, onSelect, onRename, onRetry, onDelete }) {
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(source.displayName);
   const meta = STATUS_META[source.status] ?? STATUS_META.pending;
@@ -462,9 +538,13 @@ function SourceRow({ source, onRename, onRetry, onDelete }) {
   };
 
   return (
-    <div className="source-row">
+    <div className={`source-row ${selected ? 'is-selected' : ''}`}>
+      <label className="source-select" title={source.status === 'ready' ? 'Include in the next recap' : 'This source is not ready'}>
+        <input type="checkbox" checked={selected} onChange={onSelect} disabled={source.status !== 'ready'} />
+        <span><Icon name={selected ? 'check' : 'add'} size={15} /></span>
+      </label>
       <span className="source-icon">
-        <Icon name="picture_as_pdf" size={19} />
+        <Icon name={source.sourceType === 'text' ? 'edit_note' : 'picture_as_pdf'} size={19} />
       </span>
 
       <div className="source-name-wrap">
@@ -488,7 +568,7 @@ function SourceRow({ source, onRename, onRetry, onDelete }) {
           </button>
         )}
         <p className="source-meta truncate">
-          {source.pageCount > 0 ? `${source.pageCount} pages · ` : ''}
+          {source.sourceType === 'text' ? 'Pasted note · ' : source.pageCount > 0 ? `${source.pageCount} pages · ` : ''}
           {formatBytes(source.sizeBytes)} · Uploaded {relativeDay(source.uploadedAt)}
           {source.status === 'failed' && source.errorMessage ? ` · ${source.errorMessage}` : ''}
         </p>

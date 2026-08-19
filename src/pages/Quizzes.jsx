@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useJobs } from '../lib/jobs.jsx';
-import { Empty, Icon, Segmented, Spinner, useToast } from '../components/ui.jsx';
+import { Empty, Icon, Select, Segmented, Spinner, useToast } from '../components/ui.jsx';
 import './quizzes.css';
 
 const DIFFICULTIES = [
@@ -11,27 +11,41 @@ const DIFFICULTIES = [
   { value: 'hard', label: 'Hard', icon: 'local_fire_department' },
 ];
 const COUNTS = [5, 10, 15].map((value) => ({ value, label: String(value) }));
+const QUESTION_TYPES = [
+  { value: 'single', label: 'Single', icon: 'radio_button_checked', secondary: 'One correct option' },
+  { value: 'multi', label: 'Multi', icon: 'checklist', secondary: 'Every correct option' },
+  { value: 'short', label: 'Short', icon: 'edit_note', secondary: 'Written response' },
+];
 let localQuestionId = 0;
 
 const freshQuestion = () => ({
   id: `draft-${Date.now()}-${++localQuestionId}`,
+  type: 'single',
   topic: '',
   prompt: '',
   explanation: '',
   options: ['', ''],
   answer: 0,
+  modelAnswer: '',
 });
 
 function normalizeQuestion(question) {
+  const type = question?.type || 'single';
   const options = Array.isArray(question?.options) ? question.options.map((option) => String(option ?? '')) : ['', ''];
   while (options.length < 2) options.push('');
+  const max = Math.min(options.length, 6) - 1;
+  const answer = type === 'multi'
+    ? (Array.isArray(question?.answer) ? question.answer : [question?.answer ?? 0]).map(Number).filter((value) => value >= 0 && value <= max)
+    : Math.min(Number(question?.answer ?? question?.correctAnswer ?? 0), max);
   return {
     id: question?.id || freshQuestion().id,
+    type,
     topic: question?.topic || '',
     prompt: question?.prompt || '',
     explanation: question?.explanation || '',
     options: options.slice(0, 6),
-    answer: Math.min(Number(question?.answer ?? question?.correctAnswer ?? 0), Math.min(options.length, 6) - 1),
+    answer,
+    modelAnswer: question?.modelAnswer || '',
   };
 }
 
@@ -64,6 +78,7 @@ export default function Quizzes() {
   const toast = useToast();
   const { registerJob } = useJobs();
   const [materials, setMaterials] = useState([]);
+  const [quizVersions, setQuizVersions] = useState([]);
   const [lobbies, setLobbies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [lobbyRefreshing, setLobbyRefreshing] = useState(false);
@@ -71,6 +86,7 @@ export default function Quizzes() {
   const [generatorMaterialId, setGeneratorMaterialId] = useState('');
   const [difficulty, setDifficulty] = useState('medium');
   const [questionCount, setQuestionCount] = useState(10);
+  const [questionTypes, setQuestionTypes] = useState(['single']);
   const [generating, setGenerating] = useState(false);
   const [editorMaterialId, setEditorMaterialId] = useState('');
   const [quizTitle, setQuizTitle] = useState('');
@@ -91,11 +107,12 @@ export default function Quizzes() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([api.materials.list(), api.lobbies.list()])
-      .then(([materialList, lobbyList]) => {
+    Promise.all([api.materials.list(), api.lobbies.list(), api.quiz.list()])
+      .then(([materialList, lobbyList, versions]) => {
         if (cancelled) return;
         const nextMaterials = materialList ?? [];
         setMaterials(nextMaterials);
+        setQuizVersions(versions ?? []);
         setLobbies((lobbyList ?? []).filter((lobby) => !lobby.status || lobby.status === 'open'));
         const firstId = nextMaterials[0]?.id || '';
         setGeneratorMaterialId(firstId);
@@ -130,8 +147,27 @@ export default function Quizzes() {
     () => new Map(materials.map((material) => [String(material.id), material.title])),
     [materials],
   );
+  const materialOptions = useMemo(() => materials.map((material) => ({ value: String(material.id), label: material.title, secondary: material.module || 'Notebook' })), [materials]);
+  const versionsByMaterial = useMemo(() => {
+    const grouped = new Map(materials.map((material) => [String(material.id), []]));
+    quizVersions.forEach((quiz) => {
+      const key = String(quiz.materialId ?? quiz.material_id ?? '');
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(quiz);
+    });
+    materials.forEach((material) => {
+      const list = grouped.get(String(material.id));
+      if (material.quiz?.id && !list.some((quiz) => quiz.id === material.quiz.id)) list.push(material.quiz);
+      list.sort((a, b) => new Date(b.generatedAt || 0) - new Date(a.generatedAt || 0));
+    });
+    return grouped;
+  }, [materials, quizVersions]);
 
-  const readyQuizCount = materials.filter((material) => quizQuestions(material).length > 0).length;
+  const toggleGeneratedType = (type) => setQuestionTypes((current) => current.includes(type)
+    ? (current.length === 1 ? current : current.filter((item) => item !== type))
+    : [...current, type]);
+
+  const readyQuizCount = quizVersions.length || materials.filter((material) => quizQuestions(material).length > 0).length;
 
   const generateQuiz = async () => {
     const material = materials.find((item) => String(item.id) === String(generatorMaterialId));
@@ -141,7 +177,7 @@ export default function Quizzes() {
     }
     setGenerating(true);
     try {
-      const response = await api.quiz.generate(material.id, { difficulty, questionCount });
+      const response = await api.quiz.generate(material.id, { difficulty, questionCount, questionTypes });
       registerJob({
         id: response.jobId,
         materialId: material.id,
@@ -165,9 +201,11 @@ export default function Quizzes() {
   };
 
   const updateQuestion = (questionIndex, field, value) => {
-    setQuestions((current) => current.map((question, index) => index === questionIndex
-      ? { ...question, [field]: value }
-      : question));
+    setQuestions((current) => current.map((question, index) => {
+      if (index !== questionIndex) return question;
+      if (field === 'type') return { ...question, type: value, answer: value === 'multi' ? [0] : 0, modelAnswer: value === 'short' ? question.modelAnswer : '' };
+      return { ...question, [field]: value };
+    }));
   };
 
   const updateOption = (questionIndex, optionIndex, value) => {
@@ -187,7 +225,8 @@ export default function Quizzes() {
       if (index !== questionIndex || question.options.length <= 2) return question;
       const options = question.options.filter((_, i) => i !== optionIndex);
       let answer = question.answer;
-      if (answer === optionIndex) answer = 0;
+      if (question.type === 'multi') answer = (Array.isArray(answer) ? answer : []).filter((value) => value !== optionIndex).map((value) => value > optionIndex ? value - 1 : value);
+      else if (answer === optionIndex) answer = 0;
       else if (answer > optionIndex) answer -= 1;
       return { ...question, options, answer };
     }));
@@ -198,28 +237,30 @@ export default function Quizzes() {
     if (!selectedEditorMaterial) return toast.error('Choose a notebook first.');
     if (!title) return toast.error('Give your quiz a title.');
     if (!questions.length) return toast.error('Add at least one question.');
-    const invalidIndex = questions.findIndex((question) => (
-      !question.topic.trim()
-      || !question.prompt.trim()
-      || !question.explanation.trim()
-      || question.options.length < 2
-      || question.options.length > 6
-      || question.options.some((option) => !option.trim())
-      || question.answer < 0
-      || question.answer >= question.options.length
-    ));
+    const invalidIndex = questions.findIndex((question) => {
+      const type = question.type || 'single';
+      const baseInvalid = !question.topic.trim() || !question.prompt.trim() || !question.explanation.trim();
+      if (type === 'short') return baseInvalid || !question.modelAnswer.trim();
+      const optionInvalid = question.options.length < 2 || question.options.length > 6 || question.options.some((option) => !option.trim());
+      const answerInvalid = type === 'multi'
+        ? !Array.isArray(question.answer) || !question.answer.length || question.answer.some((value) => value < 0 || value >= question.options.length)
+        : question.answer < 0 || question.answer >= question.options.length;
+      return baseInvalid || optionInvalid || answerInvalid;
+    });
     if (invalidIndex >= 0) {
-      toast.error(`Complete question ${invalidIndex + 1}, including every option and its correct answer.`);
+      toast.error(`Complete question ${invalidIndex + 1}, including its answer and explanation.`);
       return;
     }
 
     const payloadQuestions = questions.map((question) => ({
       ...(String(question.id).startsWith('draft-') ? {} : { id: question.id }),
+      type: question.type || 'single',
       topic: question.topic.trim(),
       prompt: question.prompt.trim(),
       explanation: question.explanation.trim(),
-      options: question.options.map((option) => option.trim()),
-      answer: question.answer,
+      ...(question.type === 'short'
+        ? { modelAnswer: question.modelAnswer.trim(), options: [], answer: null }
+        : { options: question.options.map((option) => option.trim()), answer: question.answer }),
     }));
 
     setSaving(true);
@@ -229,6 +270,7 @@ export default function Quizzes() {
       setMaterials((current) => current.map((material) => material.id === selectedEditorMaterial.id
         ? { ...material, quiz: { ...material.quiz, ...savedQuiz, title, questions: savedQuiz.questions ?? payloadQuestions } }
         : material));
+      if (savedQuiz.id) setQuizVersions((current) => [savedQuiz, ...current.filter((quiz) => quiz.id !== savedQuiz.id)]);
       setQuestions((savedQuiz.questions ?? payloadQuestions).map(normalizeQuestion));
       toast.success(`Saved “${title}”.`);
     } catch (error) {
@@ -330,37 +372,38 @@ export default function Quizzes() {
         {materials.length ? (
           <div className="quiz-library-grid">
             {materials.map((material) => {
-              const quiz = material.quiz;
-              const currentQuestions = quizQuestions(material);
-              const ready = currentQuestions.length > 0;
-              const isGenerating = quiz?.status === 'generating' || quiz?.generationStatus === 'generating';
+              const versions = versionsByMaterial.get(String(material.id)) || [];
+              const isGenerating = material.quiz?.status === 'generating' || material.quiz?.generationStatus === 'generating';
               return (
-                <article className="quiz-library-card panel-solid" key={material.id}>
-                  <div className="quiz-library-icon"><Icon name="quiz" size={24} /></div>
+                <article className="quiz-library-card quiz-version-group panel-solid" key={material.id}>
+                  <div className="quiz-library-icon"><Icon name="history_edu" size={24} /></div>
                   <div className="quiz-library-body">
-                    <span className={`quiz-state ${ready ? 'is-ready' : isGenerating ? 'is-building' : 'is-empty'}`}>
-                      {isGenerating && <Spinner size={13} />}{ready ? 'Ready to play' : isGenerating ? 'Generating' : 'No quiz yet'}
+                    <span className={`quiz-state ${versions.length ? 'is-ready' : isGenerating ? 'is-building' : 'is-empty'}`}>
+                      {isGenerating && <Spinner size={13} />}{versions.length ? `${versions.length} saved ${versions.length === 1 ? 'version' : 'versions'}` : isGenerating ? 'Generating' : 'No quiz yet'}
                     </span>
-                    <h3>{quiz?.title || material.title}</h3>
-                    <p>{material.title}</p>
-                    <div className="quiz-library-meta">
-                      <span>{currentQuestions.length || quiz?.questionCount || 0} questions</span>
-                      <span>{difficultyLabel(quiz?.difficulty || quiz?.requestedDifficulty)}</span>
-                    </div>
+                    <h3>{material.title}</h3>
+                    <p>Immutable history · older tests remain playable</p>
                   </div>
-                  <div className="quiz-library-actions">
-                    {ready ? (
-                      <Link className="btn btn-primary btn-sm" to={`/app/material/${material.id}/quiz`}><Icon name="play_arrow" size={17} />Play</Link>
-                    ) : (
-                      <button className="btn btn-primary btn-sm" disabled><Icon name="play_arrow" size={17} />Play</button>
-                    )}
-                    {ready ? (
-                      <Link className="btn btn-ghost btn-sm" to={`/app/material/${material.id}/match`}><Icon name="groups" size={17} />Host party</Link>
-                    ) : (
-                      <button className="btn btn-ghost btn-sm" disabled><Icon name="groups" size={17} />Host party</button>
-                    )}
-                    <button className="btn btn-ghost btn-sm" onClick={() => editMaterial(material)}><Icon name="edit" size={17} />Edit</button>
+                  <div className="quiz-version-list">
+                    {versions.length ? versions.map((version, versionIndex) => {
+                      const types = [...new Set((version.questions || []).map((question) => question.type || 'single'))];
+                      const providers = (version.providers || []).map((provider) => provider.model || provider.name).filter(Boolean);
+                      return (
+                        <div className="quiz-version-row" key={version.id}>
+                          <div className="quiz-version-copy">
+                            <strong>{version.title || `Version ${versions.length - versionIndex}`}</strong>
+                            <span>{version.generatedAt ? new Date(version.generatedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Saved quiz'} · {difficultyLabel(version.difficulty)} · {version.questionCount || version.questions?.length || 0} questions</span>
+                            <small>{types.map((type) => type === 'single' ? 'Single' : type === 'multi' ? 'Multi' : 'Short').join(' + ')}{providers.length ? ` · ${providers.join(' + ')}` : ''}</small>
+                          </div>
+                          <div className="quiz-version-actions">
+                            <Link className="btn btn-primary btn-sm" to={`/app/material/${material.id}/quiz?quizId=${encodeURIComponent(version.id)}`}><Icon name="play_arrow" size={17} />Play</Link>
+                            <Link className="btn btn-ghost btn-sm" to={`/app/material/${material.id}/match?quizId=${encodeURIComponent(version.id)}`}><Icon name="groups" size={17} />Host</Link>
+                          </div>
+                        </div>
+                      );
+                    }) : <p className="quiz-version-empty">Generate or author the first saved version below.</p>}
                   </div>
+                  <div className="quiz-library-actions"><button className="btn btn-ghost btn-sm" onClick={() => editMaterial(material)}><Icon name="edit" size={17} />Author new version</button></div>
                 </article>
               );
             })}
@@ -383,15 +426,19 @@ export default function Quizzes() {
             <div><h3>Generate with AI</h3><p>Choose the source, challenge level, and round length. You can keep browsing while it builds.</p></div>
           </div>
           <div className="generator-controls">
-            <label className="field generator-material">
+            <div className="field generator-material">
               <span>Notebook</span>
-              <select className="input" value={generatorMaterialId} onChange={(event) => setGeneratorMaterialId(event.target.value)} disabled={!materials.length}>
-                {materials.length ? materials.map((material) => <option key={material.id} value={material.id}>{material.title}</option>) : <option value="">No notebooks available</option>}
-              </select>
-            </label>
+              <Select label="Notebook" value={generatorMaterialId} onChange={setGeneratorMaterialId} options={materialOptions} disabled={!materials.length} emptyText="No notebooks available" />
+            </div>
             <div className="field"><span>Difficulty</span><Segmented options={DIFFICULTIES} value={difficulty} onChange={setDifficulty} label="Quiz difficulty" /></div>
             <div className="field"><span>Questions</span><Segmented options={COUNTS} value={questionCount} onChange={setQuestionCount} label="Question count" /></div>
-            <button className="btn btn-primary generator-submit" onClick={generateQuiz} disabled={generating || !materials.length}>
+            <fieldset className="quiz-type-generator">
+              <legend>Question types</legend>
+              <div>
+                {QUESTION_TYPES.map((type) => <button key={type.value} type="button" className={questionTypes.includes(type.value) ? 'is-on' : ''} aria-pressed={questionTypes.includes(type.value)} onClick={() => toggleGeneratedType(type.value)}><Icon name={type.icon} size={17} />{type.label}</button>)}
+              </div>
+            </fieldset>
+            <button className="btn btn-primary generator-submit" onClick={generateQuiz} disabled={generating || !materials.length || !questionTypes.length}>
               {generating ? <Spinner size={17} /> : <Icon name="auto_awesome" size={18} />}Generate quiz
             </button>
           </div>
@@ -403,12 +450,10 @@ export default function Quizzes() {
             <button className="btn btn-primary" type="submit" disabled={saving || !materials.length}>{saving ? <Spinner size={17} /> : <Icon name="save" size={18} />}Save quiz</button>
           </div>
           <div className="editor-basics">
-            <label className="field">
+            <div className="field">
               <span>Notebook</span>
-              <select className="input" value={editorMaterialId} onChange={(event) => setEditorMaterialId(event.target.value)} disabled={!materials.length}>
-                {materials.length ? materials.map((material) => <option key={material.id} value={material.id}>{material.title}</option>) : <option value="">No notebooks available</option>}
-              </select>
-            </label>
+              <Select label="Editor notebook" value={editorMaterialId} onChange={setEditorMaterialId} options={materialOptions} disabled={!materials.length} emptyText="No notebooks available" />
+            </div>
             <label className="field"><span>Quiz title</span><input className="input" value={quizTitle} onChange={(event) => setQuizTitle(event.target.value)} placeholder="Midterm warm-up" maxLength={100} /></label>
           </div>
 
@@ -419,20 +464,28 @@ export default function Quizzes() {
                 <button type="button" className="icon-btn question-remove" onClick={() => setQuestions((current) => current.filter((_, index) => index !== questionIndex))} disabled={questions.length === 1} aria-label={`Remove question ${questionIndex + 1}`}><Icon name="delete" size={18} /></button>
                 <div className="question-fields">
                   <label className="field question-topic"><span>Topic</span><input className="input" value={question.topic} onChange={(event) => updateQuestion(questionIndex, 'topic', event.target.value)} placeholder="e.g. Cell respiration" maxLength={80} /></label>
+                  <div className="field question-type-field"><span>Answer type</span><Select label={`Question ${questionIndex + 1} answer type`} value={question.type} onChange={(value) => updateQuestion(questionIndex, 'type', value)} options={QUESTION_TYPES} /></div>
                   <label className="field question-prompt"><span>Prompt</span><textarea className="input" value={question.prompt} onChange={(event) => updateQuestion(questionIndex, 'prompt', event.target.value)} placeholder="Ask a clear, focused question…" rows={3} /></label>
                 </div>
 
-                <div className="option-editor">
-                  <div className="option-editor-label"><span>Answer options</span><small>Choose the correct answer</small></div>
-                  {question.options.map((option, optionIndex) => (
-                    <div className="option-editor-row" key={optionIndex}>
-                      <label className="correct-choice" title="Mark as correct"><input type="radio" name={`correct-${question.id}`} checked={question.answer === optionIndex} onChange={() => updateQuestion(questionIndex, 'answer', optionIndex)} /><span>{String.fromCharCode(65 + optionIndex)}</span></label>
-                      <input className="input" value={option} onChange={(event) => updateOption(questionIndex, optionIndex, event.target.value)} placeholder={`Option ${String.fromCharCode(65 + optionIndex)}`} />
-                      <button type="button" className="icon-btn" onClick={() => removeOption(questionIndex, optionIndex)} disabled={question.options.length <= 2} aria-label={`Remove option ${String.fromCharCode(65 + optionIndex)}`}><Icon name="close" size={17} /></button>
-                    </div>
-                  ))}
-                  <button type="button" className="btn btn-ghost btn-sm add-option" onClick={() => addOption(questionIndex)} disabled={question.options.length >= 6}><Icon name="add" size={17} />Add option</button>
-                </div>
+                {question.type === 'short' ? (
+                  <label className="field short-model-answer"><span>Model answer</span><textarea className="input" value={question.modelAnswer} onChange={(event) => updateQuestion(questionIndex, 'modelAnswer', event.target.value)} placeholder="Write the grounded answer used to evaluate responses…" rows={4} /></label>
+                ) : (
+                  <div className="option-editor">
+                    <div className="option-editor-label"><span>Answer options</span><small>{question.type === 'multi' ? 'Mark every correct answer' : 'Choose the correct answer'}</small></div>
+                    {question.options.map((option, optionIndex) => {
+                      const checked = question.type === 'multi' ? question.answer.includes(optionIndex) : question.answer === optionIndex;
+                      return (
+                        <div className="option-editor-row" key={optionIndex}>
+                          <label className="correct-choice" title="Mark as correct"><input type={question.type === 'multi' ? 'checkbox' : 'radio'} name={`correct-${question.id}`} checked={checked} onChange={() => updateQuestion(questionIndex, 'answer', question.type === 'multi' ? (checked ? question.answer.filter((value) => value !== optionIndex) : [...question.answer, optionIndex]) : optionIndex)} /><span>{String.fromCharCode(65 + optionIndex)}</span></label>
+                          <input className="input" value={option} onChange={(event) => updateOption(questionIndex, optionIndex, event.target.value)} placeholder={`Option ${String.fromCharCode(65 + optionIndex)}`} />
+                          <button type="button" className="icon-btn" onClick={() => removeOption(questionIndex, optionIndex)} disabled={question.options.length <= 2} aria-label={`Remove option ${String.fromCharCode(65 + optionIndex)}`}><Icon name="close" size={17} /></button>
+                        </div>
+                      );
+                    })}
+                    <button type="button" className="btn btn-ghost btn-sm add-option" onClick={() => addOption(questionIndex)} disabled={question.options.length >= 6}><Icon name="add" size={17} />Add option</button>
+                  </div>
+                )}
 
                 <label className="field"><span>Explanation</span><textarea className="input" value={question.explanation} onChange={(event) => updateQuestion(questionIndex, 'explanation', event.target.value)} placeholder="Explain why the selected answer is correct…" rows={3} /></label>
               </fieldset>
@@ -440,7 +493,7 @@ export default function Quizzes() {
           </div>
           <div className="editor-foot">
             <button type="button" className="btn btn-ghost" onClick={() => setQuestions((current) => [...current, freshQuestion()])}><Icon name="add_circle" size={18} />Add question</button>
-            <span>{questions.length} {questions.length === 1 ? 'question' : 'questions'} · 2–6 options each</span>
+            <span>{questions.length} {questions.length === 1 ? 'question' : 'questions'} · single, multi, or short response</span>
             <button className="btn btn-primary" type="submit" disabled={saving || !materials.length}>{saving ? <Spinner size={17} /> : <Icon name="save" size={18} />}Save quiz</button>
           </div>
         </form>

@@ -319,3 +319,43 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
      the section's first line behind it. */
   scroll-margin-top: 92px;
 }
+
+/* ---- Accessible custom listbox ---- */
+.custom-select { position: relative; min-width: 0; }
+.custom-select-trigger { width: 100%; min-height: 48px; display: flex; align-items: center; gap: 10px; padding: 10px 13px; text-align: left; border: 1px solid var(--glass-line); border-radius: var(--r-sm); color: var(--ink); background: var(--tint); transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease); }
+.custom-select-trigger:hover:not(:disabled), .custom-select.is-open .custom-select-trigger { border-color: var(--accent); background: var(--tint-2); }
+.custom-select.is-open .custom-select-trigger { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent); }
+.custom-select-copy, .custom-select-list li > span { flex: 1; min-width: 0; }
+.custom-select-copy strong, .custom-select-copy small, .custom-select-list li strong, .custom-select-list li small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.custom-select-copy strong, .custom-select-list li strong { font-size: var(--t-sm); font-weight: 650; }
+.custom-select-copy small, .custom-select-list li small { margin-top: 1px; color: var(--ink-4); font-size: 0.7rem; }
+.custom-select-trigger > .material-symbols-rounded { flex: 0 0 auto; color: var(--ink-3); transition: transform var(--dur-fast) var(--ease); }
+.custom-select.is-open .custom-select-trigger > .material-symbols-rounded { transform: rotate(180deg); }
+.custom-select-list { position: absolute; z-index: 80; inset: calc(100% + 7px) 0 auto; max-height: 290px; overflow-y: auto; padding: 6px; border: 1px solid var(--glass-line-strong); border-radius: var(--r); background: var(--glass-strong); box-shadow: var(--shadow-lift); backdrop-filter: blur(22px); }
+.custom-select-list li { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 11px; border-radius: var(--r-sm); color: var(--ink-2); cursor: pointer; }
+.custom-select-list li.is-active { color: var(--ink); background: var(--tint-2); }
+.custom-select-list li.is-selected { color: var(--accent); }
+.custom-select-list li.is-disabled { opacity: 0.45; cursor: not-allowed; }
+.custom-select-list li > .material-symbols-rounded:last-child { margin-left: auto; flex: 0 0 auto; }
+.custom-select-empty { color: var(--ink-4) !important; cursor: default !important; }
+[data-surface='study']:not([data-theme='midnight']) .custom-select-trigger, [data-theme='daylight'] .custom-select-trigger { background: #fff; }
+[data-surface='study']:not([data-theme='midnight']) .custom-select-list, [data-theme='daylight'] .custom-select-list { background: #fff; }
+
+/* ---- Allowlisted matchmaking avatars ---- */
+.match-avatar { display: inline-grid; place-items: center; flex: 0 0 auto; width: 38px; height: 38px; border-radius: 13px; color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.2); }
+.match-avatar.is-sm { width: 28px; height: 28px; border-radius: 9px; }
+.match-avatar.is-lg { width: 48px; height: 48px; border-radius: 16px; }
+.match-avatar-violet { background: linear-gradient(140deg, #5d34d0, #9b7cff); }
+.match-avatar-cyan { background: linear-gradient(140deg, #087f8c, #00cbd8); }
+.match-avatar-pink { background: linear-gradient(140deg, #c2185b, #ff5f9e); }
+.match-avatar-green { background: linear-gradient(140deg, #087f5b, #34d399); }
+.match-avatar-amber { background: linear-gradient(140deg, #a05a00, #f59e0b); }
+.match-avatar-blue { background: linear-gradient(140deg, #1d4ed8, #38bdf8); }
+.match-avatar-picker { margin: 0 0 15px; padding: 0; border: 0; }
+.match-avatar-picker legend { margin-bottom: 7px; color: var(--ink-2); font-size: var(--t-xs); font-weight: 650; }
+.match-avatar-picker > div { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.match-avatar-picker label { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; padding: 7px 3px; border: 1px solid var(--glass-line); border-radius: var(--r-sm); color: var(--ink-4); cursor: pointer; }
+.match-avatar-picker label.is-on { border-color: var(--accent); background: var(--series-1-soft); color: var(--ink); }
+.match-avatar-picker input { position: absolute; opacity: 0; pointer-events: none; }
+.match-avatar-picker label > span:last-child { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: .62rem; white-space: nowrap; }
+@media (max-width: 520px) { .match-avatar-picker > div { grid-template-columns: repeat(3, 1fr); } }

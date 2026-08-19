@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
-import { Empty, Icon, Spinner, useToast } from '../components/ui.jsx';
+import { Empty, Icon, Select, Spinner, useToast } from '../components/ui.jsx';
 import './forum.css';
 
 const TYPES = {
@@ -241,17 +241,15 @@ export default function Forum() {
                 required
               />
             </label>
-            <label className="field forum-field">
+            <div className="field forum-field">
               <span>Link a material <em>optional</em></span>
-              <select
-                className="input"
+              <Select
+                label="Linked material"
                 value={form.materialId}
-                onChange={(event) => setForm((current) => ({ ...current, materialId: event.target.value }))}
-              >
-                <option value="">No linked material</option>
-                {materials.map((material) => <option key={material.id} value={material.id}>{material.title}</option>)}
-              </select>
-            </label>
+                onChange={(value) => setForm((current) => ({ ...current, materialId: value }))}
+                options={[{ value: '', label: 'No linked material', secondary: 'Publish without a notebook' }, ...materials.map((material) => ({ value: String(material.id), label: material.title, secondary: material.module || 'Notebook' }))]}
+              />
+            </div>
             <div className="forum-publish-row">
               <span>{form.body.length.toLocaleString()} / 4,000</span>
               <button className="btn btn-primary" disabled={creating || !form.title.trim() || !form.body.trim()}>
