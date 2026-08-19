@@ -37,10 +37,16 @@ export default function Matchmaking() {
   const [roomPassword, setRoomPassword] = useState('');
   const [joinPassword, setJoinPassword] = useState('');
   const [busy, setBusy] = useState(false);
-  const [loadingQuizzes, setLoadingQuizzes] = useState(true);
+  const [loadingQuizzes, setLoadingQuizzes] = useState(!lobbyId);
+  const [lobbyLoading, setLobbyLoading] = useState(Boolean(lobbyId));
+  const [lobbyReload, setLobbyReload] = useState(0);
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    if (lobbyId) {
+      setLoadingQuizzes(false);
+      return undefined;
+    }
     setLoadingQuizzes(true);
     Promise.all([api.materials.get(id), api.quiz.list()])
       .then(([value, versions]) => {
@@ -55,18 +61,25 @@ export default function Matchmaking() {
       })
       .catch(setError)
       .finally(() => setLoadingQuizzes(false));
-  }, [id, requestedQuizId, upsertMaterial]);
+    return undefined;
+  }, [id, lobbyId, requestedQuizId, upsertMaterial]);
 
   useEffect(() => {
     if (lobbyId) {
-      api.lobbies.get(lobbyId).then(setLobby).catch(setError);
-      return undefined;
+      let cancelled = false;
+      setLobbyLoading(true);
+      setError(null);
+      api.lobbies.get(lobbyId)
+        .then((value) => { if (!cancelled) setLobby(value); })
+        .catch((cause) => { if (!cancelled) setError(cause); })
+        .finally(() => { if (!cancelled) setLobbyLoading(false); });
+      return () => { cancelled = true; };
     }
     const refresh = () => api.lobbies.list().then(setLobbies).catch(setError);
     refresh();
     const timer = setInterval(refresh, 3000);
     return () => clearInterval(timer);
-  }, [lobbyId]);
+  }, [lobbyId, lobbyReload]);
 
   useEffect(() => {
     if (!lobbyId || !session) return undefined;
@@ -77,6 +90,7 @@ export default function Matchmaking() {
       if (!pollTimer) pollTimer = setInterval(refresh, 1500);
     };
     refresh();
+    startPolling();
     if (api.mode === 'live') {
       try {
         socket = openLobbySocket(lobbyId, session.playerId, session.reconnectToken);
@@ -177,8 +191,25 @@ export default function Matchmaking() {
     finally { setBusy(false); }
   };
 
-  if (!material || loadingQuizzes) return <StudyShell title="Matchmaking"><div className="shell match-loading"><Spinner size={22} />Loading saved quiz versions…</div></StudyShell>;
-  if (!quizzes.length || !quizzes.some(isMatchCompatible)) {
+  if (lobbyId && lobbyLoading) {
+    return <StudyShell title="Matchmaking"><div className="shell match-loading"><Spinner size={22} />Loading quiz room…</div></StudyShell>;
+  }
+  if (lobbyId && !lobby) {
+    return (
+      <StudyShell title="Room unavailable" backTo="/app/quizzes">
+        <div className="shell">
+          <Empty
+            icon="error"
+            title="This quiz room could not be loaded"
+            body={error?.message || 'The room may have closed. Ask the host for a new invitation.'}
+            action={<button className="btn btn-primary" onClick={() => setLobbyReload((value) => value + 1)}>Try again</button>}
+          />
+        </div>
+      </StudyShell>
+    );
+  }
+  if (!lobbyId && (!material || loadingQuizzes)) return <StudyShell title="Matchmaking"><div className="shell match-loading"><Spinner size={22} />Loading saved quiz versions…</div></StudyShell>;
+  if (!lobbyId && (!quizzes.length || !quizzes.some(isMatchCompatible))) {
     const onlyWritten = quizzes.length > 0;
     return <StudyShell title={material.title} backTo={`/app/material/${id}`}><div className="shell"><Empty icon="quiz" title={onlyWritten ? 'Create an objective quiz for matchmaking' : 'Create a quiz first'} body={onlyWritten ? 'Written answers are graded after submission, so they cannot drive a fair live speed leaderboard. Generate a saved version with Single and/or Multi question types.' : 'A multiplayer room uses one immutable saved quiz so every player receives the exact same questions.'} action={<Link className="btn btn-primary" to={`/app/material/${id}`}>{onlyWritten ? 'Create objective quiz' : 'Create quiz'}</Link>} /></div></StudyShell>;
   }
@@ -189,7 +220,7 @@ export default function Matchmaking() {
     const guestsReady = lobby?.players?.filter((player) => !(player.is_host ?? player.isHost)).every((player) => player.ready);
     if (lobby && !session) {
       return (
-        <StudyShell title={lobby.name} subtitle="Join this quiz room" backTo={`/app/material/${id}/match`}>
+        <StudyShell title={lobby.name} subtitle="Join this quiz room" backTo="/app/quizzes">
           <div className="shell match-shell">
             <section className="match-join panel-solid">
               <Icon name={lobby.has_password ? 'lock' : 'groups'} size={34} />
@@ -205,7 +236,7 @@ export default function Matchmaking() {
       );
     }
     return (
-      <StudyShell title={lobby?.name || 'Quiz room'} subtitle={`Room ${lobbyId} · ${lobby?.difficulty || 'Quiz'}`} backTo={`/app/material/${id}/match`}>
+      <StudyShell title={lobby?.name || 'Quiz room'} subtitle={`Room ${lobbyId} · ${lobby?.difficulty || 'Quiz'}`} backTo="/app/quizzes">
         <div className="shell match-shell">
           <header className="match-room-head">
             <div><p className="eyebrow">Live quiz lobby</p><h1>{lobby?.status === 'finished' ? 'Final standings' : 'Waiting for players'}</h1><p>Everyone receives the same immutable snapshot of {lobby?.total_questions || lobby?.totalQuestions || selectedQuiz?.questionCount || 0} questions.</p></div>
@@ -227,7 +258,7 @@ export default function Matchmaking() {
 
           <div className="match-room-actions">
             {lobby?.status === 'finished' ? (
-              <Link className="btn btn-primary" to={`/app/material/${id}`}><Icon name="menu_book" size={18} />Back to notes</Link>
+              <Link className="btn btn-primary" to={isHost ? `/app/material/${id}` : '/app/quizzes'}><Icon name="menu_book" size={18} />{isHost ? 'Back to notes' : 'Back to quizzes'}</Link>
             ) : isHost ? (
               <button className="btn btn-primary" onClick={() => act('start')} disabled={busy || lobby?.players?.length < 2 || !guestsReady}>
                 {busy ? <Spinner size={17} /> : <Icon name="play_arrow" size={18} />}Start match

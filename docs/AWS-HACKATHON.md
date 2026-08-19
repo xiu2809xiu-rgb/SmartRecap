@@ -10,7 +10,9 @@ AWS is part of the executable path, not a logo on the architecture slide:
 4. **Elastic IP** keeps the CloudFront origin stable across Learner Lab stop/start cycles.
 5. **Amazon S3** stores private source uploads, oversized durable records, generated recap snapshots, and cached study illustrations. The browser uploads through a short-lived presigned PUT URL, while EC2 reads objects using its instance role.
 6. **Amazon DynamoDB** stores shared materials, immutable quiz versions, attempts, flashcard schedules, forum posts, and share links so friends see the same workspace and EC2 restarts do not erase study state.
-7. **CloudFormation** creates the durable data resources independently from your existing EC2, and the original full-stack template remains available when a new backend host is needed.
+7. **AWS Lambda** observes completed Binder source uploads, checks the PDF signature with a five-byte ranged S3 read, and writes an idempotent seven-day receipt without changing the EC2 workflow.
+8. **Amazon EventBridge** routes only object-created events under `smartrecap/uploads/` to the observer Lambda and retries transient failures.
+9. **CloudFormation** creates the durable data and upload-observer resources independently from the existing EC2, and the original full-stack template remains available when a new backend host is needed.
 
 If EC2 is unavailable, uploads cannot be extracted, grounded, summarized, queried, or turned into quizzes. If Amplify is unavailable, students cannot access the product. That makes AWS central to delivery and core processing.
 
@@ -21,7 +23,7 @@ If EC2 is unavailable, uploads cannot be extracted, grounded, summarized, querie
 - **CloudFront between Amplify and EC2:** Amplify is HTTPS, so browsers reject a plain HTTP API. CloudFront supplies a trusted AWS HTTPS hostname and forwards API calls and lobby WebSockets to nginx on EC2.
 - **S3 instead of keeping upload bytes in process memory:** short-lived presigned PUT URLs send private source files directly to an encrypted bucket. EC2 retrieves them with `LabInstanceProfile`, and generated recap snapshots provide durable demo evidence. Objects expire after seven days.
 - **DynamoDB plus S3 instead of process memory:** DynamoDB indexes shared app entities with on-demand billing and point-in-time recovery; S3 holds uploads and records too large for DynamoDB's item boundary. The backend keeps a memory cache for speed but hydrates it from durable storage at startup.
-- **No Lambda:** OCR, Pix2Text, AI orchestration, WebSockets, and image caching already run coherently on the existing EC2 service. Lambda would add packaging and state boundaries without removing the EC2 requirement.
+- **EC2 plus Lambda:** EC2 keeps the persistent FastAPI, native OCR, AI orchestration, WebSockets, and image caching in one warm service. An additive Lambda observes completed S3 source uploads, validates the PDF signature, and writes an idempotent seven-day receipt to an isolated DynamoDB namespace. Lambda failure cannot block the existing upload or extraction path.
 - **Optional Pollinations visuals:** the backend asks Azure/OpenAI to turn a grounded topic into a short visual brief, strips URLs/emails/instruction-like text, then calls an allowlisted Pollinations image host. It never sends raw files, filenames, citations, provider keys, or full OCR text, and text notes remain authoritative.
 
 ## Live architecture
@@ -30,6 +32,10 @@ If EC2 is unavailable, uploads cannot be extracted, grounded, summarized, querie
 Student browser
   |-- HTTPS --> AWS Amplify Hosting (React 19 + Vite)
   |-- HTTPS --> Amazon S3 (private presigned source upload)
+  |                  |
+  |                  +-- Object Created --> EventBridge --> Lambda upload observer
+  |                                                               |
+  |                                                               +--> DynamoDB receipt (TTL 7 days)
   |-- HTTPS/WSS --> Amazon CloudFront
                          |
                          +-- HTTP origin --> Elastic IP --> nginx on EC2 t3.xlarge
@@ -42,7 +48,7 @@ Student browser
                                                              +-- OpenAI final hard-quiz audit
 ```
 
-The external AI providers qualify under the organizers' broadened AI bonus. Hard quizzes use all three providers sequentially, then backend code restores citations to exact raw-source substrings and rejects unsupported questions.
+The Lambda branch is intentionally observational: EC2 still owns upload commit and extraction, so Lambda retries or outages cannot break the student workflow. The external AI providers qualify under the organizers' broadened AI bonus. Hard quizzes use all three providers sequentially, then backend code restores citations to exact raw-source substrings and rejects unsupported questions.
 
 ## Deployment runbook (us-east-1)
 

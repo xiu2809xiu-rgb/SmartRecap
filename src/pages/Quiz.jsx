@@ -82,6 +82,10 @@ export default function Quiz() {
   const toast = useToast();
   const { materialById, upsertMaterial, addAttempt } = useStore();
   const { reduced } = usePrefs();
+  const topicFilter = params.get('topics');
+  const typeFilter = params.get('types');
+  const quizId = params.get('quizId');
+  const matchId = params.get('match');
 
   const cached = materialById(id);
   const [material, setMaterial] = useState(cached ?? null);
@@ -106,6 +110,7 @@ export default function Quiz() {
   const questionStartedAt = useRef(Date.now());
 
   useEffect(() => {
+    if (matchId) return undefined;
     let cancelled = false;
     (async () => {
       try {
@@ -122,17 +127,15 @@ export default function Quiz() {
     };
     // `cached` is intentionally excluded: upsertMaterial() updates the store
     // with a new reference after this request and would otherwise refetch forever.
-  }, [id, upsertMaterial]);
+  }, [id, matchId, upsertMaterial]);
 
   useEffect(() => {
     if (cached) setMaterial(cached);
   }, [cached]);
 
-  const topicFilter = params.get('topics');
-  const typeFilter = params.get('types');
-  const quizId = params.get('quizId');
-  const matchId = params.get('match');
   const activeQuiz = quizSnapshot ?? material?.quiz;
+  const displayTitle = material?.title || activeQuiz?.title || matchLobby?.name || 'Live quiz';
+  const returnTo = matchId ? `/app/material/${id}/match/${matchId}` : `/app/material/${id}`;
   const allQuestions = activeQuiz?.questions ?? [];
 
   useEffect(() => {
@@ -263,6 +266,27 @@ export default function Quiz() {
     }
 
     const finalAnswers = { ...answers, [question.id]: normaliseSelection(question, selected) };
+    if (matchId) {
+      setSubmitting(true);
+      try {
+        const session = JSON.parse(localStorage.getItem(`smartrecap.lobby.${matchId}`) || 'null');
+        if (!session) throw new Error('Your lobby session expired. Rejoin the party to submit your score.');
+        const scoredQuestions = questions.filter((item) => item.verified);
+        const correct = scoredQuestions.filter((item) => answerIsCorrect(item, finalAnswers[item.id])).length;
+        const score = scoredQuestions.length ? Math.round((correct / scoredQuestions.length) * 100) : 0;
+        await api.lobbies.score(matchId, {
+          playerId: session.playerId,
+          reconnectToken: session.reconnectToken,
+          score,
+        });
+        navigate(`/app/material/${id}/match/${matchId}`, { replace: true });
+      } catch (matchError) {
+        toast.error(matchError.message ?? 'Could not submit your match score.');
+        setSubmitting(false);
+      }
+      return;
+    }
+
     setSubmitting(true);
     try {
       const attempt = await api.quiz.submit({
@@ -272,21 +296,6 @@ export default function Quiz() {
         questionIds: questions.map((item) => item.id),
         durationMs: Date.now() - (startedAt.current ?? Date.now()),
       });
-      if (matchId) {
-        try {
-          const session = JSON.parse(localStorage.getItem(`smartrecap.lobby.${matchId}`) || 'null');
-          if (session) {
-            await api.lobbies.score(matchId, {
-              playerId: session.playerId,
-              reconnectToken: session.reconnectToken,
-              attemptId: attempt.id,
-              score: attempt.score,
-            });
-          }
-        } catch (matchError) {
-          toast.error(matchError.message ?? 'Your result was saved, but the match score could not be submitted.');
-        }
-      }
       addAttempt(attempt);
       const stats = finalGameStats(questions, finalAnswers, timeByQuestion.current, attempt.judgements);
       if (questions.some((item) => questionType(item) === 'short')) {
@@ -337,15 +346,15 @@ export default function Quiz() {
 
   if (error) {
     return (
-      <StudyShell title="Quiz unavailable">
+      <StudyShell title={matchId ? 'Match unavailable' : 'Quiz unavailable'}>
         <div className="shell">
           <Empty
             icon="error"
-            title="That material is not in your library"
-            body="It may have been deleted, or the link belongs to a different account."
+            title={matchId ? 'This match quiz could not be loaded' : 'That material is not in your library'}
+            body={matchId ? (error.message || 'Your room may have closed. Rejoin it to request the fixed quiz snapshot again.') : 'It may have been deleted, or the link belongs to a different account.'}
             action={
-              <Link to="/app" className="btn btn-primary">
-                Back to library
+              <Link to={matchId ? returnTo : '/app'} className="btn btn-primary">
+                {matchId ? 'Back to room' : 'Back to library'}
               </Link>
             }
           />
@@ -354,7 +363,7 @@ export default function Quiz() {
     );
   }
 
-  if (!material) {
+  if (!material && !matchId) {
     return (
       <StudyShell title="Loading quiz">
         <div className="shell quiz-loading" role="status">
@@ -367,7 +376,7 @@ export default function Quiz() {
 
   if ((quizId || matchId) && !quizSnapshot) {
     return (
-      <StudyShell title={material.title} backTo={`/app/material/${id}`}>
+      <StudyShell title={displayTitle} backTo={returnTo}>
         <div className="shell quiz-loading" role="status"><Spinner size={22} /><span>Loading the saved quiz version…</span></div>
       </StudyShell>
     );
@@ -376,7 +385,7 @@ export default function Quiz() {
   if (!allQuestions.length) {
     const generating = activeQuiz?.status === 'generating' || activeQuiz?.generationStatus === 'generating';
     return (
-      <StudyShell title={material.title} backTo={`/app/material/${id}`}>
+      <StudyShell title={displayTitle} backTo={returnTo}>
         <div className="shell">
           <Empty
             icon={generating ? 'hourglass_top' : 'quiz'}
@@ -399,7 +408,7 @@ export default function Quiz() {
 
   if (!question) {
     return (
-      <StudyShell title={material.title} backTo={`/app/material/${id}`}>
+      <StudyShell title={displayTitle} backTo={returnTo}>
         <div className="shell">
           <Empty
             icon="quiz"
@@ -418,7 +427,7 @@ export default function Quiz() {
 
   const type = questionType(question);
   const citedChunks = (question.citations ?? [])
-    .map((citationId) => material.chunks?.find((chunk) => chunk.id === citationId))
+    .map((citationId) => material?.chunks?.find((chunk) => chunk.id === citationId))
     .filter(Boolean);
   const selectionReady = hasSelection(question, selected);
   const localCorrect = type !== 'short' && answerIsCorrect(question, normaliseSelection(question, selected));
@@ -427,9 +436,9 @@ export default function Quiz() {
 
   return (
     <StudyShell
-      title={material.title}
+      title={displayTitle}
       subtitle={topicFilter ? `Retrying: ${topicFilter}` : matchId ? `Live match · ${questions.length} shared questions` : `${activeQuiz?.difficulty ?? 'Conceptual'} · ${questions.length} questions`}
-      backTo={`/app/material/${id}`}
+      backTo={returnTo}
       actions={
         <button className="btn btn-ghost btn-sm" onClick={() => setConfirmExit(true)}>
           <Icon name="close" size={17} />
@@ -614,7 +623,7 @@ export default function Quiz() {
         footer={
           <>
             <button className="btn btn-ghost btn-sm" onClick={() => setConfirmExit(false)}>Keep going</button>
-            <button className="btn btn-primary btn-sm" onClick={() => navigate(`/app/material/${id}`)}>End without saving</button>
+            <button className="btn btn-primary btn-sm" onClick={() => navigate(returnTo)}>End without saving</button>
           </>
         }
       >

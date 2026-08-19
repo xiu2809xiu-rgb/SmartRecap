@@ -125,6 +125,19 @@ async function request(path, { method = 'GET', body, signal, auth = true } = {})
   return payload;
 }
 
+function lobbyRequest(path, options = {}) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 12_000);
+  return request(path, { ...options, signal: controller.signal })
+    .catch((cause) => {
+      if (cause?.name === 'AbortError') {
+        throw new ApiError('The lobby server took too long to respond. Check your connection and try again.', 0, null);
+      }
+      throw cause;
+    })
+    .finally(() => window.clearTimeout(timer));
+}
+
 const live = {
   mode: 'live',
 
@@ -279,15 +292,15 @@ const live = {
   },
 
   lobbies: {
-    list: () => request('/lobbies'),
-    get: (id) => request(`/lobbies/${id}`),
-    quiz: (id, playerId, reconnectToken) => request(`/lobbies/${id}/quiz?playerId=${encodeURIComponent(playerId)}&token=${encodeURIComponent(reconnectToken)}`),
-    create: (payload) => request('/lobbies', { method: 'POST', body: payload }),
-    join: (id, payload) => request(`/lobbies/${id}/join`, { method: 'POST', body: payload }),
-    ready: (id, payload) => request(`/lobbies/${id}/ready`, { method: 'POST', body: payload }),
-    start: (id, payload) => request(`/lobbies/${id}/start`, { method: 'POST', body: payload }),
-    answer: (id, payload) => request(`/lobbies/${id}/answer`, { method: 'POST', body: payload }),
-    score: (id, payload) => request(`/lobbies/${id}/score`, { method: 'POST', body: payload }),
+    list: () => lobbyRequest('/lobbies', { auth: false }),
+    get: (id) => lobbyRequest(`/lobbies/${id}`, { auth: false }),
+    quiz: (id, playerId, reconnectToken) => lobbyRequest(`/lobbies/${id}/quiz?playerId=${encodeURIComponent(playerId)}&token=${encodeURIComponent(reconnectToken)}`, { auth: false }),
+    create: (payload) => lobbyRequest('/lobbies', { method: 'POST', body: payload }),
+    join: (id, payload) => lobbyRequest(`/lobbies/${id}/join`, { method: 'POST', body: payload, auth: false }),
+    ready: (id, payload) => lobbyRequest(`/lobbies/${id}/ready`, { method: 'POST', body: payload, auth: false }),
+    start: (id, payload) => lobbyRequest(`/lobbies/${id}/start`, { method: 'POST', body: payload, auth: false }),
+    answer: (id, payload) => lobbyRequest(`/lobbies/${id}/answer`, { method: 'POST', body: payload, auth: false }),
+    score: (id, payload) => lobbyRequest(`/lobbies/${id}/score`, { method: 'POST', body: payload, auth: false }),
   },
 
   forum: {

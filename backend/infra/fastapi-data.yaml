@@ -52,6 +52,9 @@ Resources:
             AllowedOrigins: [!Ref WebOrigin]
             ExposedHeaders: [ETag]
             MaxAge: 900
+      NotificationConfiguration:
+        EventBridgeConfiguration:
+          EventBridgeEnabled: true
       LifecycleConfiguration:
         Rules:
           - Id: ExpireSourceUploads

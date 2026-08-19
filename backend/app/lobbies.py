@@ -217,12 +217,17 @@ class LobbyStore:
         lobby = self._lobbies.get(lobby_id)
         if not lobby:
             return
-        stale = []
-        for socket in self._sockets.get(lobby_id, []):
+        payload = {"type": "lobby.snapshot", "data": lobby.model_dump(by_alias=True)}
+
+        async def send(socket: WebSocket):
             try:
-                await socket.send_json({"type": "lobby.snapshot", "data": lobby.model_dump(by_alias=True)})
+                await asyncio.wait_for(socket.send_json(payload), timeout=2.0)
+                return None
             except Exception:
-                stale.append(socket)
+                return socket
+
+        sockets = list(self._sockets.get(lobby_id, []))
+        stale = [socket for socket in await asyncio.gather(*(send(socket) for socket in sockets)) if socket]
         for socket in stale:
             self.disconnect(lobby_id, socket)
 
