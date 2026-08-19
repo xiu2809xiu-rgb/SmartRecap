@@ -1,0 +1,149 @@
+/* The hamburger itself. 44px square — the smallest reliable touch target, and
+   the reason it is stated in px rather than rem: a finger does not get bigger
+   when the user turns text up, so this must not shrink at the small font
+   setting or bloat at the large one. The icon inside scales; the target does
+   not. */
+.nav-toggle {
+  display: none;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  background: var(--tint);
+  border: 1px solid var(--glass-line);
+}
+
+.nav-toggle:hover { background: var(--tint-2); }
+
+/* ------------------------------------------------------------- the drawer */
+
+.mobile-nav {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.mobile-nav-scrim {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border: 0;
+  background: rgba(4, 2, 10, 0.62);
+  backdrop-filter: blur(3px);
+  animation: mobile-nav-fade 200ms var(--ease);
+}
+
+.mobile-nav-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(340px, 88vw);
+  max-width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--ground-raised);
+  border-left: 1px solid var(--glass-line-strong);
+  box-shadow: -24px 0 60px -20px rgba(0, 0, 0, 0.65);
+  animation: mobile-nav-in 260ms var(--spring);
+  /* Clears the notch and the home indicator on a phone. */
+  padding: max(14px, env(safe-area-inset-top)) 14px calc(18px + env(safe-area-inset-bottom));
+}
+
+@keyframes mobile-nav-fade {
+  from { opacity: 0; }
+}
+
+@keyframes mobile-nav-in {
+  from { transform: translateX(14px); opacity: 0; }
+}
+
+.mobile-nav-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--glass-line);
+}
+
+.mobile-nav-title {
+  font-size: var(--t-xs);
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+.mobile-nav-links { display: flex; flex-direction: column; gap: 2px; }
+
+.mobile-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  /* min-height in px for the same reason as the toggle, but the padding is in
+     em so the row still grows with the text inside it. */
+  min-height: 48px;
+  padding: 0.6em 12px;
+  border-radius: var(--r);
+  font-size: var(--t-body);
+  font-weight: 650;
+  color: var(--ink-2);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.mobile-nav-link span { display: flex; flex-direction: column; min-width: 0; }
+
+.mobile-nav-link em {
+  font-style: normal;
+  font-size: var(--t-xs);
+  font-weight: 500;
+  color: var(--ink-4);
+  margin-top: 1px;
+}
+
+.mobile-nav-link:hover { background: var(--tint); color: var(--ink); }
+
+.mobile-nav-link.is-on {
+  color: #fff;
+  background: linear-gradient(120deg, var(--aurora-violet), var(--accent-hot));
+}
+
+.mobile-nav-link.is-on em { color: rgba(255, 255, 255, 0.82); }
+
+.mobile-nav-foot {
+  margin-top: auto;
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--glass-line);
+}
+
+/* Full-width actions in the drawer footer, so nothing is a cramped pill. */
+.mobile-nav-foot .btn { width: 100%; justify-content: center; min-height: 46px; }
+
+/* --------------------------------------------------------------- switch */
+
+/* 900px rather than 860: the app nav has seven destinations and stops fitting
+   comfortably well before the old breakpoint. */
+@media (max-width: 900px) {
+  .nav-toggle { display: grid; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-nav-scrim,
+  .mobile-nav-panel { animation: none; }
+}
+
+/* Rows that carry a description are two or three lines tall, and centring the
+   icon against the whole block leaves it hovering beside the description rather
+   than the destination it labels. Only those rows top-align; single-line rows
+   stay centred. */
+.mobile-nav-link:has(em) { align-items: flex-start; }
+.mobile-nav-link:has(em) .material-symbols-rounded { margin-top: 0.1em; }

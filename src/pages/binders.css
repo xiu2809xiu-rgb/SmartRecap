@@ -279,3 +279,13 @@
 .binder-note-form { display: grid; gap: 14px; }
 .binder-note-form textarea { min-height: 220px; resize: vertical; line-height: 1.55; }
 @media (max-width: 620px) { .binder-add-note { align-items: stretch; flex-direction: column; } .binder-add-note .btn { justify-content: center; } }
+/* The "New binder" form sits beside the heading on a desktop. On a phone the
+   input and the nowrap button need 410px of a 324px row, so the button was
+   pushed 86px past the edge. Stacked, each gets the full width — and the button
+   becomes a comfortable target rather than a cramped pill. */
+@media (max-width: 700px) {
+  .binder-new { flex-direction: column; align-items: stretch; width: 100%; }
+  .binder-new .input,
+  .binder-new .btn { width: 100%; }
+  .binder-new .btn { justify-content: center; }
+}
