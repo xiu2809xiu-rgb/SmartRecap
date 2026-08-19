@@ -46,3 +46,24 @@
     display: none;
   }
 }
+
+/* The mascot is sized in pixels inline (Mascot.jsx passes `size` straight into
+   a style attribute), so on a 360px phone the 380px hero mascot hung 38px past
+   the edge. A stylesheet max-width still constrains an inline width — they are
+   different properties, so this needs no !important — and the R3F canvas
+   re-reads its container size, so the camera reframes rather than cropping. */
+.mascot {
+  max-width: 100%;
+  /* Same reason .hero-mascot needs it: an implicit `auto` grid track sizes to
+     the child's max-content width, so a percentage max-width on that child
+     resolves against the width it already had and constrains nothing. This
+     matters twice over here, because the Suspense fallback badge is itself a
+     .mascot nested inside the .mascot wrapper. */
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.mascot canvas,
+.mascot svg {
+  max-width: 100%;
+  height: auto;
+}

@@ -1,5 +1,11 @@
 .logoloop {
   position: relative;
+  /* The track is deliberately several screens wide — it is a marquee that
+     duplicates its content to loop seamlessly. Without a clip here that width
+     becomes the document's, and the landing page scrolled sideways by 4,400px
+     on a phone. Local edit; see src/reactbits/README.md. */
+  overflow: hidden;
+  max-width: 100%;
 
   --logoloop-gap: 32px;
   --logoloop-logoHeight: 28px;
