@@ -25,6 +25,7 @@ ExtractSource = Callable[[bytes, str, str, bool], Awaitable[SourceRecord]]
 _binders: OwnerMap = OwnerMap()
 _sources: OwnerMap = OwnerMap()
 _uploads: OwnerMap = OwnerMap()
+_binder_cards: OwnerMap = OwnerMap()
 _tasks: set[asyncio.Task] = set()
 _MAX_SELECTED_SOURCES = 50
 _MAX_SOURCE_ID_LENGTH = 128
@@ -248,6 +249,9 @@ def build_binder_router(extract_source: ExtractSource, settings: Settings) -> AP
                 for item in await run_in_threadpool(repository.load_kind, owner_id, kind):
                     if isinstance(item.get("value"), dict):
                         target.owner_data(owner_id)[item["id"]] = item["value"]
+            for item in await run_in_threadpool(repository.load_kind, owner_id, "binder_cards"):
+                if isinstance(item.get("value"), list):
+                    _binder_cards.owner_data(owner_id)[item["id"]] = item["value"]
         loaded_owners.add(owner_id)
 
     register_owner_hydrator(hydrate_owner)
@@ -407,6 +411,21 @@ def build_binder_router(extract_source: ExtractSource, settings: Settings) -> AP
     async def get_binder(binder_id: str) -> Dict[str, Any]:
         return _public_binder(_require_binder(binder_id))
 
+    @router.get("/binders/{binder_id}/flashcards")
+    async def get_binder_flashcards(binder_id: str) -> Optional[List[Dict[str, Any]]]:
+        _require_binder(binder_id)
+        return _binder_cards.get(binder_id)
+
+    @router.put("/binders/{binder_id}/flashcards")
+    async def save_binder_flashcards(binder_id: str, request: Request) -> List[Dict[str, Any]]:
+        _require_binder(binder_id)
+        cards = (await request.json()).get("cards")
+        if not isinstance(cards, list):
+            raise HTTPException(status_code=422, detail='"cards" must be an array.')
+        _binder_cards[binder_id] = cards
+        await persist("binder_cards", binder_id, cards)
+        return cards
+
     @router.patch("/binders/{binder_id}")
     async def update_binder(binder_id: str, request: Request) -> Dict[str, Any]:
         binder = _require_binder(binder_id)
@@ -441,12 +460,14 @@ def build_binder_router(extract_source: ExtractSource, settings: Settings) -> AP
                     await run_in_threadpool(storage.delete_key, storage.upload_key(source["id"]))
                 await remove("binder_source", source["id"])
             await remove("binder", binder_id)
+            await remove("binder_cards", binder_id)
         except Exception as exc:
             raise HTTPException(status_code=503, detail="Binder cleanup failed; retry shortly.") from exc
         for source in rows:
             _sources.pop(source["id"], None)
             _uploads.pop(source["id"], None)
         _binders.pop(binder_id, None)
+        _binder_cards.pop(binder_id, None)
         return Response(status_code=204)
 
     @router.get("/binders/{binder_id}/sources")

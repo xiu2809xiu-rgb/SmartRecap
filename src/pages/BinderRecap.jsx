@@ -116,7 +116,18 @@ export default function BinderRecap() {
   const { recap, quiz } = binder;
 
   return (
-    <StudyShell title={binder.name} subtitle={`${binder.sourceCount} sources · ${recap.readMinutes ?? ''} min read`} backTo="/app/binders" wide>
+    <StudyShell
+      title={binder.name}
+      subtitle={`${binder.sourceCount} sources · ${recap.readMinutes ?? ''} min read`}
+      backTo="/app/binders"
+      wide
+      actions={
+        <Link to={`/app/binders/${id}/flashcards`} className="btn btn-primary btn-sm">
+          <Icon name="style" size={17} />
+          <span className="action-label">Flashcards</span>
+        </Link>
+      }
+    >
       <div className="shell recap-shell">
         <CitationProvider chunks={chunks}>
           <div className="reader-grid">

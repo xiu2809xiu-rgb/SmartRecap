@@ -98,6 +98,8 @@ const ROUTES = [
       return noContent();
     },
   ],
+  ['GET', /^\/binders\/([^/]+)\/flashcards$/, async (e, id) => json(200, await library.getCards(requireUser(e).id, id))],
+  ['PUT', /^\/binders\/([^/]+)\/flashcards$/, async (e, id) => json(200, await library.saveCards(requireUser(e).id, id, parseBody(e).cards))],
   ['POST', /^\/binders\/([^/]+)\/sources$/, async (e, id) => json(201, await sources.createSources(requireUser(e).id, id, parseBody(e).files))],
   ['GET', /^\/binders\/([^/]+)\/sources$/, async (e, id) => json(200, await sources.listSources(requireUser(e).id, id))],
   [
