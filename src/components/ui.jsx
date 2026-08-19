@@ -142,8 +142,15 @@ export function Modal({ open, onClose, title, children, footer, width = 520 }) {
 
   if (!open) return null;
 
+  // `onPointerDown`, not `onMouseDown`: iOS Safari only synthesises mouse events
+  // on elements it considers interactive, so a tap on this plain div could fail
+  // to dismiss — leaving the 38px close button as the only way out on exactly
+  // the device where it is hardest to hit. Pointer events fire for touch.
   return createPortal(
-    <div className="modal-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
+    <div
+      className="modal-scrim"
+      onPointerDown={(e) => e.target === e.currentTarget && onClose?.()}
+    >
       <div
         className="modal panel-solid"
         style={{ maxWidth: width }}

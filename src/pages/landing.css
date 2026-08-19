@@ -105,6 +105,12 @@
 .hero-mascot {
   position: relative;
   display: grid;
+  /* An explicit minmax(0, 1fr) track rather than the implicit `auto` one. With
+     `auto` the column grows to the mascot's max-content width — 380px, set
+     inline in Mascot.jsx — so on a phone the track itself overflowed and the
+     mascot's own `max-width: 100%` resolved against that 380px track instead of
+     the 324px container, capping it at exactly the size it already was. */
+  grid-template-columns: minmax(0, 1fr);
   place-items: center;
   min-height: 400px;
 }
@@ -383,4 +389,18 @@
 .features .magic-bento-card,
 .features .card {
   background: var(--ground-raised);
+}
+
+/* CardSwap fans its stack out in 3D, so the cards sit well outside the box that
+   holds them — by design on a desktop, 27px past the screen edge on a phone.
+   Scaling the whole stack keeps the fan readable at a size that fits, and the
+   clip on the container is the guarantee: however the animation swings, it
+   cannot widen the page. */
+@media (max-width: 900px) {
+  .how-visual { overflow: hidden; }
+
+  .how-visual .card-swap-container {
+    transform-origin: center;
+    transform: translate(50%, 50%) scale(0.66);
+  }
 }

@@ -8,6 +8,7 @@ import { usePrefs } from '../../lib/prefs.jsx';
 import { isDemo } from '../../lib/api.js';
 import GooeyNav from '../../reactbits/GooeyNav.jsx';
 import '../../reactbits/GooeyNav.css';
+import MobileNav from './MobileNav.jsx';
 
 /**
  * `data-surface` on <html> is what flips the whole token set between the dark
@@ -64,6 +65,8 @@ export function MarketingShell({ children }) {
   useSurface(null);
   const { isAuthed } = useAuth();
   const [scrolled, setScrolled] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
+  const navToggleRef = useRef(null);
   const { allowEffects } = usePrefs();
 
   useEffect(() => {
@@ -96,7 +99,7 @@ export function MarketingShell({ children }) {
               </ul>
             )}
           </nav>
-          <div className="row gap-2">
+          <div className="row gap-2 topbar-actions">
             {isAuthed ? (
               <Link to="/app" className="btn btn-primary btn-sm">
                 Open library
@@ -113,8 +116,45 @@ export function MarketingShell({ children }) {
               </>
             )}
           </div>
+          <button
+            type="button"
+            className="nav-toggle"
+            ref={navToggleRef}
+            onClick={() => setNavOpen(true)}
+            aria-label="Open menu"
+            aria-expanded={navOpen}
+          >
+            <Icon name="menu" size={22} />
+          </button>
         </div>
       </header>
+
+      {/* The section nav is a GooeyNav pill row that cannot fit a phone, so on
+          narrow screens it is hidden and these anchors move into the drawer —
+          the sections stay reachable rather than becoming desktop-only. */}
+      <MobileNav
+        open={navOpen}
+        onClose={() => setNavOpen(false)}
+        links={MARKETING_LINKS}
+        label="Sections"
+        returnFocusTo={navToggleRef}
+        footer={
+          isAuthed ? (
+            <Link to="/app" className="btn btn-primary" onClick={() => setNavOpen(false)}>
+              Open library
+            </Link>
+          ) : (
+            <>
+              <Link to="/signup" className="btn btn-primary" onClick={() => setNavOpen(false)}>
+                Get started
+              </Link>
+              <Link to="/login" className="btn btn-ghost" onClick={() => setNavOpen(false)}>
+                Sign in
+              </Link>
+            </>
+          )
+        }
+      />
 
       <main id="main">{children}</main>
 
@@ -169,9 +209,12 @@ export function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const menuRef = useRef(null);
+  const navToggleRef = useRef(null);
 
   useEffect(() => setMenuOpen(false), [location.pathname]);
+  useEffect(() => setNavOpen(false), [location.pathname]);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -199,7 +242,7 @@ export function AppShell() {
             ))}
           </nav>
 
-          <div className="row gap-2" ref={menuRef}>
+          <div className="row gap-2 topbar-actions" ref={menuRef}>
             <Link to="/app/upload" className="btn btn-primary btn-sm topbar-cta">
               <Icon name="upload" size={17} />
               Upload
@@ -243,6 +286,16 @@ export function AppShell() {
               </div>
             )}
           </div>
+          <button
+            type="button"
+            className="nav-toggle"
+            ref={navToggleRef}
+            onClick={() => setNavOpen(true)}
+            aria-label="Open menu"
+            aria-expanded={navOpen}
+          >
+            <Icon name="menu" size={22} />
+          </button>
         </div>
         <DemoBanner />
       </header>
@@ -251,18 +304,28 @@ export function AppShell() {
         <Outlet />
       </main>
 
-      <nav className="tabbar" aria-label="Main">
-        {APP_LINKS.map((l) => (
-          <NavLink key={l.to} to={l.to} end={l.end} title={l.description} aria-label={l.description ? `${l.label}: ${l.description}` : l.label} className={({ isActive }) => `tab ${isActive ? 'is-on' : ''}`}>
-            <Icon name={l.icon} size={21} />
-            <span>{l.label}</span>
-          </NavLink>
-        ))}
-        <NavLink to="/app/settings" className={({ isActive }) => `tab ${isActive ? 'is-on' : ''}`}>
-          <Icon name="tune" size={21} />
-          <span>Settings</span>
-        </NavLink>
-      </nav>
+      {/* Was a bottom tab bar. Seven destinations plus Settings laid out eight
+          46px columns — 368px of content on a 360px phone, so the last tab was
+          clipped and every app route scrolled sideways. A drawer holds all of
+          them at readable width and grows with the font-size setting. */}
+      <MobileNav
+        open={navOpen}
+        onClose={() => setNavOpen(false)}
+        links={APP_LINKS}
+        returnFocusTo={navToggleRef}
+        footer={
+          <>
+            <Link to="/app/upload" className="btn btn-primary" onClick={() => setNavOpen(false)}>
+              <Icon name="upload" size={18} />
+              New recap
+            </Link>
+            <Link to="/app/settings" className="btn btn-ghost" onClick={() => setNavOpen(false)}>
+              <Icon name="tune" size={18} />
+              Settings
+            </Link>
+          </>
+        }
+      />
 
       {allowMascot && location.pathname === '/app' && (
         <div className="mascot-dock">
