@@ -215,13 +215,15 @@ const live = {
     create: (name) => request('/binders', { method: 'POST', body: { name } }),
     update: (id, patch) => request(`/binders/${id}`, { method: 'PATCH', body: patch }),
     remove: (id) => request(`/binders/${id}`, { method: 'DELETE' }),
-    generate: (id) => request(`/binders/${id}/generate`, { method: 'POST' }),
+    generate: (id, sourceIds) => request(`/binders/${id}/generate`, { method: 'POST', body: { sourceIds } }),
   },
 
   sources: {
     list: (binderId) => request(`/binders/${binderId}/sources`),
     /** Presigns one upload URL per accepted file; rejects non-PDF names up front, per file. */
     create: (binderId, files) => request(`/binders/${binderId}/sources`, { method: 'POST', body: { files } }),
+    /** Adds a ready, owner-scoped pasted note without an upload round trip. */
+    createText: (binderId, title, text) => request(`/binders/${binderId}/sources/text`, { method: 'POST', body: { title, text } }),
     /** Direct-to-S3 PUT — same shape as `uploads.put` for a single Material. */
     put: async (uploadUrl, file) => {
       const apiOrigin = BASE.startsWith('http') ? new URL(BASE).origin : window.location.origin;
@@ -243,15 +245,43 @@ const live = {
   },
 
   quiz: {
+    list: () => request('/quizzes'),
+    get: (quizId) => request(`/quizzes/${encodeURIComponent(quizId)}`),
     generate: (materialId, payload) => request(`/materials/${materialId}/quiz`, { method: 'POST', body: payload }),
     save: (materialId, payload) => request(`/materials/${materialId}/quiz`, { method: 'PUT', body: payload }),
     submit: (payload) => request('/quiz/attempts', { method: 'POST', body: payload }),
     attempts: (materialId) => request(`/quiz/attempts${materialId ? `?materialId=${materialId}` : ''}`),
   },
 
+  social: {
+    search: (query) => request(`/social/users?q=${encodeURIComponent(query)}`),
+    friends: () => request('/friends'),
+    requests: () => request('/friends/requests'),
+    requestFriend: (userId) => request('/friends/requests', { method: 'POST', body: { userId } }),
+    acceptRequest: (requestId) => request(`/friends/requests/${requestId}/accept`, { method: 'POST' }),
+    removeRequest: (requestId) => request(`/friends/requests/${requestId}`, { method: 'DELETE' }),
+    removeFriend: (friendId) => request(`/friends/${friendId}`, { method: 'DELETE' }),
+    conversations: () => request('/conversations'),
+    createConversation: (payload) => request('/conversations', { method: 'POST', body: payload }),
+    conversation: (id) => request(`/conversations/${id}`),
+    messages: (id) => request(`/conversations/${id}/messages`),
+    sendMessage: (id, text) => request(`/conversations/${id}/messages`, { method: 'POST', body: { text } }),
+    plan: (id) => request(`/conversations/${id}/plan`),
+    savePlan: (id, payload) => request(`/conversations/${id}/plan`, { method: 'PUT', body: payload }),
+    createInvite: (id, payload = {}) => request(`/conversations/${id}/invites`, { method: 'POST', body: payload }),
+    redeemInvite: (invite) => request('/conversation-invites/redeem', { method: 'POST', body: { invite } }),
+    sessions: (conversationId) => request(`/conversations/${conversationId}/study-sessions`),
+    startTimer: (conversationId, title) => request(`/conversations/${conversationId}/study-sessions/start`, { method: 'POST', body: { title } }),
+    pauseTimer: (conversationId, sessionId) => request(`/conversations/${conversationId}/study-sessions/${sessionId}/pause`, { method: 'POST' }),
+    resumeTimer: (conversationId, sessionId) => request(`/conversations/${conversationId}/study-sessions/${sessionId}/resume`, { method: 'POST' }),
+    stopTimer: (conversationId, sessionId) => request(`/conversations/${conversationId}/study-sessions/${sessionId}/stop`, { method: 'POST' }),
+    analytics: (conversationId) => request(`/conversations/${conversationId}/study-sessions/stats`),
+  },
+
   lobbies: {
     list: () => request('/lobbies'),
     get: (id) => request(`/lobbies/${id}`),
+    quiz: (id, playerId, reconnectToken) => request(`/lobbies/${id}/quiz?playerId=${encodeURIComponent(playerId)}&token=${encodeURIComponent(reconnectToken)}`),
     create: (payload) => request('/lobbies', { method: 'POST', body: payload }),
     join: (id, payload) => request(`/lobbies/${id}/join`, { method: 'POST', body: payload }),
     ready: (id, payload) => request(`/lobbies/${id}/ready`, { method: 'POST', body: payload }),

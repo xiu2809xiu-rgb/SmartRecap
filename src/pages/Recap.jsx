@@ -22,6 +22,11 @@ const QUIZ_LEVELS = [
   { value: 'medium', title: 'Medium', icon: 'psychology', body: 'Apply ideas, compare concepts, and reason through realistic situations.' },
   { value: 'hard', title: 'Hard', icon: 'local_fire_department', body: 'Gemini drafts, GPT-5.6 Sol refines, and OpenAI performs the final conceptual-quality audit.' },
 ];
+const QUIZ_TYPES = [
+  { value: 'single', label: 'Single', icon: 'radio_button_checked' },
+  { value: 'multi', label: 'Multi', icon: 'checklist' },
+  { value: 'short', label: 'Short', icon: 'edit_note' },
+];
 
 export default function Recap() {
   const { id } = useParams();
@@ -39,6 +44,7 @@ export default function Recap() {
   const [sharing, setSharing] = useState(false);
   const [quizDifficulty, setQuizDifficulty] = useState('medium');
   const [quizCount, setQuizCount] = useState(10);
+  const [quizTypes, setQuizTypes] = useState(['single']);
   const [quizBusy, setQuizBusy] = useState(false);
   const [imageBusy, setImageBusy] = useState(false);
   const [viewMode, setViewMode] = useState('recap');
@@ -146,6 +152,7 @@ export default function Recap() {
       const response = await api.quiz.generate(material.id, {
         difficulty: quizDifficulty,
         questionCount: quizCount,
+        questionTypes: quizTypes,
       });
       const optimisticQuiz = quizReady
         ? { ...quiz, generationStatus: 'generating', requestedDifficulty: quizDifficulty }
@@ -201,11 +208,11 @@ export default function Recap() {
           </Link>
           {quizReady && !quizGenerating ? (
             <>
-              <Link to={`/app/material/${material.id}/quiz`} className="btn btn-primary btn-sm">
+              <Link to={`/app/material/${material.id}/quiz?quizId=${encodeURIComponent(quiz.id)}`} className="btn btn-primary btn-sm">
                 <Icon name="person" size={17} />
                 Solo quiz
               </Link>
-              <Link to={`/app/material/${material.id}/match`} className="btn btn-ghost btn-sm">
+              <Link to={`/app/material/${material.id}/match?quizId=${encodeURIComponent(quiz.id)}`} className="btn btn-ghost btn-sm">
                 <Icon name="groups" size={17} />
                 <span className="action-label">Multiplayer</span>
               </Link>
@@ -442,24 +449,33 @@ export default function Recap() {
                 )}
 
                 <div className="quiz-builder-foot">
-                  <div className="quiz-count-picker">
-                    <span>Questions</span>
-                    {[5, 10, 15].map((count) => (
-                      <button
-                        key={count}
-                        type="button"
-                        className={quizCount === count ? 'is-on' : ''}
-                        onClick={() => setQuizCount(count)}
-                        disabled={quizGenerating || quizBusy}
-                        aria-pressed={quizCount === count}
-                      >
-                        {count}
-                      </button>
-                    ))}
+                  <div className="quiz-generation-options">
+                    <div className="quiz-count-picker">
+                      <span>Questions</span>
+                      {[5, 10, 15].map((count) => (
+                        <button
+                          key={count}
+                          type="button"
+                          className={quizCount === count ? 'is-on' : ''}
+                          onClick={() => setQuizCount(count)}
+                          disabled={quizGenerating || quizBusy}
+                          aria-pressed={quizCount === count}
+                        >
+                          {count}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="quiz-count-picker quiz-type-picker">
+                      <span>Types</span>
+                      {QUIZ_TYPES.map((type) => {
+                        const selected = quizTypes.includes(type.value);
+                        return <button key={type.value} type="button" className={selected ? 'is-on' : ''} aria-pressed={selected} title={type.label} disabled={quizGenerating || quizBusy} onClick={() => setQuizTypes((current) => selected ? (current.length === 1 ? current : current.filter((item) => item !== type.value)) : [...current, type.value])}><Icon name={type.icon} size={15} />{type.label}</button>;
+                      })}
+                    </div>
                   </div>
                   <div className="quiz-builder-actions">
                     {quizReady && (
-                      <Link to={playMode === 'match' ? `/app/material/${material.id}/match` : `/app/material/${material.id}/quiz`} className="btn btn-ghost">
+                      <Link to={playMode === 'match' ? `/app/material/${material.id}/match?quizId=${encodeURIComponent(quiz.id)}` : `/app/material/${material.id}/quiz?quizId=${encodeURIComponent(quiz.id)}`} className="btn btn-ghost">
                         <Icon name={playMode === 'match' ? 'groups' : 'play_arrow'} size={18} />
                         {playMode === 'match' ? 'Find a match' : 'Start solo quiz'}
                       </Link>

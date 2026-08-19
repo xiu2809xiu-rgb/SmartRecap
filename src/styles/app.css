@@ -232,7 +232,7 @@
     left: 0; right: 0; bottom: 0;
     z-index: 55;
     display: grid;
-    grid-template-columns: repeat(6, minmax(58px, 1fr));
+    grid-template-columns: repeat(8, minmax(46px, 1fr));
     background: rgba(11, 6, 22, 0.94);
     backdrop-filter: blur(18px);
     border-top: 1px solid var(--glass-line);

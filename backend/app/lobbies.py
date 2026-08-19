@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import secrets
 from datetime import datetime, timezone
-from typing import Dict, List, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 from fastapi import HTTPException, WebSocket
 
@@ -32,11 +32,12 @@ class LobbyStore:
         self._tokens: Dict[str, str] = {}
         self._passwords: Dict[str, Tuple[bytes, bytes]] = {}
         self._answers: Dict[str, Dict[str, Set[str]]] = {}
+        self._quiz_snapshots: Dict[str, Dict[str, Any]] = {}
         self._sockets: Dict[str, List[WebSocket]] = {}
         self._lock = asyncio.Lock()
 
     async def list_open(self) -> List[Lobby]:
-        return [lobby for lobby in self._lobbies.values() if lobby.status == "open"]
+        return [lobby for lobby in self._lobbies.values() if lobby.status == "open" and lobby.visibility == "public"]
 
     @staticmethod
     def _password_digest(password: str, salt: bytes) -> bytes:
@@ -55,12 +56,12 @@ class LobbyStore:
             raise HTTPException(status_code=404, detail="That lobby does not exist.")
         return lobby
 
-    async def create(self, request: LobbyCreate) -> LobbySession:
+    async def create(self, request: LobbyCreate, quiz_snapshot: Dict[str, Any]) -> LobbySession:
         if request.visibility == "private" and not request.password:
             raise HTTPException(status_code=422, detail="Private rooms require a password of at least 4 characters.")
         async with self._lock:
             lobby_id, player_id = secrets.token_urlsafe(5), secrets.token_urlsafe(8)
-            player = Player(id=player_id, name=request.host_name.strip(), is_host=True)
+            player = Player(id=player_id, name=request.host_name.strip(), avatar_id=request.avatar_id, is_host=True)
             lobby = Lobby(
                 id=lobby_id,
                 name=request.name.strip(),
@@ -76,6 +77,7 @@ class LobbyStore:
                 created_at=datetime.now(timezone.utc).isoformat(),
             )
             self._lobbies[lobby_id] = lobby
+            self._quiz_snapshots[lobby_id] = quiz_snapshot
             self._answers[lobby_id] = {player_id: set()}
             if request.visibility == "private" and request.password:
                 salt = secrets.token_bytes(16)
@@ -102,7 +104,7 @@ class LobbyStore:
             # something they did not choose and could not see.
             name = _unique_name(request.player_name.strip() or "Player", lobby.players)
             player_id, token = secrets.token_urlsafe(8), secrets.token_urlsafe(24)
-            lobby.players.append(Player(id=player_id, name=name))
+            lobby.players.append(Player(id=player_id, name=name, avatar_id=request.avatar_id))
             self._tokens[player_id] = token
             self._answers.setdefault(lobby_id, {})[player_id] = set()
         await self.broadcast(lobby_id)
@@ -113,6 +115,14 @@ class LobbyStore:
         if not lobby or self._tokens.get(player_id) != token or not any(player.id == player_id for player in lobby.players):
             raise HTTPException(status_code=403, detail="Invalid or expired lobby session.")
         return lobby
+
+    async def quiz_snapshot(self, lobby_id: str, player_id: str, token: str) -> Dict[str, Any]:
+        self._authorize(lobby_id, player_id, token)
+        snapshot = self._quiz_snapshots.get(lobby_id)
+        if not snapshot:
+            raise HTTPException(status_code=404, detail="This lobby quiz is unavailable.")
+        # This is the one selected immutable host snapshot, never a library query.
+        return {key: value for key, value in snapshot.items() if key != "ownerId"}
 
     async def set_ready(self, lobby_id: str, player_id: str, token: str, ready: bool) -> Lobby:
         async with self._lock:

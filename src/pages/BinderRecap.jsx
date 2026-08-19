@@ -27,6 +27,7 @@ export default function BinderRecap() {
   const { id } = useParams();
   const toast = useToast();
   const [binder, setBinder] = useState(null);
+  const [selectedSources, setSelectedSources] = useState([]);
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -44,9 +45,17 @@ export default function BinderRecap() {
     };
   }, [id]);
 
-  const chunks = useMemo(() => binder?.chunks ?? [], [binder]);
-  const sourcesSummary = binder?.sourcesSummary ?? [];
-  const singleSource = sourcesSummary.length <= 1;
+  const sourcesSummary = binder?.sourcesSummary ?? binder?.sourceProvenance ?? [];
+  useEffect(() => {
+    if (sourcesSummary.length) setSelectedSources((current) => current.length ? current : sourcesSummary.map((source) => source.sourceId));
+  }, [binder?.generatedAt, sourcesSummary.length]);
+  const selectedSet = useMemo(() => new Set(selectedSources), [selectedSources]);
+  const chunks = useMemo(() => (binder?.chunks ?? []).filter((chunk) => !chunk.sourceId || selectedSet.has(chunk.sourceId)), [binder, selectedSet]);
+  const singleSource = selectedSources.length <= 1;
+  const fromSelectedSource = (item) => {
+    const citations = item?.resolvedCitations ?? [];
+    return !citations.length || citations.some((citation) => selectedSet.has(citation.sourceId));
+  };
 
   const openSource = async (sourceId, page) => {
     try {
@@ -112,7 +121,7 @@ export default function BinderRecap() {
         <CitationProvider chunks={chunks}>
           <div className="reader-grid">
             <div className="reader-col">
-              {sourcesSummary.length > 0 && <SourcesStrip sources={sourcesSummary} />}
+              {sourcesSummary.length > 0 && <SourcesStrip sources={sourcesSummary} selected={selectedSources} onChange={setSelectedSources} />}
 
               <section className="tldr">
                 <h2 className="tldr-title">
@@ -131,7 +140,7 @@ export default function BinderRecap() {
                 <section key={section.id} className="recap-section">
                   <h2 className="recap-heading">{section.heading}</h2>
                   <ul className="claims">
-                    {section.points.map((p) => (
+                    {section.points.filter(fromSelectedSource).map((p) => (
                       <Claim
                         key={p.id}
                         id={p.id}
@@ -153,7 +162,7 @@ export default function BinderRecap() {
                 <section className="recap-section">
                   <h2 className="recap-heading">Key terms</h2>
                   <dl className="terms">
-                    {recap.keyTerms.map((t) => (
+                    {recap.keyTerms.filter(fromSelectedSource).map((t) => (
                       <div key={t.term} className="term">
                         <dt>{t.term}</dt>
                         <dd>
@@ -190,7 +199,7 @@ export default function BinderRecap() {
                     above.
                   </p>
                   <ol className="quiz-reference-list">
-                    {quiz.questions.map((q, i) => (
+                    {quiz.questions.filter(fromSelectedSource).map((q, i) => (
                       <li key={q.id} className={`quiz-reference-item ${q.unverified ? 'is-unverified' : ''}`}>
                         <p className="quiz-reference-prompt">
                           <span className="num">{i + 1}.</span> {q.prompt}
@@ -227,6 +236,14 @@ export default function BinderRecap() {
                       </li>
                     ))}
                   </ol>
+                </section>
+              )}
+
+              {(binder.providers?.length || quiz?.providers?.length) > 0 && (
+                <section className="recap-section provenance">
+                  <h2>Provider provenance</h2>
+                  <p className="dropped-lede">This generated recap keeps its provider record with the selected source provenance.</p>
+                  <div className="row wrap gap-2">{[...(binder.providers || []), ...(quiz?.providers || [])].map((provider, index) => <span className="chip" key={`${provider.model || provider.name}-${index}`}><Icon name="verified" size={14} />{provider.name || 'AI provider'}{provider.model ? ` · ${provider.model}` : ''}{provider.role ? ` · ${provider.role}` : ''}</span>)}</div>
                 </section>
               )}
 
@@ -271,36 +288,36 @@ export default function BinderRecap() {
  * failed — worth noticing before reading the recap, not after wondering why
  * a whole lecture never comes up.
  */
-function SourcesStrip({ sources }) {
+function SourcesStrip({ sources, selected, onChange }) {
   const total = sources.reduce((n, s) => n + s.citationCount, 0);
+  const toggle = (sourceId) => onChange(selected.includes(sourceId) ? selected.filter((id) => id !== sourceId) : [...selected, sourceId]);
   return (
-    <section className="sources-strip" aria-label="Sources in this binder">
+    <section className="sources-strip" aria-label="Filter recap by generated source provenance">
       <div className="sources-strip-head">
-        <h2>Sources</h2>
-        <span className="sources-strip-total">{total} citation{total === 1 ? '' : 's'} total</span>
+        <div><h2>Source filter</h2><span className="sources-strip-total">Showing {selected.length} of {sources.length} generated sources</span></div>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange(sources.map((source) => source.sourceId))}>Show all</button>
       </div>
       <ul className="sources-strip-list">
         {sources.map((s) => {
           const light = s.pageCount > 0 && s.citationCount / s.pageCount < 0.15;
+          const active = selected.includes(s.sourceId);
           return (
-            <li key={s.sourceId} className={`sources-strip-item ${light ? 'is-light' : ''}`}>
-              <Icon name="picture_as_pdf" size={16} />
-              <span className="truncate sources-strip-name" title={s.displayName}>
-                {s.displayName}
-              </span>
-              <span className="sources-strip-count num">
-                {s.citationCount} of {s.pageCount || '?'} page{s.pageCount === 1 ? '' : 's'} cited
-              </span>
+            <li key={s.sourceId} className={`sources-strip-item ${light ? 'is-light' : ''} ${active ? 'is-active' : ''}`}>
+              <button type="button" className="sources-strip-toggle" aria-pressed={active} onClick={() => toggle(s.sourceId)}>
+                <Icon name={active ? 'check_box' : 'check_box_outline_blank'} size={17} />
+                <span className="truncate sources-strip-name" title={s.displayName}>{s.displayName}</span>
+                <span className="sources-strip-count num">{s.citationCount} of {s.pageCount || '?'} page{s.pageCount === 1 ? '' : 's'} cited</span>
+              </button>
               {light && (
                 <span className="cite cite-missing sources-strip-flag" title="Few citations relative to page count — extraction may have missed most of this file.">
-                  <Icon name="warning" size={13} />
-                  Low coverage
+                  <Icon name="warning" size={13} />Low coverage
                 </span>
               )}
             </li>
           );
         })}
       </ul>
+      <p className="sources-strip-summary">{total} citations across the provenance saved with this generated recap. Filtering never regenerates or changes the source record.</p>
     </section>
   );
 }

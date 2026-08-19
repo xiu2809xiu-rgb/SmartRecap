@@ -154,10 +154,11 @@ export function MarketingShell({ children }) {
 
 const APP_LINKS = [
   { to: '/app', label: 'Library', icon: 'grid_view', end: true },
-  { to: '/app/binders', label: 'Binders', icon: 'folder' },
-  { to: '/app/upload', label: 'New recap', icon: 'add_circle' },
+  { to: '/app/binders', label: 'Binders', icon: 'folder', description: 'Combine and manage multiple source PDFs' },
+  { to: '/app/upload', label: 'New recap', icon: 'add_circle', description: 'Create a recap from one new upload' },
   { to: '/app/quizzes', label: 'Quizzes', icon: 'quiz' },
   { to: '/app/forum', label: 'Forum', icon: 'forum' },
+  { to: '/app/social', label: 'Social', icon: 'diversity_3' },
   { to: '/app/progress', label: 'Progress', icon: 'insights' },
 ];
 
@@ -191,7 +192,7 @@ export function AppShell() {
           <Brand to="/app" />
           <nav className="app-nav" aria-label="Main">
             {APP_LINKS.map((l) => (
-              <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => `app-link ${isActive ? 'is-on' : ''}`}>
+              <NavLink key={l.to} to={l.to} end={l.end} title={l.description} aria-label={l.description ? `${l.label}: ${l.description}` : l.label} className={({ isActive }) => `app-link ${isActive ? 'is-on' : ''}`}>
                 <Icon name={l.icon} size={18} />
                 {l.label}
               </NavLink>
@@ -252,7 +253,7 @@ export function AppShell() {
 
       <nav className="tabbar" aria-label="Main">
         {APP_LINKS.map((l) => (
-          <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => `tab ${isActive ? 'is-on' : ''}`}>
+          <NavLink key={l.to} to={l.to} end={l.end} title={l.description} aria-label={l.description ? `${l.label}: ${l.description}` : l.label} className={({ isActive }) => `tab ${isActive ? 'is-on' : ''}`}>
             <Icon name={l.icon} size={21} />
             <span>{l.label}</span>
           </NavLink>

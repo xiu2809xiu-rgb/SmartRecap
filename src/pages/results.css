@@ -137,3 +137,6 @@
   .results-leaderboard li { grid-template-columns: 32px 1fr auto; }
   .results-leaderboard li > small { display: none; }
 }
+
+.results-leaderboard li { grid-template-columns: 34px 30px 1fr auto auto; }
+@media (max-width: 620px) { .results-leaderboard li { grid-template-columns: 32px 30px 1fr auto; } }

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import re
 import secrets
@@ -11,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from starlette.concurrency import run_in_threadpool
 
 from .ai_service import generate_notebook_pack, generate_notebook_quiz
+from .auth import AuthenticatedRoute, OwnerMap, current_owner_id, register_owner_hydrator
 from .config import Settings
 from .models import Citation, SourceRecord
 from .repository import DurableRepository
@@ -20,10 +22,14 @@ from .ui_api import _citation_id, _jobs, _source_chunks
 logger = logging.getLogger("smartrecap.binders")
 ExtractSource = Callable[[bytes, str, str, bool], Awaitable[SourceRecord]]
 
-_binders: Dict[str, Dict[str, Any]] = {}
-_sources: Dict[str, Dict[str, Any]] = {}
-_uploads: Dict[str, bytes] = {}
+_binders: OwnerMap = OwnerMap()
+_sources: OwnerMap = OwnerMap()
+_uploads: OwnerMap = OwnerMap()
 _tasks: set[asyncio.Task] = set()
+_MAX_SELECTED_SOURCES = 50
+_MAX_SOURCE_ID_LENGTH = 128
+_MAX_NOTE_CHARACTERS = 100_000
+_MAX_NOTE_BODY_BYTES = 500_000
 
 
 def _now() -> str:
@@ -69,6 +75,56 @@ def _source_rows(binder_id: str) -> List[Dict[str, Any]]:
     )
 
 
+def _selection(rows: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    return [
+        {"sourceId": row["id"], "displayName": row["displayName"]}
+        for row in rows
+    ]
+
+
+def _parse_generation_source_ids(raw_body: bytes) -> Optional[List[str]]:
+    if not raw_body.strip():
+        return None
+    try:
+        body = json.loads(raw_body)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="The generation body must be valid JSON.") from exc
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=422, detail="The generation body must be a JSON object.")
+    if "sourceIds" not in body:
+        return None
+    source_ids = body["sourceIds"]
+    if not isinstance(source_ids, list) or not 1 <= len(source_ids) <= _MAX_SELECTED_SOURCES:
+        raise HTTPException(
+            status_code=422,
+            detail="sourceIds must contain between 1 and {} source IDs.".format(_MAX_SELECTED_SOURCES),
+        )
+    if any(
+        not isinstance(source_id, str)
+        or not source_id.strip()
+        or len(source_id) > _MAX_SOURCE_ID_LENGTH
+        for source_id in source_ids
+    ):
+        raise HTTPException(status_code=422, detail="Every source ID must be a non-empty bounded string.")
+    if len(source_ids) != len(set(source_ids)):
+        raise HTTPException(status_code=422, detail="sourceIds must not contain duplicates.")
+    return source_ids
+
+
+def _rename_source_references(value: Any, source_id: str, display_name: str) -> None:
+    if isinstance(value, dict):
+        if value.get("sourceId") == source_id:
+            if "displayName" in value:
+                value["displayName"] = display_name
+            if "sourceName" in value:
+                value["sourceName"] = display_name
+        for nested in value.values():
+            _rename_source_references(nested, source_id, display_name)
+    elif isinstance(value, list):
+        for nested in value:
+            _rename_source_references(nested, source_id, display_name)
+
+
 def _resolved(citation: Citation, chunks: List[Dict[str, Any]], names: Dict[str, str]) -> Tuple[str, Dict[str, Any]]:
     chunk_id = _citation_id(citation, chunks)
     chunk = next((item for item in chunks if item["id"] == chunk_id), chunks[0])
@@ -79,13 +135,16 @@ def _resolved(citation: Citation, chunks: List[Dict[str, Any]], names: Dict[str,
     }
 
 
-def _binder_result(binder: Dict[str, Any], records: List[SourceRecord], pack, quiz_pack, providers) -> Dict[str, Any]:
+def _binder_result(
+    binder: Dict[str, Any],
+    records: List[SourceRecord],
+    selected_sources: List[Dict[str, str]],
+    pack,
+    quiz_pack,
+    providers,
+) -> Dict[str, Any]:
     chunks = [chunk for record in records for chunk in _source_chunks(record)]
-    names = {
-        source["id"]: source["displayName"]
-        for source in _source_rows(binder["id"])
-        if source.get("status") == "ready"
-    }
+    names = {item["sourceId"]: item["displayName"] for item in selected_sources}
     citation_counts = {source_id: 0 for source_id in names}
     point_number = 0
 
@@ -168,39 +227,62 @@ def _binder_result(binder: Dict[str, Any], records: List[SourceRecord], pack, qu
         },
         "chunks": chunks,
         "sourcesSummary": summaries,
+        "sourceIds": [item["sourceId"] for item in selected_sources],
+        "sourceSelection": deepcopy(selected_sources),
+        "providers": deepcopy(getattr(pack, "providers", [])),
     }
 
 
 def build_binder_router(extract_source: ExtractSource, settings: Settings) -> APIRouter:
-    router = APIRouter(prefix="/api")
+    router = APIRouter(prefix="/api", route_class=AuthenticatedRoute)
     storage = ObjectStorage(settings)
     repository = DurableRepository(settings, storage)
     max_bytes = settings.max_file_mb * 1024 * 1024
+    loaded_owners: set[str] = set()
 
-    if repository.ready:
-        for item in repository.load_kind("binder"):
-            if isinstance(item.get("value"), dict):
-                _binders[item["id"]] = item["value"]
-        for item in repository.load_kind("binder_source"):
-            if isinstance(item.get("value"), dict):
-                _sources[item["id"]] = item["value"]
+    async def hydrate_owner(owner_id: str) -> None:
+        if owner_id in loaded_owners:
+            return
+        if repository.ready:
+            for kind, target in (("binder", _binders), ("binder_source", _sources)):
+                for item in await run_in_threadpool(repository.load_kind, owner_id, kind):
+                    if isinstance(item.get("value"), dict):
+                        target.owner_data(owner_id)[item["id"]] = item["value"]
+        loaded_owners.add(owner_id)
+
+    register_owner_hydrator(hydrate_owner)
 
     async def persist(kind: str, record_id: str, value: Any) -> None:
+        owner_id = current_owner_id()
+        if isinstance(value, dict):
+            value["ownerId"] = owner_id
         if repository.ready:
-            await run_in_threadpool(repository.save, kind, record_id, value)
+            await run_in_threadpool(repository.save, owner_id, kind, record_id, deepcopy(value))
 
     async def remove(kind: str, record_id: str) -> None:
         if repository.ready:
-            await run_in_threadpool(repository.delete, kind, record_id)
+            await run_in_threadpool(repository.delete, current_owner_id(), kind, record_id)
 
     async def save_binder(binder: Dict[str, Any]) -> None:
         binder["updatedAt"] = _now()
         binder["sourceCount"] = len(_source_rows(binder["id"]))
         await persist("binder", binder["id"], binder)
 
-    async def invalidate(binder_id: str) -> None:
+    async def invalidate(binder_id: str, source_id: Optional[str] = None) -> None:
         binder = _require_binder(binder_id)
-        for key, default in (("recap", None), ("quiz", None), ("chunks", []), ("sourcesSummary", []), ("generatedAt", None)):
+        generated_source_ids = binder.get("sourceIds")
+        if source_id is not None and isinstance(generated_source_ids, list) and source_id not in generated_source_ids:
+            await save_binder(binder)
+            return
+        for key, default in (
+            ("recap", None),
+            ("quiz", None),
+            ("chunks", []),
+            ("sourcesSummary", []),
+            ("sourceIds", []),
+            ("sourceSelection", []),
+            ("generatedAt", None),
+        ):
             binder[key] = default
         await save_binder(binder)
 
@@ -235,7 +317,7 @@ def build_binder_router(extract_source: ExtractSource, settings: Settings) -> AP
                 _record=record.model_dump(),
             )
             await persist("binder_source", source_id, source)
-            await invalidate(source["binderId"])
+            await invalidate(source["binderId"], source_id)
         except Exception as exc:
             logger.warning("Binder source extraction failed source=%s error=%s", source_id, exc)
             source.update(status="failed", errorMessage=str(exc)[:500])
@@ -246,14 +328,20 @@ def build_binder_router(extract_source: ExtractSource, settings: Settings) -> AP
         _tasks.add(task)
         task.add_done_callback(_tasks.discard)
 
-    async def run_generation(job_id: str, binder_id: str) -> None:
+    async def run_generation(job_id: str, binder_id: str, source_ids: List[str]) -> None:
         job = _jobs[job_id]
         try:
             binder = _require_binder(binder_id)
-            rows = [row for row in _source_rows(binder_id) if row.get("status") == "ready" and row.get("_record")]
+            rows = [_require_source(source_id, binder_id) for source_id in source_ids]
+            unavailable = next(
+                (row for row in rows if row.get("status") != "ready" or not row.get("_record")),
+                None,
+            )
+            if unavailable:
+                raise ValueError("A selected source is no longer ready; choose ready sources and try again.")
             records = [SourceRecord.model_validate(row["_record"]) for row in rows]
-            if not records:
-                raise ValueError("Add at least one processed source before generating a recap.")
+            selected_sources = _selection(rows)
+            job["sourceSelection"] = deepcopy(selected_sources)
             job.update(stage="read", progress=10, stageLabel="Reading your sources")
             pack = await run_in_threadpool(generate_notebook_pack, records, binder["name"], "deep", settings)
             job.update(stage="ground", progress=72, stageLabel="Checking every claim against its source")
@@ -264,7 +352,7 @@ def build_binder_router(extract_source: ExtractSource, settings: Settings) -> AP
                 )
             except Exception as exc:
                 logger.info("Binder quiz skipped; recap remains available: %s", exc)
-            result = _binder_result(binder, records, pack, quiz_pack, providers)
+            result = _binder_result(binder, records, selected_sources, pack, quiz_pack, providers)
             binder.update(result, generatedAt=_now())
             await save_binder(binder)
             job.update(status="ready", stage="done", progress=100, stageLabel="Binder recap ready")
@@ -272,8 +360,8 @@ def build_binder_router(extract_source: ExtractSource, settings: Settings) -> AP
             logger.warning("Binder generation failed binder=%s error=%s", binder_id, exc)
             job.update(status="failed", stage="failed", error=str(exc)[:500], stageLabel="Binder generation failed")
 
-    def dispatch_generation(job_id: str, binder_id: str) -> None:
-        task = asyncio.create_task(run_generation(job_id, binder_id))
+    def dispatch_generation(job_id: str, binder_id: str, source_ids: List[str]) -> None:
+        task = asyncio.create_task(run_generation(job_id, binder_id, source_ids))
         _tasks.add(task)
         task.add_done_callback(_tasks.discard)
 
@@ -297,6 +385,7 @@ def build_binder_router(extract_source: ExtractSource, settings: Settings) -> AP
         binder_id, now = _id("binder"), _now()
         binder = {
             "id": binder_id,
+            "ownerId": current_owner_id(),
             "name": name,
             "isFavourite": False,
             "sourceCount": 0,
@@ -304,6 +393,8 @@ def build_binder_router(extract_source: ExtractSource, settings: Settings) -> AP
             "quiz": None,
             "chunks": [],
             "sourcesSummary": [],
+            "sourceIds": [],
+            "sourceSelection": [],
             "generatedAt": None,
             "createdAt": now,
             "updatedAt": now,
@@ -346,7 +437,7 @@ def build_binder_router(extract_source: ExtractSource, settings: Settings) -> AP
             raise HTTPException(status_code=409, detail="Wait for active Binder processing to finish before deleting it.")
         try:
             for source in rows:
-                if storage.ready:
+                if storage.ready and source.get("sourceType") != "text":
                     await run_in_threadpool(storage.delete_key, storage.upload_key(source["id"]))
                 await remove("binder_source", source["id"])
             await remove("binder", binder_id)
@@ -363,6 +454,63 @@ def build_binder_router(extract_source: ExtractSource, settings: Settings) -> AP
         _require_binder(binder_id)
         return [_public_source(source) for source in _source_rows(binder_id)]
 
+
+    @router.post("/binders/{binder_id}/sources/text", status_code=201)
+    async def create_text_source(binder_id: str, request: Request) -> Dict[str, Any]:
+        binder = _require_binder(binder_id)
+        if len(_source_rows(binder_id)) >= 50:
+            raise HTTPException(status_code=422, detail="A binder can contain at most 50 sources.")
+        raw_body = await request.body()
+        if len(raw_body) > _MAX_NOTE_BODY_BYTES:
+            raise HTTPException(status_code=413, detail="The text source body is too large.")
+        try:
+            body = json.loads(raw_body)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail="The text source body must be valid JSON.") from exc
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=422, detail="The text source body must be a JSON object.")
+        title = body.get("title")
+        text = body.get("text")
+        if not isinstance(title, str) or not 1 <= len(title.strip()) <= 200:
+            raise HTTPException(status_code=422, detail="A note title between 1 and 200 characters is required.")
+        if not isinstance(text, str) or not 1 <= len(text.strip()) <= _MAX_NOTE_CHARACTERS:
+            raise HTTPException(
+                status_code=422,
+                detail="Note text must contain between 1 and {} characters.".format(_MAX_NOTE_CHARACTERS),
+            )
+        title, text = title.strip(), text.strip()
+        source_id = _id("src")
+        filename = "{}.txt".format(re.sub(r"[^A-Za-z0-9._ -]", "_", title)[:200])
+        encoded = text.encode("utf-8")
+        record = SourceRecord(
+            id=source_id,
+            filename=filename,
+            content_type="text/plain",
+            size=len(encoded),
+            text=text,
+            labels=["Note"],
+            status="ready",
+        )
+        source = {
+            "id": source_id,
+            "ownerId": current_owner_id(),
+            "binderId": binder_id,
+            "displayName": title,
+            "originalFilename": filename,
+            "contentType": "text/plain",
+            "sourceType": "text",
+            "pageCount": 1,
+            "sizeBytes": len(encoded),
+            "status": "ready",
+            "extractionMethod": "Plain text",
+            "errorMessage": None,
+            "uploadedAt": _now(),
+            "_record": record.model_dump(),
+        }
+        _sources[source_id] = source
+        await persist("binder_source", source_id, source)
+        await invalidate(binder["id"], source_id)
+        return _public_source(source)
 
     @router.post("/binders/{binder_id}/sources", status_code=201)
     async def create_sources(binder_id: str, request: Request) -> Dict[str, Any]:
@@ -394,9 +542,12 @@ def build_binder_router(extract_source: ExtractSource, settings: Settings) -> AP
             source_id = _id("src")
             source = {
                 "id": source_id,
+                "ownerId": current_owner_id(),
                 "binderId": binder_id,
                 "displayName": re.sub(r"\.pdf$", "", filename, flags=re.IGNORECASE),
                 "originalFilename": Path(filename).name,
+                "contentType": "application/pdf",
+                "sourceType": "pdf",
                 "pageCount": 0,
                 "sizeBytes": size,
                 "status": "pending",
@@ -470,12 +621,18 @@ def build_binder_router(extract_source: ExtractSource, settings: Settings) -> AP
         display_name = str((await request.json()).get("displayName", "")).strip()
         if not 1 <= len(display_name) <= 200:
             raise HTTPException(status_code=422, detail="A source name between 1 and 200 characters is required.")
+        if any(
+            job.get("kind") == "binder"
+            and job.get("binderId") == source["binderId"]
+            and job.get("status") == "running"
+            and (not isinstance(job.get("sourceIds"), list) or source_id in job["sourceIds"])
+            for job in _jobs.values()
+        ):
+            raise HTTPException(status_code=409, detail="Wait for generation using this source to finish before renaming it.")
         source["displayName"] = display_name
         await persist("binder_source", source_id, source)
         binder = _require_binder(source["binderId"])
-        for summary in binder.get("sourcesSummary", []):
-            if summary.get("sourceId") == source_id:
-                summary["displayName"] = display_name
+        _rename_source_references(binder, source_id, display_name)
         await save_binder(binder)
         return _public_source(source)
 
@@ -484,7 +641,15 @@ def build_binder_router(extract_source: ExtractSource, settings: Settings) -> AP
         source = _require_source(source_id)
         if source.get("status") == "processing":
             raise HTTPException(status_code=409, detail="Wait for source processing to finish before deleting it.")
-        if storage.ready:
+        if any(
+            job.get("kind") == "binder"
+            and job.get("binderId") == source["binderId"]
+            and job.get("status") == "running"
+            and (not isinstance(job.get("sourceIds"), list) or source_id in job["sourceIds"])
+            for job in _jobs.values()
+        ):
+            raise HTTPException(status_code=409, detail="Wait for generation using this source to finish before deleting it.")
+        if storage.ready and source.get("sourceType") != "text":
             try:
                 await run_in_threadpool(storage.delete_key, storage.upload_key(source_id))
             except Exception as exc:
@@ -492,7 +657,7 @@ def build_binder_router(extract_source: ExtractSource, settings: Settings) -> AP
         await remove("binder_source", source_id)
         _sources.pop(source_id, None)
         _uploads.pop(source_id, None)
-        await invalidate(source["binderId"])
+        await invalidate(source["binderId"], source_id)
         return Response(status_code=204)
 
     @router.get("/sources/{source_id}/download")
@@ -505,8 +670,19 @@ def build_binder_router(extract_source: ExtractSource, settings: Settings) -> AP
     @router.get("/sources/{source_id}/content")
     async def source_content(source_id: str) -> Response:
         source = _require_source(source_id)
-        content = await source_bytes(source)
         safe_name = re.sub(r"[^A-Za-z0-9._ -]", "_", source["originalFilename"])
+        if source.get("sourceType") == "text":
+            record = SourceRecord.model_validate(source.get("_record", {}))
+            return Response(
+                content=record.text.encode("utf-8"),
+                media_type="text/plain; charset=utf-8",
+                headers={
+                    "Content-Disposition": 'inline; filename="{}"'.format(safe_name),
+                    "X-Content-Type-Options": "nosniff",
+                    "Cache-Control": "private, no-store",
+                },
+            )
+        content = await source_bytes(source)
         return Response(
             content=content,
             media_type="application/pdf",
@@ -518,27 +694,49 @@ def build_binder_router(extract_source: ExtractSource, settings: Settings) -> AP
         )
 
     @router.post("/binders/{binder_id}/generate", status_code=202)
-    async def generate_binder(binder_id: str) -> Dict[str, str]:
+    async def generate_binder(binder_id: str, request: Request) -> Dict[str, Any]:
         _require_binder(binder_id)
-        if not any(source.get("status") == "ready" for source in _source_rows(binder_id)):
+        raw_body = await request.body()
+        if len(raw_body) > 16_384:
+            raise HTTPException(status_code=413, detail="The generation request body is too large.")
+        requested_source_ids = _parse_generation_source_ids(raw_body)
+        if requested_source_ids is None:
+            rows = [source for source in _source_rows(binder_id) if source.get("status") == "ready"]
+        else:
+            rows = [_require_source(source_id, binder_id) for source_id in requested_source_ids]
+            if any(source.get("status") != "ready" for source in rows):
+                raise HTTPException(status_code=409, detail="Every selected source must be ready before generation.")
+        if not rows:
             raise HTTPException(status_code=422, detail="Add at least one processed source before generating a recap.")
+        if any(not source.get("_record") for source in rows):
+            raise HTTPException(status_code=409, detail="A selected source is not available for generation yet.")
         if any(
             job.get("kind") == "binder" and job.get("binderId") == binder_id and job.get("status") == "running"
             for job in _jobs.values()
         ):
             raise HTTPException(status_code=409, detail="A recap is already being generated for this binder.")
+        source_ids = [source["id"] for source in rows]
+        selected_sources = _selection(rows)
         job_id = _id("job")
         _jobs[job_id] = {
             "id": job_id,
+            "ownerId": current_owner_id(),
             "kind": "binder",
             "binderId": binder_id,
+            "sourceIds": list(source_ids),
+            "sourceSelection": deepcopy(selected_sources),
             "status": "running",
             "stage": "queued",
             "stageLabel": "Starting binder recap",
             "progress": 0,
             "log": [],
         }
-        dispatch_generation(job_id, binder_id)
-        return {"jobId": job_id, "binderId": binder_id}
+        dispatch_generation(job_id, binder_id, source_ids)
+        return {
+            "jobId": job_id,
+            "binderId": binder_id,
+            "sourceIds": source_ids,
+            "sourceSelection": selected_sources,
+        }
 
     return router

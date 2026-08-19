@@ -34,6 +34,7 @@ const Results = lazy(() => import('./pages/Results.jsx'));
 const Flashcards = lazy(() => import('./pages/Flashcards.jsx'));
 const Quizzes = lazy(() => import('./pages/Quizzes.jsx'));
 const Forum = lazy(() => import('./pages/Forum.jsx'));
+const Social = lazy(() => import('./pages/Social.jsx'));
 const Progress = lazy(() => import('./pages/Progress.jsx'));
 const Settings = lazy(() => import('./pages/Settings.jsx'));
 const SharedRecap = lazy(() => import('./pages/SharedRecap.jsx'));
@@ -106,6 +107,7 @@ export default function App() {
               <Route path="processing/:jobId" element={<Processing />} />
               <Route path="quizzes" element={<Quizzes />} />
               <Route path="forum" element={<Forum />} />
+              <Route path="social" element={<Social />} />
               <Route path="progress" element={<Progress />} />
               <Route path="settings" element={<Settings />} />
             </Route>

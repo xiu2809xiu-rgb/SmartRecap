@@ -30,7 +30,7 @@ export default function Login() {
       await login(form);
       go();
     } catch (err) {
-      setError(err.status === 401 ? 'That email and password do not match an account.' : (err.message ?? 'Sign in failed.'));
+      setError(err.status === 401 ? 'We couldn’t sign you in with those details. Check your email and password, or create an account.' : (err.message ?? 'Sign in failed.'));
     } finally {
       setBusy(false);
     }

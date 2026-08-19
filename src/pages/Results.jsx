@@ -7,6 +7,7 @@ import { enableCompletionNotifications } from '../lib/notifications.js';
 import { usePrefs } from '../lib/prefs.jsx';
 import { StudyShell } from '../components/layout/Shells.jsx';
 import { Icon, Spinner, Empty, useToast } from '../components/ui.jsx';
+import { MatchAvatar } from '../components/MatchAvatar.jsx';
 import { ScoreRing, MasteryBars } from '../components/charts/Charts.jsx';
 import Mascot from '../mascot/Mascot.jsx';
 import CountUp from '../reactbits/CountUp.jsx';
@@ -69,9 +70,12 @@ export default function Results() {
       const requested = Math.max(5, Math.min(15, weakTopics.length * 5));
       const questionCount = requested <= 5 ? 5 : requested <= 10 ? 10 : 15;
       const difficulty = ['easy', 'medium', 'hard'].includes(shown.difficulty) ? shown.difficulty : 'medium';
+      const sourceQuestions = shown.questions ?? material?.quiz?.questions ?? [];
+      const questionTypes = [...new Set(sourceQuestions.map(questionType))];
       const response = await api.quiz.generate(id, {
         difficulty,
         questionCount,
+        questionTypes: questionTypes.length ? questionTypes : ['single'],
         topics: weakTopics.map((topic) => topic.topic),
         fresh: true,
       });
@@ -245,7 +249,7 @@ export default function Results() {
             </div>
             <ol className="results-leaderboard">
               {[...(matchLobby?.players || [])].sort((a, b) => (b.score || 0) - (a.score || 0)).map((player, index) => (
-                <li key={player.id}><span>{index + 1}</span><strong>{player.name}</strong><small>{player.submitted ? `${player.accuracy ?? 0}% accuracy` : `${player.answered || 0} answered`}</small><b>{player.submitted ? `${Number(player.score || 0).toLocaleString()} pts` : '—'}</b></li>
+                <li key={player.id}><span>{index + 1}</span><MatchAvatar avatarId={player.avatarId ?? player.avatar_id} size="sm" label={`${player.name}'s avatar`} /><strong>{player.name}</strong><small>{player.submitted ? `${player.accuracy ?? 0}% accuracy` : `${player.answered || 0} answered`}</small><b>{player.submitted ? `${Number(player.score || 0).toLocaleString()} pts` : '—'}</b></li>
               ))}
             </ol>
           </section>

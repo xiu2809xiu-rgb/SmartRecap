@@ -1,6 +1,6 @@
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Citation(BaseModel):
@@ -29,13 +29,59 @@ class TopicSection(BaseModel):
 
 
 class QuizQuestion(BaseModel):
+    """Grounded question contract; absent ``type`` remains legacy single-select."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    type: Literal["single", "multi", "short"] = "single"
     topic: str
     prompt: str
-    options: List[str] = Field(min_length=4, max_length=4)
-    answer: int = Field(ge=0, le=3)
+    options: List[str] = Field(default_factory=list, max_length=6)
+    answer: Optional[Union[int, List[int]]] = None
+    model_answer: Optional[str] = Field(default=None, min_length=1, max_length=2000, alias="modelAnswer")
+    key_concepts: List[str] = Field(default_factory=list, max_length=8, alias="keyConcepts")
+    rubric: Optional[str] = Field(default=None, max_length=1000)
     explanation: str
     verified: bool = True
     citation: Citation
+
+    @model_validator(mode="after")
+    def validate_type_contract(self):
+        if self.type in {"single", "multi"}:
+            if not 2 <= len(self.options) <= 6:
+                raise ValueError("Objective questions require 2 to 6 options")
+            if len({_normalized_text(item) for item in self.options}) != len(self.options):
+                raise ValueError("Objective question options must be unique")
+            if self.type == "single":
+                if isinstance(self.answer, bool) or not isinstance(self.answer, int) or not 0 <= self.answer < len(self.options):
+                    raise ValueError("Single-select answer must be one valid option index")
+            else:
+                if not isinstance(self.answer, list) or len(self.answer) < 2:
+                    raise ValueError("Multi-select answer must contain at least two option indexes")
+                if any(isinstance(item, bool) or not isinstance(item, int) or not 0 <= item < len(self.options) for item in self.answer):
+                    raise ValueError("Multi-select answer contains an invalid option index")
+                if len(set(self.answer)) != len(self.answer):
+                    raise ValueError("Multi-select answer indexes must be unique")
+                self.answer = sorted(self.answer)
+            if self.model_answer is not None or self.key_concepts or self.rubric is not None:
+                raise ValueError("Objective questions cannot include short-answer grading fields")
+        else:
+            if self.options or self.answer is not None:
+                raise ValueError("Short-answer questions cannot include options or an objective answer")
+            if not self.model_answer or not self.model_answer.strip():
+                raise ValueError("Short-answer questions require modelAnswer")
+            concepts = [item.strip() for item in self.key_concepts if item.strip()]
+            concepts = list(dict.fromkeys(_normalized_text(item) for item in concepts))
+            if not 1 <= len(concepts) <= 8:
+                raise ValueError("Short-answer questions require 1 to 8 unique keyConcepts")
+            self.key_concepts = concepts
+            if not self.rubric or not self.rubric.strip():
+                raise ValueError("Short-answer questions require a grading rubric")
+        return self
+
+
+def _normalized_text(value: str) -> str:
+    return " ".join(str(value).casefold().split())
 
 
 class QuizPack(BaseModel):
@@ -56,7 +102,15 @@ class QuizGenerationRequest(BaseModel):
     difficulty: Literal["easy", "medium", "hard"]
     question_count: Literal[5, 10, 15] = Field(alias="questionCount")
     topics: List[str] = Field(default_factory=list, max_length=12)
+    question_types: List[Literal["single", "multi", "short"]] = Field(default_factory=lambda: ["single"], alias="questionTypes")
     fresh: bool = False
+
+    @field_validator("question_types")
+    @classmethod
+    def normalize_question_types(cls, value: List[str]) -> List[str]:
+        if not value:
+            return ["single"]
+        return list(dict.fromkeys(value))
 
     @field_validator("topics")
     @classmethod
@@ -95,6 +149,7 @@ class StudyPack(BaseModel):
     topics: List[TopicSection] = Field(min_length=2, max_length=12)
     quiz: List[QuizQuestion] = Field(default_factory=list, max_length=15)
     warnings: List[str] = Field(default_factory=list)
+    providers: List[Dict[str, str]] = Field(default_factory=list)
 
     @field_validator("quiz")
     @classmethod
@@ -103,6 +158,22 @@ class StudyPack(BaseModel):
         if len(prompts) != len(set(prompts)):
             raise ValueError("Quiz questions must be unique")
         return value
+
+
+_ALLOWED_AVATAR_IDS = {
+    # Current semantic IDs used by the React picker. Keep the legacy values so
+    # older room/session payloads continue to load safely after this release.
+    "nova", "orbit", "spark", "sage", "pixel", "comet",
+    "default", "avatar-1", "avatar-2", "avatar-3", "avatar-4",
+    "avatar-5", "avatar-6", "avatar-7", "avatar-8",
+}
+
+
+def _validate_avatar_id(value: str) -> str:
+    avatar_id = str(value or "default").strip().casefold()
+    if avatar_id not in _ALLOWED_AVATAR_IDS:
+        raise ValueError("avatarId is not one of the supported avatars")
+    return avatar_id
 
 
 class LobbyCreate(BaseModel):
@@ -122,6 +193,12 @@ class LobbyCreate(BaseModel):
     visibility: Literal["public", "private"] = "public"
     password: Optional[str] = Field(default=None, min_length=4, max_length=64)
     question_count: int = Field(default=0, ge=0, le=50, alias="questionCount")
+    avatar_id: str = Field(default="default", alias="avatarId")
+
+    @field_validator("avatar_id")
+    @classmethod
+    def validate_avatar_id(cls, value: str) -> str:
+        return _validate_avatar_id(value)
 
     @field_validator("password")
     @classmethod
@@ -134,11 +211,20 @@ class LobbyJoin(BaseModel):
 
     player_name: str = Field(min_length=2, max_length=24, alias="playerName")
     password: Optional[str] = Field(default=None, max_length=64)
+    avatar_id: str = Field(default="default", alias="avatarId")
+
+    @field_validator("avatar_id")
+    @classmethod
+    def validate_avatar_id(cls, value: str) -> str:
+        return _validate_avatar_id(value)
 
 
 class Player(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     id: str
     name: str
+    avatar_id: str = Field(default="default", alias="avatarId")
     score: int = 0
     ready: bool = False
     submitted: bool = False

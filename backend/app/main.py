@@ -12,18 +12,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
 from .ai_service import answer_notebook_question, generate_notebook_pack, generate_study_pack
+from .auth import AuthenticatedRoute, current_owner_id
 from .binder_api import build_binder_router
 from .config import get_settings
 from .extractors import ExtractionError, extract_locally, extract_with_azure, extract_with_local_ocr, extract_with_math_ocr, local_ocr_available, math_ocr_available, merge_extracted_text, paddle_ocr_available, validate_file
 from .lobbies import store
 from .models import HealthResponse, Lobby, LobbyAction, LobbyAnswerAction, LobbyCreate, LobbyJoin, LobbyScoreAction, LobbySession, NotebookChatRequest, NotebookChatResponse, NotebookCreate, NotebookRecord, SourceBatchResponse, SourceRecord, StudyPack
 from .notebooks import notebook_store
-from .ui_api import build_ui_router
+from .social_api import build_social_router
+from .ui_api import build_ui_router, owned_quiz_snapshot
 
 settings = get_settings()
 logger = logging.getLogger("smartrecap")
 _ocr_process_pool = ProcessPoolExecutor(max_workers=2, mp_context=get_context("spawn"))
 app = FastAPI(title="SmartRecap API", version="1.0.0", docs_url="/api/docs", redoc_url=None)
+app.router.route_class = AuthenticatedRoute
 app.add_middleware(CORSMiddleware, allow_origins=settings.allowed_origins, allow_credentials=False, allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"], allow_headers=["Content-Type", "Authorization"])
 
 
@@ -47,7 +50,7 @@ async def health() -> HealthResponse:
     if settings.s3_bucket.strip():
         extractors.append("Amazon S3 object storage")
     if settings.table_name.strip():
-        extractors.append("Amazon DynamoDB shared state")
+        extractors.append("Amazon DynamoDB owner-partitioned state")
     return HealthResponse(
         status="ok",
         ai_configured=settings.gemini_ready,
@@ -140,6 +143,7 @@ async def _extract_source_async(content: bytes, filename: str, content_type: str
 
 app.include_router(build_ui_router(_extract_source_async, settings))
 app.include_router(build_binder_router(_extract_source_async, settings))
+app.include_router(build_social_router(settings))
 
 
 @app.post("/api/recaps", response_model=StudyPack)
@@ -181,7 +185,13 @@ async def get_lobby(lobby_id: str) -> Lobby:
 
 @app.post("/api/lobbies", response_model=LobbySession, status_code=201)
 async def create_lobby(request: LobbyCreate) -> LobbySession:
-    return await store.create(request)
+    snapshot = owned_quiz_snapshot(request.material_id, request.quiz_id)
+    return await store.create(request, snapshot)
+
+
+@app.get("/api/lobbies/{lobby_id}/quiz")
+async def get_lobby_quiz(lobby_id: str, playerId: str, token: str) -> dict:
+    return await store.quiz_snapshot(lobby_id, playerId, token)
 
 
 @app.post("/api/lobbies/{lobby_id}/join", response_model=LobbySession)
@@ -222,25 +232,26 @@ async def lobby_socket(websocket: WebSocket, lobby_id: str, player_id: str, toke
 
 @app.post("/api/notebooks", response_model=NotebookRecord, status_code=201)
 async def create_notebook(request: NotebookCreate) -> NotebookRecord:
-    return await notebook_store.create(request)
+    return await notebook_store.create(current_owner_id(), request)
 
 
 @app.get("/api/notebooks", response_model=List[NotebookRecord])
 async def list_notebooks() -> List[NotebookRecord]:
-    return await notebook_store.list()
+    return await notebook_store.list(current_owner_id())
 
 
 @app.get("/api/notebooks/{notebook_id}", response_model=NotebookRecord)
 async def get_notebook(notebook_id: str) -> NotebookRecord:
-    return await notebook_store.get(notebook_id)
+    return await notebook_store.get(current_owner_id(), notebook_id)
 
 
 @app.post("/api/notebooks/{notebook_id}/sources", response_model=SourceBatchResponse)
 async def add_notebook_sources(notebook_id: str, files: List[UploadFile] = File(...)) -> SourceBatchResponse:
     if not files or len(files) > 20:
         raise HTTPException(status_code=422, detail="Upload between 1 and 20 files at a time.")
-    notebook = await notebook_store.get(notebook_id)
-    existing = await notebook_store.source_records(notebook_id)
+    owner_id = current_owner_id()
+    notebook = await notebook_store.get(owner_id, notebook_id)
+    existing = await notebook_store.source_records(owner_id, notebook_id)
     if len(existing) + len(files) > 20:
         raise HTTPException(status_code=422, detail="A notebook can contain up to 20 sources.")
     sources, errors = [], []
@@ -269,20 +280,21 @@ async def add_notebook_sources(notebook_id: str, files: List[UploadFile] = File(
             await upload.close()
     if not sources:
         raise HTTPException(status_code=422, detail=" ".join(errors) or "No sources could be processed.")
-    updated_notebook = await notebook_store.add_sources(notebook_id, sources)
+    updated_notebook = await notebook_store.add_sources(owner_id, notebook_id, sources)
     added_ids = {source.id for source in sources}
     return SourceBatchResponse(notebook=updated_notebook, added=[source for source in updated_notebook.sources if source.id in added_ids], errors=errors)
 
 
 @app.post("/api/notebooks/{notebook_id}/recap", response_model=StudyPack)
 async def generate_notebook_recap(notebook_id: str) -> StudyPack:
-    notebook = await notebook_store.get(notebook_id)
-    sources = await notebook_store.source_records(notebook_id)
+    owner_id = current_owner_id()
+    notebook = await notebook_store.get(owner_id, notebook_id)
+    sources = await notebook_store.source_records(owner_id, notebook_id)
     if not sources:
         raise HTTPException(status_code=422, detail="Add at least one readable source first.")
     try:
         pack = await asyncio.wait_for(run_in_threadpool(generate_notebook_pack, sources, notebook.title, notebook.mode, settings), timeout=settings.ai_timeout_seconds + 30)
-        await notebook_store.save_recap(notebook_id, pack)
+        await notebook_store.save_recap(owner_id, notebook_id, pack)
         return pack
     except asyncio.TimeoutError as exc:
         raise HTTPException(status_code=504, detail="Study-pack synthesis exceeded its safety time limit. Your extracted sources are preserved; retry generation.") from exc
@@ -294,7 +306,7 @@ async def generate_notebook_recap(notebook_id: str) -> StudyPack:
 
 @app.post("/api/notebooks/{notebook_id}/chat", response_model=NotebookChatResponse)
 async def chat_with_notebook(notebook_id: str, request: NotebookChatRequest) -> NotebookChatResponse:
-    sources = await notebook_store.source_records(notebook_id)
+    sources = await notebook_store.source_records(current_owner_id(), notebook_id)
     if not sources:
         raise HTTPException(status_code=422, detail="This notebook has no readable sources.")
     try:
