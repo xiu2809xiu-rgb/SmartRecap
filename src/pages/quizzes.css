@@ -195,3 +195,16 @@
   .question-fields { grid-template-columns: 1fr; }
 }
 @media (max-width: 470px) { .quiz-type-generator > div { border-radius: var(--r); flex-wrap: wrap; } .quiz-type-generator button { flex: 1; justify-content: center; } .quiz-version-actions { width: 100%; } }
+
+/* One column on a phone.
+   The ≤700px rule at line 146 already said this, but the mixed-type authoring
+   block below it re-declares .generator-controls and its ≤1180px rule also
+   matches a 360px screen — being later in the file, two columns won and the
+   question-count field hung 58px off the right edge. Restating it last settles
+   the cascade instead of relying on source order that a later edit can undo. */
+@media (max-width: 700px) {
+  .generator-controls { grid-template-columns: 1fr; }
+  .generator-material,
+  .quiz-type-generator { grid-column: auto; }
+  .generator-controls .field { min-width: 0; }
+}

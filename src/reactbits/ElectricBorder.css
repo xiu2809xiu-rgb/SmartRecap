@@ -7,6 +7,11 @@
 }
 
 .eb-canvas-container {
+  /* Clips the oversized filter canvas. It is drawn larger than the card on
+     purpose — the displacement needs bleed to avoid a hard edge — but on a
+     narrow screen that bleed pushed the document 42px wider than the viewport.
+     Local edit; see src/reactbits/README.md. */
+  overflow: hidden;
   position: absolute;
   top: 50%;
   left: 50%;

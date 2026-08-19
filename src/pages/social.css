@@ -69,3 +69,10 @@
 .social-guest small { display: block; margin-top: 12px; color: var(--ink-4); }
 @media (max-width: 930px) { .social-people-grid { grid-template-columns: 1fr; } .social-workspace { grid-template-columns: 1fr; } .social-sidebar { border-right: 0; border-bottom: 1px solid var(--glass-line); } .social-conversation-list { grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); } .plan-list > div { grid-template-columns: 1fr 1fr; } .analytics-grid { grid-template-columns: repeat(2,1fr); } }
 @media (max-width: 620px) { .social-hero { align-items: flex-start; flex-direction: column; } .social-summary { justify-content: flex-start; } .social-search, .message-form, .redeem-panel > div { flex-direction: column; } .share-values { grid-template-columns: 1fr; } .plan-list > div { grid-template-columns: 1fr; padding: 10px; border: 1px solid var(--glass-line); border-radius: var(--r); } .analytics-grid { grid-template-columns: 1fr 1fr; } }
+
+/* The guest panel is a flex item, so its automatic minimum size kept it at its
+   content's min-content width — 353px inside a 324px column, 12px off-screen.
+   min-width: 0 lets it shrink; the tighter padding gives the text room back. */
+@media (max-width: 700px) {
+  .social-guest { min-width: 0; max-width: 100%; padding: 30px 20px; margin-block: 4vh; }
+}

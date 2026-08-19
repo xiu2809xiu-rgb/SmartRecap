@@ -879,6 +879,17 @@ export const mockApi = {
       await sleep(150);
       return { jobId, binderId: id };
     },
+    flashcards: {
+      async get(id) {
+        await sleep(120);
+        return clone(db.flashcards[id] ?? null);
+      },
+      async save(id, cards) {
+        db.flashcards[id] = cards;
+        persist();
+        return clone(cards);
+      },
+    },
   },
 
   sources: {

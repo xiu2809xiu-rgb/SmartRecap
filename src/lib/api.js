@@ -194,15 +194,24 @@ const live = {
 
   uploads: {
     create: (payload) => request('/uploads', { method: 'POST', body: payload }),
-    /** Resolve backend-relative upload URLs against the deployed API origin. */
+    /**
+     * Resolve backend-relative upload URLs against the deployed API origin.
+     *
+     * A real deployment hands back a presigned S3 URL, which needs no auth
+     * header. Without S3 configured, the backend instead falls back to its
+     * own `/api/uploads/:id/content` route — same as every other endpoint,
+     * that one is behind the Bearer session, so it needs the header the S3
+     * case must not send.
+     */
     put: async (uploadUrl, file) => {
       const apiOrigin = BASE.startsWith('http') ? new URL(BASE).origin : window.location.origin;
       const target = new URL(uploadUrl, apiOrigin).toString();
-      const res = await fetch(target, {
-        method: 'PUT',
-        headers: { 'Content-Type': file.type || 'application/octet-stream' },
-        body: file,
-      });
+      const headers = { 'Content-Type': file.type || 'application/octet-stream' };
+      if (uploadUrl.startsWith('/')) {
+        const token = tokenStore.get();
+        if (token) headers.Authorization = `Bearer ${token}`;
+      }
+      const res = await fetch(target, { method: 'PUT', headers, body: file });
       if (!res.ok) throw new ApiError('Could not upload your file. Check your connection and try again.', res.status, null);
     },
   },
@@ -229,6 +238,10 @@ const live = {
     update: (id, patch) => request(`/binders/${id}`, { method: 'PATCH', body: patch }),
     remove: (id) => request(`/binders/${id}`, { method: 'DELETE' }),
     generate: (id, sourceIds) => request(`/binders/${id}/generate`, { method: 'POST', body: { sourceIds } }),
+    flashcards: {
+      get: (id) => request(`/binders/${id}/flashcards`),
+      save: (id, cards) => request(`/binders/${id}/flashcards`, { method: 'PUT', body: { cards } }),
+    },
   },
 
   sources: {
@@ -237,15 +250,19 @@ const live = {
     create: (binderId, files) => request(`/binders/${binderId}/sources`, { method: 'POST', body: { files } }),
     /** Adds a ready, owner-scoped pasted note without an upload round trip. */
     createText: (binderId, title, text) => request(`/binders/${binderId}/sources/text`, { method: 'POST', body: { title, text } }),
-    /** Direct-to-S3 PUT — same shape as `uploads.put` for a single Material. */
+    /**
+     * Direct-to-S3 PUT — same shape as `uploads.put` for a single Material,
+     * including the same local-fallback auth header (see its comment).
+     */
     put: async (uploadUrl, file) => {
       const apiOrigin = BASE.startsWith('http') ? new URL(BASE).origin : window.location.origin;
       const target = new URL(uploadUrl, apiOrigin).toString();
-      const res = await fetch(target, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/pdf' },
-        body: file,
-      });
+      const headers = { 'Content-Type': 'application/pdf' };
+      if (uploadUrl.startsWith('/')) {
+        const token = tokenStore.get();
+        if (token) headers.Authorization = `Bearer ${token}`;
+      }
+      const res = await fetch(target, { method: 'PUT', headers, body: file });
       if (!res.ok) throw new ApiError('Could not upload your file. Check your connection and try again.', res.status, null);
     },
     commit: (binderId, sourceId) => request(`/binders/${binderId}/sources/${sourceId}/commit`, { method: 'POST' }),

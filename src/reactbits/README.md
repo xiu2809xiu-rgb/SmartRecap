@@ -37,3 +37,18 @@ screen ever needs one.
 `ModelViewer.jsx` is vendored but not used directly — `src/mascot/MascotModel.jsx`
 is derived from it, keeping the bounding-sphere normalisation and adding
 animation-clip playback, which the original does not do.
+
+## LogoLoop — `overflow: hidden` on `.logoloop`
+
+The marquee track duplicates its content to loop seamlessly, so it is several
+screens wide by design. Unclipped, that width becomes the *document's* width:
+measured at 4,883px on a 360px phone, which made the whole landing page
+rubber-band sideways. The wrapper now clips it.
+
+## ElectricBorder — `overflow: hidden` on `.eb-canvas-container`
+
+The filter canvas is drawn larger than the card it borders, because the
+displacement effect needs bleed to avoid a hard edge. On a narrow screen that
+bleed escaped the card and pushed the document 42px past the viewport. The
+container clips it; the canvas itself is untouched, since clamping the canvas
+is what once collapsed the border into two vertical lines.

@@ -222,37 +222,36 @@
 .app-shell { position: relative; min-height: 100vh; padding-bottom: 48px; }
 .app-main { padding-block: clamp(26px, 4vw, 46px); }
 
-.tabbar { display: none; }
+/* The bottom tab bar is gone — see components/layout/MobileNav.jsx. Eight tabs
+   at a 46px minimum needed 368px on a 360px phone, which clipped the last one
+   and made every app route scroll sideways. */
 
-@media (max-width: 860px) {
-  .app-nav, .topbar-cta, .topbar-signin { display: none; }
+@media (max-width: 900px) {
+  .app-nav,
+  .marketing-nav,
+  .topbar-cta,
+  .topbar-signin { display: none; }
 
-  .tabbar {
-    position: fixed;
-    left: 0; right: 0; bottom: 0;
-    z-index: 55;
-    display: grid;
-    grid-template-columns: repeat(8, minmax(46px, 1fr));
-    background: rgba(11, 6, 22, 0.94);
-    backdrop-filter: blur(18px);
-    border-top: 1px solid var(--glass-line);
-    padding-bottom: env(safe-area-inset-bottom);
-  }
+  /* The bar loses its desktop gap so the hamburger, brand and account button
+     have room without wrapping. */
+  .topbar-inner { gap: 10px; height: 62px; }
 
-  .tab {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 3px;
-    padding: 10px 4px 12px;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--ink-4);
-  }
-
-  .tab.is-on { color: var(--accent); }
-  .app-shell { padding-bottom: 84px; }
+  /* The brand is a link and therefore a tap target: it needs the same 44px
+     minimum as everything else in the bar. */
+  .brand { min-height: 44px; }
 }
+
+/* Nothing decorative may create horizontal scroll.
+   .backdrop-fixed deliberately overhangs the viewport (inset: -72px) so the
+   mesh bleeds past the edges, and the page-transition bands are wider than the
+   screen by design. Both were measured pushing document scrollWidth past the
+   viewport on a phone — the landing page by 4,419px — which is what made every
+   page rubber-band sideways. They are painted layers, so clipping them costs
+   nothing visually. */
+.backdrop-fixed,
+.backdrop-static,
+.backdrop-live,
+.route-sweep { max-width: 100vw; overflow: hidden; }
 
 /* ------------------------------------------------------------ site footer */
 
@@ -747,6 +746,17 @@
   display: grid;
   place-items: center;
   padding: 20px;
+  /* Scrollable, because the dialog can be taller than a phone.
+     `Modal` sets body overflow to hidden while it is open, so without this a
+     dialog taller than the viewport could not be scrolled by anything: the
+     export dialog measures ~836px at the largest text setting against ~600px
+     of screen, putting its title bar and close button 118px ABOVE the top of
+     the window, unreachable. That is a trap, not a layout bug. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* `place-items: center` cannot scroll to content that overflows upward;
+     `safe` keeps the top edge reachable when the dialog is taller than the box. */
+  align-items: safe center;
   background: rgba(5, 2, 12, 0.68);
   backdrop-filter: blur(6px);
   animation: fade-in 200ms var(--ease) both;
@@ -754,7 +764,7 @@
 
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 
-.modal { width: 100%; animation: modal-in 300ms var(--spring) both; }
+.modal { width: 100%; margin-block: auto; animation: modal-in 300ms var(--spring) both; }
 @keyframes modal-in { from { opacity: 0; transform: translateY(18px) scale(0.97); } to { opacity: 1; transform: none; } }
 
 .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 20px 22px 14px; }
@@ -846,3 +856,126 @@
    disappears against a dark backdrop. The pill stays dark in every theme —
    the alternative is a black rectangle sitting in the middle of the nav. */
 [data-theme='daylight'] .marketing-nav { background: #0e0722; }
+
+/* ==========================================================================
+   Narrow screens
+   Measured on a 360px viewport with the font-size setting at every step.
+   Each rule below fixes something that was pushing the document wider than
+   the screen, or was too small to tap.
+   ========================================================================== */
+
+@media (max-width: 900px) {
+  /* ElectricBorder draws its filter canvas larger than the card so the border
+     does not end in a hard edge. That bleed is invisible but real, and it made
+     the sign-in page 42px wider than the phone. Clipping the effect at the card
+     costs a few pixels of glow and removes the sideways scroll. */
+  .electric-border { overflow: hidden; }
+
+  /* A dropdown, a panel or a button must never be wider than the screen. These
+     were each measured overflowing: the quiz generator's select by 58px, the
+     binder header's action by 86px, the social empty state by 12px. */
+  .custom-select,
+  .custom-select-trigger,
+  .custom-select-panel { max-width: 100%; }
+
+  /* Header rows put their action beside a heading. There is no room for that
+     on a phone, so the action drops below and spans the width — which also
+     makes it a comfortable tap target instead of a cramped pill. */
+  .binders-head,
+  .social-hero,
+  .study-bar-inner { flex-wrap: wrap; }
+
+  .binders-head > .btn,
+  .binders-head .row { width: 100%; }
+  .binders-head .btn { justify-content: center; }
+}
+
+/* Tap targets. Stated in px on purpose: a fingertip is the same size whatever
+   the user's text setting is, so these must not shrink at 93.75% — while the
+   padding stays in em so the control still grows with its label. */
+@media (pointer: coarse) {
+  .btn,
+  .icon-btn,
+  .affix-btn,
+  .segmented button,
+  .tab,
+  .menu-item { min-height: 44px; }
+
+  .icon-btn,
+  .affix-btn { min-width: 44px; }
+
+  /* Checkboxes and radios ship at 13px from the browser. */
+  input[type='checkbox'],
+  input[type='radio'] { width: 20px; height: 20px; }
+}
+
+@media (max-width: 900px) {
+  /* Everything after the brand packs to the right edge, so the hamburger lands
+     under the thumb rather than across the bar from it. */
+  .brand { margin-right: auto; }
+
+  /* The marketing bar's sign-in / get-started pair does not fit beside the
+     brand — "Open library" alone was 7px past the edge. The drawer footer
+     carries the same actions at full width, so this is a move, not a loss.
+     The app bar's row stays: its avatar button is the only route to sign out. */
+  .topbar:not(.is-app) .topbar-actions { display: none; }
+}
+
+/* ------------------------------------------------------------ tap targets
+
+   Measured on a 360px phone: everything below came back under 44px, which is
+   the smallest square a fingertip hits reliably. Sizes are px on purpose — a
+   fingertip is the same size at every font setting — while the padding stays in
+   em so a control still grows with the text it holds.
+
+   One exception is deliberate: the "Create an account" link sits inside a
+   sentence on the sign-in page. WCAG 2.5.8 exempts inline links in prose, and
+   padding one to 44px would tear a hole in the paragraph around it. */
+@media (pointer: coarse), (max-width: 900px) {
+  /* The account button is the only way to reach Settings and Sign out on a
+     phone, and it was the shortest control in the bar at 40px. */
+  .avatar-btn { min-height: 44px; min-width: 44px; }
+
+  /* Footer navigation: 24px rows, stacked, with no gap between them. */
+  .foot-top nav a {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  /* Filter and type chips. The pill that holds them has to grow too, or the
+     padding just clips the taller buttons. */
+  .forum-filters,
+  .quiz-type-generator > div { min-height: 52px; }
+
+  .forum-filters button,
+  .quiz-type-generator button,
+  .segmented button { min-height: 44px; }
+
+  /* A checkbox is 13px of browser default. Enlarging the box only goes so far
+     before it looks wrong, so the label around it carries the target instead —
+     which is also what a person actually aims at. */
+  label:has(> input[type='checkbox']),
+  label:has(> input[type='radio']),
+  label.search {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}
+
+/* At the largest text setting on the narrowest phone, a long button label has
+   nowhere to go: .btn is white-space: nowrap, so "Create an account to connect
+   with classmates" rendered as one 345px line inside a 324px card. Letting the
+   label wrap on narrow screens costs a second line and keeps the button on the
+   page. The nowrap stays everywhere else, where it stops buttons in a toolbar
+   from breaking raggedly. */
+@media (max-width: 900px) {
+  .btn {
+    max-width: 100%;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .auth-head { flex-wrap: wrap; }
+}
