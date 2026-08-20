@@ -177,6 +177,10 @@ async function putSignedFile(uploadUrl, file, contentType) {
 function uploadTarget(uploadUrl) {
   const apiOrigin = BASE.startsWith('http') ? new URL(BASE).origin : window.location.origin;
   const absolute = new URL(uploadUrl, apiOrigin);
+  // A relative URL is one of our own routes. It must never go through the
+  // tunnel below, which forwards only content-type and content-length and
+  // would drop the Authorization header these routes require.
+  if (uploadUrl.startsWith('/')) return absolute.toString();
   if (!import.meta.env?.DEV || absolute.origin === window.location.origin) return absolute.toString();
   return `/__dev-s3/${absolute.host}${absolute.pathname}${absolute.search}`;
 }
@@ -277,19 +281,50 @@ const live = {
         contentType: file.type || 'application/octet-stream',
         sizeBytes: file.size,
       };
+      let lastError = null;
       for (let attempt = 1; attempt <= 2; attempt += 1) {
         const created = await live.uploads.create(payload);
-        if (!created.uploadUrl) return created.materialId;
+        // No presigned URL means object storage is not configured, and the
+        // backend is already expecting the bytes itself.
+        if (!created.uploadUrl) {
+          await live.uploads.relay(created.materialId, file, created.contentType);
+          return created.materialId;
+        }
         try {
           await live.uploads.put(created.uploadUrl, file, created.contentType);
           return created.materialId;
         } catch (error) {
-          const expired = /ExpiredToken|TokenRefreshRequired|InvalidToken/i.test(error.message ?? '');
-          if (!expired || attempt === 2) throw error;
+          lastError = error;
+          // A rotated-but-live credential is fixed by asking for a fresh URL.
+          if (/ExpiredToken|TokenRefreshRequired|InvalidToken/i.test(error.message ?? '') && attempt === 1) {
+            continue;
+          }
+          // Anything else the storage service refuses is not something the
+          // browser can fix by trying again -- the credentials behind the URL
+          // are simply dead, which on Learner Lab happens every time a session
+          // ends. Hand the bytes to our own backend instead, which reads them
+          // straight out of the request. Losing durable storage for one upload
+          // is a far better outcome than refusing to accept the file at all.
+          await live.uploads.relay(created.materialId, file, created.contentType);
+          return created.materialId;
         }
       }
-      throw new ApiError('Could not upload your file.', 0, null);
+      throw lastError ?? new ApiError('Could not upload your file.', 0, null);
     },
+
+    /**
+     * Send the bytes to the backend's own upload route.
+     *
+     * The fallback for when object storage will not take them. The job reads
+     * `upload["content"]` before it ever looks at S3, so a relayed upload runs
+     * through the pipeline exactly like a stored one.
+     */
+    relay: (materialId, file, contentType) =>
+      putSignedFile(
+        `/api/uploads/${materialId}/content`,
+        file,
+        contentType || file.type || 'application/octet-stream',
+      ),
 
     /**
      * `contentType` is the value the backend echoed back from create, so it is

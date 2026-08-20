@@ -483,14 +483,39 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
                 material = await run_in_threadpool(_translate_material, material, language, settings)
 
             _materials[material_id] = material
-            if storage.ready:
-                await run_in_threadpool(
-                    storage.put_json,
-                    "materials/{}/result.json".format(material_id),
-                    _materials[material_id],
+
+            # From here the recap exists and is verified. Everything below is
+            # durability -- an S3 snapshot and the DynamoDB records -- and none
+            # of it can make the notes any more or less correct.
+            #
+            # It used to sit inside the same try, so when the lab session ended
+            # and its credentials were revoked, PutObject answered AccessDenied
+            # and a finished, grounded recap was thrown away and reported to the
+            # student as a failed upload. Archiving is allowed to fail; the work
+            # is not discarded for it. The material says so, so nobody is misled
+            # into thinking it is safely stored.
+            archive_failure = None
+            try:
+                if storage.ready:
+                    await run_in_threadpool(
+                        storage.put_json,
+                        "materials/{}/result.json".format(material_id),
+                        _materials[material_id],
+                    )
+                await persist("source", material_id, [item.model_dump() for item in _sources[material_id]])
+                await persist("material", material_id, _materials[material_id])
+            except Exception as archive_exc:
+                archive_failure = str(archive_exc)
+                logger.warning(
+                    "recap archiving failed material=%s error=%s", material_id, archive_failure[:200]
                 )
-            await persist("source", material_id, [item.model_dump() for item in _sources[material_id]])
-            await persist("material", material_id, _materials[material_id])
+                _materials[material_id]["warnings"] = list(
+                    dict.fromkeys(
+                        (_materials[material_id].get("warnings") or [])
+                        + ["These notes are ready, but could not be saved to cloud storage, so they may not survive a server restart."]
+                    )
+                )
+
             job.update(status="ready", stage="done", progress=100, stageLabel="Recap ready")
             _uploads.pop(material_id, None)
         except Exception as exc:
