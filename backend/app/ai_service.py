@@ -54,12 +54,23 @@ def _public_openai_client(settings: Settings) -> OpenAI:
     )
 
 
-def _compatible_client(api_key: str, base_url: str, settings: Settings) -> OpenAI:
+# Optional providers wait far less than the ones a result depends on.
+#
+# A critique is additive: the draft is already validated and is kept whichever
+# way the critique goes. Letting one hang for two minutes made every recap pay
+# for a provider that was never going to answer -- and with several configured,
+# that stacked into minutes of dead waiting per recap.
+OPTIONAL_PROVIDER_TIMEOUT = 45.0
+
+
+def _compatible_client(
+    api_key: str, base_url: str, settings: Settings, timeout: Optional[float] = None
+) -> OpenAI:
     """Small shared client for explicitly configured OpenAI-compatible APIs."""
     return OpenAI(
         api_key=api_key,
         base_url=base_url.rstrip("/") + "/",
-        timeout=min(120.0, float(settings.ai_timeout_seconds)),
+        timeout=timeout or min(120.0, float(settings.ai_timeout_seconds)),
         max_retries=0,
     )
 
@@ -75,7 +86,11 @@ def _huggingface_client(settings: Settings, model: str) -> Optional[Tuple[str, s
     token = (settings.hf_api_token.get_secret_value() or "").strip()
     if not token or not model.strip():
         return None
-    return ("Hugging Face", model.strip(), _compatible_client(token, settings.hf_chat_base_url, settings))
+    return (
+        "Hugging Face",
+        model.strip(),
+        _compatible_client(token, settings.hf_chat_base_url, settings, OPTIONAL_PROVIDER_TIMEOUT),
+    )
 
 
 def _optional_compatible_providers(settings: Settings):
@@ -87,13 +102,19 @@ def _optional_compatible_providers(settings: Settings):
         providers.append((
             "OpenRouter",
             settings.openrouter_model,
-            _compatible_client(settings.openrouter_api_key.get_secret_value(), settings.openrouter_base_url, settings),
+            _compatible_client(
+                settings.openrouter_api_key.get_secret_value(), settings.openrouter_base_url,
+                settings, OPTIONAL_PROVIDER_TIMEOUT,
+            ),
         ))
     if settings.nvidia_ready:
         providers.append((
             "NVIDIA NIM",
             settings.nvidia_model,
-            _compatible_client(settings.nvidia_api_key.get_secret_value(), settings.nvidia_base_url, settings),
+            _compatible_client(
+                settings.nvidia_api_key.get_secret_value(), settings.nvidia_base_url,
+                settings, OPTIONAL_PROVIDER_TIMEOUT,
+            ),
         ))
     return providers
 

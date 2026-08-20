@@ -411,6 +411,17 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
     register_owner_hydrator(hydrate_owner)
 
     async def persist(kind: str, record_id: str, value: Any) -> None:
+        """Write a record to durable storage, best effort.
+
+        Deliberately does not raise. Every caller has already updated the
+        in-memory state that serves requests, so a failure here means the work
+        succeeded but may not survive a restart -- not that the work failed.
+
+        This matters because the backing store is a Learner Lab account whose
+        credentials are revoked every few hours. Letting DynamoDB take a user's
+        finished recap, quiz or message down with it was the difference between
+        an app that degrades and one that looks broken every afternoon.
+        """
         owner_id = current_owner_id()
         stored = deepcopy(value)
         if isinstance(stored, dict):
@@ -418,11 +429,17 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
             if isinstance(value, dict):
                 value["ownerId"] = owner_id
         if repository.ready:
-            await run_in_threadpool(repository.save, owner_id, kind, record_id, stored)
+            try:
+                await run_in_threadpool(repository.save, owner_id, kind, record_id, stored)
+            except Exception as exc:
+                logger.warning("persist failed kind=%s id=%s error=%s", kind, record_id, str(exc)[:160])
 
     async def persist_public(kind: str, record_id: str, value: Any) -> None:
         if repository.ready:
-            await run_in_threadpool(repository.save_public, kind, record_id, deepcopy(value))
+            try:
+                await run_in_threadpool(repository.save_public, kind, record_id, deepcopy(value))
+            except Exception as exc:
+                logger.warning("public persist failed kind=%s id=%s error=%s", kind, record_id, str(exc)[:160])
 
     async def remove_persisted(kind: str, record_id: str) -> None:
         if repository.ready:
@@ -1217,15 +1234,24 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
                     "path": "/api/materials/{}/illustrations/{}".format(material_id, illustration_id),
                     "createdAt": _now(),
                 }
+                # The picture already exists at this point. If durable storage
+                # will not take it -- which is what an expired lab session looks
+                # like -- keep it in memory rather than discarding a generated
+                # image and failing the whole batch.
+                stored = False
                 if storage.ready:
                     extension = {"image/png": "png", "image/webp": "webp"}.get(content_type, "jpg")
-                    item["_storageKey"] = await run_in_threadpool(
-                        storage.put_image,
-                        "generated/{}/{}.{}".format(material_id, illustration_id, extension),
-                        content,
-                        content_type,
-                    )
-                else:
+                    try:
+                        item["_storageKey"] = await run_in_threadpool(
+                            storage.put_image,
+                            "generated/{}/{}.{}".format(material_id, illustration_id, extension),
+                            content,
+                            content_type,
+                        )
+                        stored = True
+                    except Exception as store_exc:
+                        logger.warning("illustration upload failed: %s", str(store_exc)[:160])
+                if not stored:
                     _illustration_bytes[illustration_id] = (content, content_type)
                 created.append(item)
             material["illustrations"] = created
@@ -1372,15 +1398,22 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
                 "path": "/api/materials/{}/illustrations/{}".format(material_id, illustration_id),
                 "createdAt": _now(),
             }
+            # Same reasoning as the batch path: a generated visual is not
+            # thrown away because object storage is unavailable.
+            stored = False
             if storage.ready:
                 extension = {"image/png": "png", "image/webp": "webp"}.get(content_type, "jpg")
-                item["_storageKey"] = await run_in_threadpool(
-                    storage.put_image,
-                    "generated/{}/chat/{}.{}".format(material_id, illustration_id, extension),
-                    content,
-                    content_type,
-                )
-            else:
+                try:
+                    item["_storageKey"] = await run_in_threadpool(
+                        storage.put_image,
+                        "generated/{}/chat/{}.{}".format(material_id, illustration_id, extension),
+                        content,
+                        content_type,
+                    )
+                    stored = True
+                except Exception as store_exc:
+                    logger.warning("chat illustration upload failed: %s", str(store_exc)[:160])
+            if not stored:
                 _illustration_bytes[illustration_id] = (content, content_type)
             material["chatIllustrations"] = (previous + [item])[-12:]
             await persist("material", material_id, material)

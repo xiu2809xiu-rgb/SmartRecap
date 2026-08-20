@@ -38,7 +38,11 @@ class QuizQuestion(BaseModel):
     prompt: str
     options: List[str] = Field(default_factory=list, max_length=6)
     answer: Optional[Union[int, List[int]]] = None
-    model_answer: Optional[str] = Field(default=None, min_length=1, max_length=2000, alias="modelAnswer")
+    # No min_length: strict structured output forces a model to emit this key
+    # even on a multiple-choice question, where "" is the only sensible value.
+    # The blank is normalised to None in validate_type_contract, which still
+    # refuses a short-answer question that has no real model answer.
+    model_answer: Optional[str] = Field(default=None, max_length=2000, alias="modelAnswer")
     key_concepts: List[str] = Field(default_factory=list, max_length=8, alias="keyConcepts")
     rubric: Optional[str] = Field(default=None, max_length=1000)
     explanation: str
@@ -47,6 +51,22 @@ class QuizQuestion(BaseModel):
 
     @model_validator(mode="after")
     def validate_type_contract(self):
+        # Blank grading fields count as absent.
+        #
+        # OpenAI strict structured output requires every property to be present,
+        # so a model has no way to omit modelAnswer or rubric on a
+        # multiple-choice question -- it emits "" or an empty list. Those are
+        # not short-answer grading fields, but the contract below read them as
+        # such and rejected the entire quiz: "10 validation errors for
+        # QuizPack" on a hard quiz, which is what made generation fail at
+        # random. Normalising here keeps the rule itself strict; a short-answer
+        # question with a blank model answer is still refused below.
+        if isinstance(self.model_answer, str) and not self.model_answer.strip():
+            self.model_answer = None
+        if isinstance(self.rubric, str) and not self.rubric.strip():
+            self.rubric = None
+        self.key_concepts = [item for item in self.key_concepts if item and item.strip()]
+
         if self.type in {"single", "multi"}:
             if not 2 <= len(self.options) <= 6:
                 raise ValueError("Objective questions require 2 to 6 options")
