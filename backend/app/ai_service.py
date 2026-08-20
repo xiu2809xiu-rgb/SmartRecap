@@ -300,7 +300,34 @@ def generate_notebook_quiz(
         draft = candidate
         providers.append({"name": name, "model": model, "role": role})
 
-    if not settings.demo_mode and settings.gemini_ready:
+    # Hard quizzes draft on the Azure deployment first, everything else on
+    # Gemini.
+    #
+    # Hard is where question quality actually decides whether the quiz is worth
+    # sitting, so it gets the strongest configured model rather than the fastest.
+    # The cheaper difficulties stay on Gemini Flash, which handles them well and
+    # keeps the strong deployment's quota for the questions that need it. Either
+    # way the full chain below still catches a rate limit.
+    azure_first = (
+        difficulty == "hard"
+        and not settings.demo_mode
+        and settings.azure_ready
+        and bool(settings.azure_openai_deployment.strip())
+    )
+    if azure_first:
+        try:
+            accept(
+                _generate_openai_quiz(
+                    sources, difficulty, question_count, settings, topics,
+                    excluded_prompts, question_types, public=False, compatible=None,
+                ),
+                "Azure OpenAI", settings.azure_openai_deployment, "draft",
+            )
+        except Exception as exc:
+            errors.append("Azure OpenAI: {}".format(exc))
+            logger.warning("Azure quiz draft failed: %s", exc)
+
+    if draft is None and not settings.demo_mode and settings.gemini_ready:
         try:
             accept(
                 generate_gemini_quiz(
@@ -314,7 +341,7 @@ def generate_notebook_quiz(
             logger.warning("Gemini quiz draft failed: %s", exc)
 
     fallback_providers = []
-    if not settings.demo_mode and settings.azure_ready and settings.azure_openai_deployment.strip():
+    if not azure_first and not settings.demo_mode and settings.azure_ready and settings.azure_openai_deployment.strip():
         fallback_providers.append(("Azure OpenAI", settings.azure_openai_deployment, False, None))
     if not settings.demo_mode and settings.openai_ready and settings.openai_chat_model.strip():
         fallback_providers.append(("OpenAI", settings.openai_chat_model, True, None))
