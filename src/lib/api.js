@@ -465,6 +465,25 @@ const live = {
 
 export const api = USE_MOCK ? mockApi : live;
 
+/**
+ * Fetch a backend asset as a Blob, with the session header attached.
+ *
+ * An <img src> cannot send an Authorization header, and the illustration route
+ * is behind the Bearer session like every other private route — so pointing an
+ * image element straight at it returns 401 and renders as a broken image. The
+ * bytes have to be fetched, then handed to the element as an object URL.
+ *
+ * External URLs are returned untouched by apiAssetUrl and never reach here.
+ */
+export async function fetchAssetBlob(path) {
+  const token = tokenStore.get();
+  const res = await fetch(apiAssetUrl(path), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new ApiError('Could not load that image.', res.status, null);
+  return res.blob();
+}
+
 export function apiAssetUrl(path) {
   if (!path) return '';
   if (/^https:\/\//i.test(path) || /^data:/i.test(path)) return path;

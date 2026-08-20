@@ -41,7 +41,7 @@ def verify_raster_image(content: bytes) -> str:
         raise ValueError("The image provider returned invalid raster data.") from exc
 
 
-def _generate_via_huggingface(brief: str, settings: Settings) -> Tuple[bytes, str, str]:
+def _generate_via_huggingface(brief: str, settings: Settings) -> Tuple[bytes, str, str, str, str]:
     """FLUX.1-schnell through the Hugging Face router.
 
     Preferred over Pollinations when a token is configured: the diagrams come
@@ -80,10 +80,16 @@ def _generate_via_huggingface(brief: str, settings: Settings) -> Tuple[bytes, st
 
     content_type = verify_raster_image(content)
     digest = hashlib.sha256("{}\n{}".format(model, brief).encode("utf-8")).hexdigest()[:20]
-    return content, content_type, digest
+    return content, content_type, digest, "Hugging Face ({})".format(provider), model
 
 
-def generate_image(prompt: str, settings: Settings) -> Tuple[bytes, str, str]:
+def generate_image(prompt: str, settings: Settings) -> Tuple[bytes, str, str, str, str]:
+    """Returns the image plus the provider and model that really made it.
+
+    Reported rather than assumed: the label was hard-coded to Pollinations at
+    the call sites, so a FLUX image would still have been filed under the
+    wrong generator.
+    """
     if settings.hf_api_token.get_secret_value().strip():
         try:
             return _generate_via_huggingface(sanitize_visual_brief(prompt), settings)
@@ -120,4 +126,4 @@ def generate_image(prompt: str, settings: Settings) -> Tuple[bytes, str, str]:
         raise ValueError("The generated image exceeds the 8 MB safety limit.")
     content_type = verify_raster_image(response.content)
     digest = hashlib.sha256((model + "\n" + brief).encode("utf-8")).hexdigest()[:20]
-    return response.content, content_type, digest
+    return response.content, content_type, digest, "Pollinations.ai", model

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api, apiAssetUrl } from '../lib/api.js';
+import { api } from '../lib/api.js';
+import AuthImage from '../components/AuthImage.jsx';
 import { useStore } from '../lib/store.jsx';
 import { useJobs } from '../lib/jobs.jsx';
 import { enableCompletionNotifications } from '../lib/notifications.js';
@@ -291,7 +292,7 @@ export default function Recap() {
                   <div className="study-visual-grid">
                     {material.illustrations.map((illustration) => (
                       <figure key={illustration.id}>
-                        <img src={apiAssetUrl(illustration.path)} alt={`Educational illustration for ${illustration.topic}`} loading="lazy" />
+                        <AuthImage path={illustration.path} alt={`Educational illustration for ${illustration.topic}`} />
                         <figcaption><strong>{illustration.topic}</strong><span>{illustration.provider} · {illustration.model}</span></figcaption>
                       </figure>
                     ))}
@@ -566,7 +567,9 @@ export default function Recap() {
           </CitationProvider>
         )}
 
-        <AskPanel material={material} open={askOpen} onClose={() => setAskOpen(false)} />
+        <ErrorBoundary scope="The Ask panel">
+          <AskPanel material={material} open={askOpen} onClose={() => setAskOpen(false)} />
+        </ErrorBoundary>
       </div>
 
       <Modal open={exportOpen} onClose={() => setExportOpen(false)} title="Export this recap">

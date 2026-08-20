@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { api, apiAssetUrl } from '../lib/api.js';
+import { api } from '../lib/api.js';
+import AuthImage from './AuthImage.jsx';
 import { Icon, Spinner } from './ui.jsx';
 import SafeMarkdown from './SafeMarkdown.jsx';
 
@@ -166,7 +167,7 @@ export default function AskPanel({ material, open, onClose }) {
               )}
               {m.illustration && (
                 <figure className="ask-visual">
-                  <img src={apiAssetUrl(m.illustration.path)} alt={`Educational visual for ${m.illustration.topic}`} loading="lazy" />
+                  <AuthImage path={m.illustration.path} alt={`Educational visual for ${m.illustration.topic}`} />
                   <figcaption>{m.illustration.provider} · {m.illustration.model}</figcaption>
                 </figure>
               )}

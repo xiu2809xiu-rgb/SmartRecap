@@ -1158,13 +1158,13 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
                     explanation,
                     settings,
                 )
-                content, content_type, digest = await run_in_threadpool(generate_image, prompt, settings)
+                content, content_type, digest, image_provider, image_model = await run_in_threadpool(generate_image, prompt, settings)
                 illustration_id = "img_{}".format(digest)
                 item = {
                     "id": illustration_id,
                     "topic": str(section.get("heading") or "Study concept"),
-                    "provider": "Pollinations.ai",
-                    "model": settings.pollinations_model,
+                    "provider": image_provider,
+                    "model": image_model,
                     "path": "/api/materials/{}/illustrations/{}".format(material_id, illustration_id),
                     "createdAt": _now(),
                 }
@@ -1312,13 +1312,13 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
                 str(cached_answer["answer"])[:1200],
                 settings,
             )
-            content, content_type, digest = await run_in_threadpool(generate_image, prompt, settings)
+            content, content_type, digest, image_provider, image_model = await run_in_threadpool(generate_image, prompt, settings)
             illustration_id = "chat_{}".format(digest)
             item = {
                 "id": illustration_id,
                 "topic": str(cached_answer["question"])[:120],
-                "provider": "Pollinations.ai",
-                "model": settings.pollinations_model,
+                "provider": image_provider,
+                "model": image_model,
                 "kind": "chat",
                 "path": "/api/materials/{}/illustrations/{}".format(material_id, illustration_id),
                 "createdAt": _now(),
