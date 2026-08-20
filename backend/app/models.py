@@ -83,8 +83,22 @@ class QuizQuestion(BaseModel):
                 if len(set(self.answer)) != len(self.answer):
                     raise ValueError("Multi-select answer indexes must be unique")
                 self.answer = sorted(self.answer)
-            if self.model_answer is not None or self.key_concepts or self.rubric is not None:
-                raise ValueError("Objective questions cannot include short-answer grading fields")
+            # Extra grading fields are dropped, not rejected.
+            #
+            # Strict structured output requires every property to be present,
+            # and on a hard quiz a model reliably fills keyConcepts on
+            # multiple-choice questions too. Refusing the pack for that threw
+            # away ten perfectly good questions -- it was the whole of "10
+            # validation errors for QuizPack", and it made hard quizzes fail
+            # every time rather than occasionally.
+            #
+            # Nothing is lost by clearing them: objective questions are scored
+            # from options and answer alone, and these fields are never read.
+            # A question that is genuinely malformed still fails the checks
+            # above, which are what actually guard correctness.
+            self.model_answer = None
+            self.rubric = None
+            self.key_concepts = []
         else:
             if self.options or self.answer is not None:
                 raise ValueError("Short-answer questions cannot include options or an objective answer")
