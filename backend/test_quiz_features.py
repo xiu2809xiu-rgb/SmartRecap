@@ -292,3 +292,56 @@ def _source_sections_for_test(source):
     from app.ai_service import _source_sections
 
     return _source_sections(source)
+
+
+class ExercisePromptFilterTests(unittest.TestCase):
+    """The offline answer must never hand back the worksheet's own tasks.
+
+    When every AI provider is unavailable the notebook answer falls back to a
+    keyword match over the sources. On a practicals sheet the best-scoring
+    sentences are the exercises themselves, because they share the student's
+    keywords -- so "what does Quick Sort mean?" was answered with three of the
+    sheet's questions. Matching on "?" alone is not enough: half are imperatives
+    ending in a full stop.
+    """
+
+    def test_questions_and_imperatives_are_treated_as_exercises(self):
+        from app.ai_service import _is_exercise_prompt
+
+        for sentence in (
+            "What is the base case in a recursive sorting algorithm?",
+            "Explain how the divide-and-conquer strategy is applied in Merge Sort.",
+            "(a) State the time complexity of Quick Sort.",
+            "3. Draw the resulting tree after each insertion.",
+        ):
+            self.assertTrue(_is_exercise_prompt(sentence), sentence)
+
+    def test_explanatory_prose_is_kept(self):
+        from app.ai_service import _is_exercise_prompt
+
+        for sentence in (
+            "Quick Sort picks a pivot element and partitions the list.",
+            "A recursive sort stops when a sublist has zero or one element.",
+            "Balanced partitions keep the recursion depth at log n.",
+            # Guards the word boundary: these begin with "state" and "list".
+            "Statements are executed in order.",
+            "Listing every node would take linear time.",
+        ):
+            self.assertFalse(_is_exercise_prompt(sentence), sentence)
+
+    def test_offline_answer_never_returns_an_exercise(self):
+        from app.ai_service import _demo_answer
+
+        text = (
+            "[Page 1]\n"
+            "Quick Sort picks a pivot and partitions the list around it.\n"
+            "What is the base case in a recursive sorting algorithm?\n"
+            "Explain how divide-and-conquer applies to Quick Sort.\n"
+        )
+        source = SourceRecord(
+            id="src_1", filename="practical.pdf", content_type="application/pdf",
+            size=len(text), text=text, labels=["Page 1"], warnings=[],
+        )
+        answer = _demo_answer([source], "What does Quick Sort mean?").answer
+        self.assertNotIn("What is the base case", answer)
+        self.assertNotIn("Explain how divide-and-conquer", answer)

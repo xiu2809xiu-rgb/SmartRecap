@@ -432,41 +432,50 @@ def answer_notebook_question(sources: List[SourceRecord], question: str, setting
     if settings.demo_mode or not settings.azure_ready:
         return _demo_answer(sources, question)
     prompt = """Answer the student's question using only the notebook sources below.
-If the sources do not contain the answer, say so clearly. Give a concise teaching explanation and exact citations.
+
+How to answer:
+- Lead with the answer in your own words. A definition, then why it matters, then a concrete example from the sources if there is one.
+- Explain it; do not transcribe. Quoting a passage is not an answer, and copying the source's wording back at someone who has already read it teaches nothing.
+- Never answer a question with more questions. Practical sheets and tutorials are largely made of exercise prompts, and returning those is the worst possible answer -- work out what the exercise is testing and explain that instead.
+- Two or three short paragraphs at most. Plain language, no headings, no preamble.
+- Cite the exact passages that support the answer. The citations carry the evidence, so the prose does not have to repeat them.
+- If the sources genuinely do not cover it, say so plainly and set grounded=false rather than stretching a loosely related passage to fit.
+
 QUESTION: {question}
+
 SOURCES:
 {context}""".format(question=question, context=_balanced_context(sources, 90000))
-    try:
-        completion = _client(settings).beta.chat.completions.parse(
-            model=settings.azure_fast_deployment,
-            messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}],
-            response_format=NotebookChatResponse,
-            max_completion_tokens=5000,
-        )
-        message = completion.choices[0].message
-        if message.refusal or not message.parsed:
-            raise RuntimeError(message.refusal or "The AI model returned an invalid answer.")
-        _validate_citation_list(message.parsed.citations, sources)
-        return message.parsed
-    except Exception as exc:
-        logger.warning("Azure notebook chat failed: %s", exc)
-        if settings.openai_ready:
-            try:
-                completion = _public_openai_client(settings).beta.chat.completions.parse(
-                    model=settings.openai_chat_model,
-                    messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}],
-                    response_format=NotebookChatResponse,
-                    max_completion_tokens=3000,
-                )
-                message = completion.choices[0].message
-                if message.refusal or not message.parsed:
-                    raise RuntimeError(message.refusal or "The fallback model returned an invalid answer.")
-                _repair_citation_list(message.parsed.citations, sources)
-                _validate_citation_list(message.parsed.citations, sources)
-                return message.parsed
-            except Exception as fallback_exc:
-                logger.warning("OpenAI notebook chat fallback failed: %s", fallback_exc)
-        return _demo_answer(sources, question)
+    # Every configured provider is tried before the extractive fallback.
+    #
+    # That fallback keyword-matches sentences and prefixes them with "Based on
+    # your notebook:", which on a practicals sheet returns the sheet's own
+    # exercise questions as the "answer". It is a last resort, not a second
+    # choice, so a single provider being down must not reach it.
+    attempts = [("Azure OpenAI", settings.azure_fast_deployment, _client(settings), 5000)]
+    if settings.openai_ready:
+        attempts.append(("OpenAI", settings.openai_chat_model, _public_openai_client(settings), 3000))
+    attempts.extend(
+        (name, model, client, 3000) for name, model, client in _optional_compatible_providers(settings)
+    )
+
+    for name, model, client, budget in attempts:
+        try:
+            completion = client.beta.chat.completions.parse(
+                model=model,
+                messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}],
+                response_format=NotebookChatResponse,
+                max_completion_tokens=budget,
+            )
+            message = completion.choices[0].message
+            if message.refusal or not message.parsed:
+                raise RuntimeError(message.refusal or "The provider returned an invalid answer.")
+            _repair_citation_list(message.parsed.citations, sources)
+            _validate_citation_list(message.parsed.citations, sources)
+            return message.parsed
+        except Exception as exc:
+            logger.warning("%s notebook chat failed: %s", name, str(exc)[:200])
+
+    return _demo_answer(sources, question)
 
 
 def _balanced_context(sources: List[SourceRecord], total_budget: int = 120000) -> str:
@@ -1030,17 +1039,61 @@ def _demo_notebook_pack(sources: List[SourceRecord], title: str, mode: str) -> S
     return StudyPack(title=title, overview=overview, read_minutes=8 if mode == "cram" else 16, source_coverage=coverage, takeaways=takeaways, definitions=definitions, topics=topics, quiz=[], warnings=["AI synthesis was unavailable. Headings and OCR noise were filtered before building this source-grounded fallback."])
 
 
+_EXERCISE_OPENERS = re.compile(
+    r"^\s*(?:\(?[a-z0-9]{1,3}[).]\s*)?"
+    r"(explain|describe|state|list|define|compare|contrast|discuss|identify|outline|"
+    r"give|write|show|calculate|draw|complete|implement|determine|justify|evaluate|"
+    r"suggest|name|find|prove|derive|consider|modify|predict)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_exercise_prompt(sentence: str) -> bool:
+    """Is this a task set for the student rather than something that teaches?"""
+    text = sentence.strip()
+    return text.endswith("?") or bool(_EXERCISE_OPENERS.match(text))
+
+
 def _demo_answer(sources: List[SourceRecord], question: str) -> NotebookChatResponse:
     evidence = _evidence(sources)
     if not evidence:
         return NotebookChatResponse(answer="I could not find enough readable evidence in this notebook to answer that question.", citations=[], grounded=False)
     words = {word for word in re.findall(r"[a-z0-9]+", question.casefold()) if len(word) > 2}
-    ranked = sorted(evidence, key=lambda item: sum(word in item[2].casefold() for word in words), reverse=True)
+
+    # Exercise prompts are excluded outright. A practicals sheet is mostly
+    # tasks, and this matcher scored them highly for sharing the student's own
+    # keywords — so asking "what does quick sort mean?" came back with three of
+    # the sheet's own exercises. Answering a question with questions is worse
+    # than admitting the model is unavailable.
+    #
+    # Matching on "?" alone is not enough: half of them are imperatives that end
+    # in a full stop, like "Explain how divide-and-conquer is applied in Merge
+    # Sort." Those read as instructions to the student, never as explanations.
+    usable = [item for item in evidence if not _is_exercise_prompt(item[2])]
+    if not usable:
+        return NotebookChatResponse(
+            answer=(
+                "The AI providers are unavailable, so this is a plain text search of your notes, "
+                "and these sources are made up of exercise questions rather than explanations. "
+                "Try again shortly for a real answer."
+            ),
+            citations=[],
+            grounded=False,
+        )
+
+    ranked = sorted(usable, key=lambda item: sum(word in item[2].casefold() for word in words), reverse=True)
     matches = [item for item in ranked if any(word in item[2].casefold() for word in words)][:3]
     if not matches:
-        closest = evidence[:1]
+        closest = usable[:1]
         return NotebookChatResponse(answer="I could not find a direct answer in these sources. The closest relevant passage is: {}".format(closest[0][2])[:1500], citations=[_citation(closest[0])], grounded=False)
-    answer = "Based on your notebook: " + " ".join(item[2] for item in matches)
+
+    # Named for what it is. This is a keyword match, not an explanation, and
+    # presenting it as one made a degraded fallback look like a bad answer from
+    # a working model.
+    answer = (
+        "The AI providers are unavailable, so this is the closest passage from your notes rather "
+        "than an explanation: " + " ".join(item[2] for item in matches)
+    )
     return NotebookChatResponse(answer=answer[:1500], citations=[_citation(item) for item in matches], grounded=True)
 
 # --------------------------------------------------------------- practice ---

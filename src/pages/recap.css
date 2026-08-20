@@ -314,10 +314,12 @@
 
 .ask-panel {
   position: fixed;
-  right: 0;
-  top: 66px;
-  bottom: 0;
+  inset: 66px 0 0 auto;
   width: min(420px, 92vw);
+  height: auto;
+  max-height: calc(100dvh - 66px);
+  box-sizing: border-box;
+  overflow: hidden;
   z-index: 45;
   display: flex;
   flex-direction: column;
@@ -340,7 +342,15 @@
    66px would sit under it. Full height sidesteps the coupling entirely, and the
    panel already carries its own heading and close button. */
 @media (max-width: 680px) {
-  .ask-panel { top: 0; width: 100vw; }
+  .ask-panel {
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-left: 0;
+  }
 }
 
 .ask-head {

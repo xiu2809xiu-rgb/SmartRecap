@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../lib/api.js';
 import AuthImage from './AuthImage.jsx';
 import { Icon, Spinner } from './ui.jsx';
@@ -97,7 +98,7 @@ export default function AskPanel({ material, open, onClose }) {
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <aside className="ask-panel" role="complementary" aria-label="Ask this material">
       <header className="ask-head">
         <div>
@@ -204,6 +205,7 @@ export default function AskPanel({ material, open, onClose }) {
           <span className="sr-only">Send</span>
         </button>
       </form>
-    </aside>
+    </aside>,
+    document.body,
   );
 }
