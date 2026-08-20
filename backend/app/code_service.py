@@ -90,15 +90,23 @@ def _openrouter(
     max_tokens: int,
     temperature: float,
 ) -> Optional[Dict[str, str]]:
-    """First choice for code work: one named model, no guessing.
+    """First choice for code work: named models in a set order, no probing.
 
-    Preferred over the NIM chain because the model is pinned in configuration
-    rather than discovered by probing, and because NIM's code-specialised
-    models are not enabled for this account.
+    Preferred over the NIM chain because the models are pinned in configuration
+    rather than discovered, and because NIM's code-specialised models are not
+    enabled for this account.
+
+    A chain rather than a single pin because these are free tiers, where the
+    failure to design around is a rate limit rather than an outage. The first
+    entry is the one worth using; the rest exist so a 429 costs one wasted
+    request instead of taking coding help down.
     """
     key = (settings.openrouter_api_key.get_secret_value() or "").strip()
-    model = (settings.openrouter_code_model or "").strip()
-    if not key or not model:
+    chain = [(settings.openrouter_code_model or "").strip()]
+    chain += [part.strip() for part in (settings.openrouter_code_fallbacks or "").split(",")]
+    chain += [(settings.openrouter_model or "").strip()]
+    chain = list(dict.fromkeys(model for model in chain if model))
+    if not key or not chain:
         return None
 
     try:
@@ -114,18 +122,22 @@ def _openrouter(
         # Optional attribution headers; OpenRouter uses them for its leaderboards.
         default_headers={"HTTP-Referer": (settings.allowed_origins or [""])[0], "X-Title": "SmartRecap"},
     )
-    try:
-        completion = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-        text = (completion.choices[0].message.content or "").strip()
-        return {"text": text, "model": model} if text else None
-    except Exception as exc:
-        logger.warning("OpenRouter model %s unavailable: %s", model, str(exc)[:200])
-        return None
+    for model in chain:
+        try:
+            completion = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            text = (completion.choices[0].message.content or "").strip()
+            if text:
+                return {"text": text, "model": model}
+        except Exception as exc:
+            # A 429 on a free tier is the common case and the next model in the
+            # chain usually answers, so this is a warning and not a failure.
+            logger.warning("OpenRouter model %s unavailable: %s", model, str(exc)[:200])
+    return None
 
 
 def _complete(

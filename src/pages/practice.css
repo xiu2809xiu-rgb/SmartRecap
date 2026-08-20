@@ -581,3 +581,14 @@
 @media print {
   .agent-panel, .agent-toggle { display: none !important; }
 }
+
+/* Exercises are generated on the first visit and arrive late. This sits in the
+   tab strip so the wait is visible without holding the editor hostage. */
+.practice-tab.is-pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink-4);
+  cursor: default;
+  opacity: 0.85;
+}

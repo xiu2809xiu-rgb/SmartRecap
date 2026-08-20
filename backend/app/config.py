@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     # The IDE coding agent. Separate from `openrouter_model` so changing the
     # recap failover model does not silently change what reviews code.
     openrouter_code_model: str = "poolside/laguna-s-2.1:free"
+    # Tried in order after the model above. These are free tiers, so the failure
+    # to design around is a 429, not an outage: the first live attempt at
+    # narration died on "temporarily rate-limited upstream" while a perfectly
+    # good model sat configured beside it. Comma separated so it is tunable
+    # from the environment without a code change.
+    openrouter_code_fallbacks: str = "google/gemma-4-31b-it:free,z-ai/glm-5.2:free"
     # Read-aloud. Both are overridable from the environment because a model id
     # is a moving target — the previous coding model was retired mid-project.
     # Turns a recap into a script meant to be heard rather than read. Separate
@@ -55,6 +61,18 @@ class Settings(BaseSettings):
     pollinations_base_url: str = "https://gen.pollinations.ai"
     pollinations_model: str = "flux"
     pollinations_api_key: SecretStr = SecretStr("")
+    # Hugging Face is the preferred image generator when a token is present:
+    # FLUX.1-schnell produces markedly better diagrams than the Pollinations
+    # default, and Pollinations stays as the no-token fallback.
+    #
+    # The provider is part of the route, not a detail. hf-inference no longer
+    # serves FLUX at all -- it answers 410 "deprecated" -- while nscale, fal-ai
+    # and wavespeed serve it fine. nscale is used because it returns the image
+    # bytes as base64 in one response, where fal-ai returns a URL that would
+    # need a second fetch to a host we would then have to allowlist.
+    hf_api_token: SecretStr = SecretStr("")
+    hf_image_provider: str = "nscale"
+    hf_image_model: str = "black-forest-labs/FLUX.1-schnell"
     # If JWT_SECRET is absent, each process gets an unpredictable development-only
     # key. Sessions intentionally stop working after a restart rather than using a
     # checked-in or deterministic fallback.

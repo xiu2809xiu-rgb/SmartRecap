@@ -241,3 +241,54 @@ class CitationRepairTests(unittest.TestCase):
             "Quantum entanglement governs pointer arithmetic in Rust"
         )
         self.assertNotIn(citation.excerpt, source.text)
+
+    def test_excerpt_spanning_a_page_marker_is_kept_within_one_locator(self):
+        """A verbatim quote can straddle a [Page N] marker.
+
+        It belongs to no single section, so the per-section searches could not
+        place it and the metadata check — which runs before the excerpt check —
+        rejected the whole quiz as "invalid source metadata". The repair now
+        keeps the part inside the section it starts in, so the excerpt, the
+        locator, and the source all agree.
+        """
+        spanning = (
+            "and a reference to the next node in the sequence.\n"
+            "\n"
+            "[Page 2]\n"
+            "Traversal walks the list"
+        )
+        citation, source = self._repair(spanning)
+        self.assertIn(citation.excerpt, source.text)
+        self.assertIn(citation.label, source.labels)
+        sections = dict(
+            (label, body) for label, body in _source_sections_for_test(source)
+        )
+        self.assertIn(citation.excerpt, sections[citation.label])
+
+    def test_label_is_taken_from_position_not_from_the_model(self):
+        citation, source = self._repair(
+            "which costs linear time", label="Page 1"
+        )
+        self.assertEqual(citation.label, "Page 2")
+        self.assertIn(citation.excerpt, source.text)
+
+    def test_unknown_source_id_is_snapped_to_the_real_owner(self):
+        from app.ai_service import _repair_citation_list
+
+        source = self._source()
+        citation = Citation(
+            source_id="does_not_exist",
+            source_name="nope.pdf",
+            label="Page 4",
+            excerpt="each node holds a value",
+        )
+        _repair_citation_list([citation], [source])
+        self.assertEqual(citation.source_id, source.id)
+        self.assertEqual(citation.source_name, source.filename)
+        self.assertIn(citation.excerpt, source.text)
+
+
+def _source_sections_for_test(source):
+    from app.ai_service import _source_sections
+
+    return _source_sections(source)

@@ -1,4 +1,6 @@
+import base64
 import hashlib
+import logging
 import re
 from io import BytesIO
 from typing import Tuple
@@ -9,7 +11,10 @@ from PIL import Image, UnidentifiedImageError
 
 from .config import Settings
 
+logger = logging.getLogger("smartrecap.images")
+
 _ALLOWED_HOSTS = {"gen.pollinations.ai", "image.pollinations.ai"}
+_HF_ROUTER = "https://router.huggingface.co"
 _FORMAT_TYPES = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}
 
 
@@ -36,7 +41,58 @@ def verify_raster_image(content: bytes) -> str:
         raise ValueError("The image provider returned invalid raster data.") from exc
 
 
+def _generate_via_huggingface(brief: str, settings: Settings) -> Tuple[bytes, str, str]:
+    """FLUX.1-schnell through the Hugging Face router.
+
+    Preferred over Pollinations when a token is configured: the diagrams come
+    back sharper and follow the brief far more closely, which matters when the
+    image is meant to explain a data structure rather than decorate a page.
+
+    The provider is named explicitly. `hf-inference` no longer serves FLUX --
+    it answers 410 "deprecated and no longer supported" -- so routing through
+    the default would silently lose the feature.
+    """
+    token = settings.hf_api_token.get_secret_value().strip()
+    if not token:
+        raise ValueError("No Hugging Face token is configured.")
+
+    provider = re.sub(r"[^a-z0-9-]", "", settings.hf_image_provider.lower()) or "nscale"
+    model = settings.hf_image_model.strip() or "black-forest-labs/FLUX.1-schnell"
+    payload = {
+        "model": model,
+        "prompt": brief,
+        "response_format": "b64_json",
+    }
+    with httpx.Client(timeout=httpx.Timeout(120.0, connect=15.0)) as client:
+        response = client.post(
+            "{}/{}/v1/images/generations".format(_HF_ROUTER, provider),
+            headers={"Authorization": "Bearer {}".format(token), "Content-Type": "application/json"},
+            json=payload,
+        )
+    response.raise_for_status()
+
+    encoded = ((response.json().get("data") or [{}])[0]).get("b64_json")
+    if not encoded:
+        raise ValueError("The image provider returned no image data.")
+    content = base64.b64decode(encoded)
+    if len(content) > 8_000_000:
+        raise ValueError("The generated image exceeds the 8 MB safety limit.")
+
+    content_type = verify_raster_image(content)
+    digest = hashlib.sha256("{}\n{}".format(model, brief).encode("utf-8")).hexdigest()[:20]
+    return content, content_type, digest
+
+
 def generate_image(prompt: str, settings: Settings) -> Tuple[bytes, str, str]:
+    if settings.hf_api_token.get_secret_value().strip():
+        try:
+            return _generate_via_huggingface(sanitize_visual_brief(prompt), settings)
+        except Exception as exc:
+            # Fall through to Pollinations rather than losing the illustration:
+            # this is an optional aid, and one provider having a bad minute is
+            # not a reason to show the student nothing.
+            logger.warning("Hugging Face image generation failed: %s", str(exc)[:200])
+
     base = settings.pollinations_base_url.rstrip("/")
     parsed = urlparse(base)
     if parsed.scheme != "https" or parsed.hostname not in _ALLOWED_HOSTS:

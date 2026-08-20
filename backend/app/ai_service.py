@@ -477,11 +477,65 @@ def _repair_citation_list(citations: Iterable[Citation], sources: List[SourceRec
     def same_metadata(left: str, right: str) -> bool:
         return left.strip().casefold() == right.strip().casefold()
 
+    def label_at(source: SourceRecord, offset: int) -> str:
+        """The locator whose marker most recently precedes this offset."""
+        labels = source.labels or ["Section 1"]
+        best_label, best_position = labels[0], -1
+        for label in labels:
+            position = source.text.rfind("[{}]".format(label), 0, offset)
+            if position > best_position:
+                best_position, best_label = position, label
+        return best_label
+
     for citation in citations:
         excerpt = citation.excerpt.strip()
         tokens = re.findall(r"\S+", excerpt)
         if len(_normalized(excerpt)) < 8 or not tokens or len(excerpt) > 2000:
             continue
+
+        # Cheapest and most common good case: the excerpt is already verbatim.
+        # Snap the metadata onto whichever source really holds it and stop.
+        #
+        # This has to look at the whole source text, not section by section like
+        # the searches below, because an excerpt that straddles a [Page N] marker
+        # belongs to no single section. Such a citation is perfectly valid --
+        # `excerpt in source.text` is true -- yet was unfixable, and since the
+        # metadata check runs before the excerpt check it surfaced as "invalid
+        # source metadata" and rejected the entire quiz.
+        verbatim = [source for source in sources if excerpt in source.text]
+        if verbatim:
+            owner = next(
+                (source for source in verbatim if source.id == citation.source_id),
+                verbatim[0],
+            )
+            sections = _source_sections(owner)
+            holder = next((label for label, section in sections if excerpt in section), None)
+            if holder is None:
+                # It straddles a marker, so no single section holds it. Keep the
+                # part inside the section it starts in: validation also checks
+                # the excerpt against its locator, and a span belonging to two
+                # locators would trade one failure for another.
+                label = label_at(owner, owner.text.find(excerpt))
+                section = next((body for name, body in sections if name == label), "")
+                trimmed = excerpt
+                while trimmed and trimmed not in section:
+                    trimmed = trimmed[: trimmed.rfind(" ")] if " " in trimmed else ""
+                if len(_normalized(trimmed)) < 8:
+                    # Nothing usable survives the trim; leave it to the searches
+                    # below rather than citing a fragment.
+                    holder = None
+                else:
+                    citation.source_id = owner.id
+                    citation.source_name = owner.filename
+                    citation.label = label
+                    citation.excerpt = trimmed
+                    continue
+            else:
+                citation.source_id = owner.id
+                citation.source_name = owner.filename
+                citation.label = holder
+                citation.excerpt = excerpt
+                continue
 
         pattern = re.compile(
             r"\s+".join(re.escape(token) for token in tokens),
