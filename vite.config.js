@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+const DEV_API_TARGET = process.env.DEV_API_TARGET || 'http://127.0.0.1:8000';
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -16,8 +18,31 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      '/api': 'http://127.0.0.1:8000',
-      '/ws': { target: 'ws://127.0.0.1:8000', ws: true },
+      // Defaults to a backend on this machine. Point it at a deployed API with
+      //   DEV_API_TARGET=https://your-host npm run dev
+      // Going through the proxy keeps the browser same-origin, so the deployed
+      // CORS_ORIGINS does not have to list localhost to make dev work.
+      '/api': { target: DEV_API_TARGET, changeOrigin: true },
+      '/ws': { target: DEV_API_TARGET.replace(/^http/, 'ws'), ws: true, changeOrigin: true },
+
+      /**
+       * Tunnel for the presigned upload PUT.
+       *
+       * `POST /api/uploads` hands back an absolute S3 URL, so the browser talks
+       * to S3 directly and the proxy above never sees it. The bucket's CORS
+       * lists only the deployed web origin, so that PUT fails from localhost
+       * with "Failed to fetch" even when the API itself is reachable.
+       *
+       * api.js rewrites those URLs to /__dev-s3/<host>/<key> in dev only. The
+       * signature survives because the path and query are untouched and
+       * changeOrigin restores the Host header S3 signed for.
+       */
+      '/__dev-s3': {
+        target: 'https://s3.amazonaws.com',
+        changeOrigin: true,
+        router: (req) => `https://${req.url.split('/')[2]}`,
+        rewrite: (path) => path.replace(/^\/__dev-s3\/[^/]+/, ''),
+      },
     },
     watch: {
       ignored: ['**/backend/.venv/**', '**/.paddlex/**', '**/__pycache__/**'],

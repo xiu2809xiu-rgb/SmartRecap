@@ -125,6 +125,22 @@ async function request(path, { method = 'GET', body, signal, auth = true } = {})
   return payload;
 }
 
+/**
+ * Route an absolute presigned upload URL through the dev server in development.
+ *
+ * The bucket's CORS lists the deployed web origin only, so a direct PUT from
+ * localhost is blocked by the browser and surfaces as "Failed to fetch". Vite
+ * proxies /__dev-s3/<host>/<key> back to S3 with the Host header restored, and
+ * the presigned signature still validates because path and query are untouched.
+ * Production is unaffected: the URL is returned exactly as the backend sent it.
+ */
+function uploadTarget(uploadUrl) {
+  const apiOrigin = BASE.startsWith('http') ? new URL(BASE).origin : window.location.origin;
+  const absolute = new URL(uploadUrl, apiOrigin);
+  if (!import.meta.env?.DEV || absolute.origin === window.location.origin) return absolute.toString();
+  return `/__dev-s3/${absolute.host}${absolute.pathname}${absolute.search}`;
+}
+
 function lobbyRequest(path, options = {}) {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), 12_000);
@@ -204,8 +220,7 @@ const live = {
      * case must not send.
      */
     put: async (uploadUrl, file) => {
-      const apiOrigin = BASE.startsWith('http') ? new URL(BASE).origin : window.location.origin;
-      const target = new URL(uploadUrl, apiOrigin).toString();
+      const target = uploadTarget(uploadUrl);
       const headers = { 'Content-Type': file.type || 'application/octet-stream' };
       if (uploadUrl.startsWith('/')) {
         const token = tokenStore.get();
@@ -229,6 +244,8 @@ const live = {
     helpAvailable: () => request('/practice/help-available'),
     /** Why did this attempt fail? Never returns a corrected solution. */
     explain: (payload) => request('/practice/explain', { method: 'POST', body: payload }),
+    /** One turn of the IDE coding agent. The provider key stays server-side. */
+    agent: (payload) => request('/practice/agent', { method: 'POST', body: payload }),
   },
 
   binders: {
@@ -255,8 +272,7 @@ const live = {
      * including the same local-fallback auth header (see its comment).
      */
     put: async (uploadUrl, file) => {
-      const apiOrigin = BASE.startsWith('http') ? new URL(BASE).origin : window.location.origin;
-      const target = new URL(uploadUrl, apiOrigin).toString();
+      const target = uploadTarget(uploadUrl);
       const headers = { 'Content-Type': 'application/pdf' };
       if (uploadUrl.startsWith('/')) {
         const token = tokenStore.get();
