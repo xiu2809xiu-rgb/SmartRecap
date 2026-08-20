@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useStore } from '../lib/store.jsx';
 import { StudyShell } from '../components/layout/Shells.jsx';
+import ErrorBoundary from '../components/ErrorBoundary.jsx';
 import { Icon, Spinner, useToast, Segmented } from '../components/ui.jsx';
 import useRunner from '../practice/useRunner.js';
 import './practice.css';
@@ -484,6 +485,7 @@ export default function Practice() {
         </div>
 
         <Suspense fallback={null}>
+          <ErrorBoundary scope="The coding agent">
           <CodeAgent
             open={agentOpen}
             onClose={() => setAgentOpen(false)}
@@ -494,6 +496,7 @@ export default function Practice() {
             allowSolutions={isPlayground}
             onApply={(next) => setDrafts((prev) => ({ ...prev, [draftKey]: next }))}
           />
+          </ErrorBoundary>
         </Suspense>
       </div>
     </StudyShell>

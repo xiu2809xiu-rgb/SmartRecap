@@ -9,6 +9,7 @@ import { StudyShell } from '../components/layout/Shells.jsx';
 import { CitationProvider, Claim, SourceCard, CitationRibbon } from '../components/Citations.jsx';
 import AskPanel from '../components/AskPanel.jsx';
 import NarrationButton from '../components/NarrationButton.jsx';
+import ErrorBoundary from '../components/ErrorBoundary.jsx';
 import NormalNotes from '../components/NormalNotes.jsx';
 import { buildDocumentNotes } from '../lib/documentNotes.js';
 import { Icon, Spinner, Empty, Modal, CopyButton, useToast } from '../components/ui.jsx';
@@ -269,7 +270,9 @@ export default function Recap() {
                     The short version
                   </h2>
                   <p className="tldr-summary">{recap.summary}</p>
-                  <NarrationButton materialId={id} />
+                  <ErrorBoundary scope="Read-aloud">
+                    <NarrationButton materialId={id} />
+                  </ErrorBoundary>
                 </section>
               </FadeContent>
 

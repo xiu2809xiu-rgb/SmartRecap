@@ -109,31 +109,52 @@ def _recap_as_text(recap: Dict[str, Any], title: str = "") -> str:
     return "\n\n".join(parts)
 
 
-def _write_script(recap_text: str, settings: Settings) -> Optional[Dict[str, str]]:
-    model = (settings.openrouter_narration_model or "").strip()
-    if not model:
-        return None
-    try:
-        completion = _client(settings).chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": SCRIPT_SYSTEM_PROMPT},
-                {"role": "user", "content": "THE NOTES:\n\n{}".format(recap_text[:12000])},
-            ],
-            # Low, but not zero: this is a rewrite, and flat prose is tiring to
-            # listen to for three minutes.
-            temperature=0.4,
-            max_tokens=900,
-        )
-        text = (completion.choices[0].message.content or "").strip()
-    except Exception as exc:
-        logger.warning("narration script model %s failed: %s", model, str(exc)[:200])
-        return None
+def _script_models(settings: Settings) -> List[str]:
+    """The rewrite models to try, in order, without repeats.
 
-    for pattern, replacement in _SPEAKABLE:
-        text = pattern.sub(replacement, text)
-    text = text.strip()
-    return {"text": text, "model": model} if text else None
+    A chain rather than one pinned model because these are free tiers: the
+    first attempt at this returned `429 z-ai/glm-5.2:free is temporarily
+    rate-limited upstream`, which took the whole feature down even though the
+    account had a perfectly good general model configured. Falling through to
+    the recap model costs one wasted request instead.
+    """
+    ordered = [
+        (settings.openrouter_narration_model or "").strip(),
+        (settings.openrouter_model or "").strip(),
+        (settings.openrouter_code_model or "").strip(),
+    ]
+    return list(dict.fromkeys(model for model in ordered if model))
+
+
+def _write_script(recap_text: str, settings: Settings) -> Optional[Dict[str, str]]:
+    client = _client(settings)
+    prompt = "THE NOTES:\n\n{}".format(recap_text[:12000])
+
+    for model in _script_models(settings):
+        try:
+            completion = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": SCRIPT_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                # Low, but not zero: this is a rewrite, and flat prose is tiring
+                # to listen to for three minutes.
+                temperature=0.4,
+                max_tokens=900,
+            )
+            text = (completion.choices[0].message.content or "").strip()
+        except Exception as exc:
+            logger.warning("narration script model %s failed: %s", model, str(exc)[:200])
+            continue
+
+        for pattern, replacement in _SPEAKABLE:
+            text = pattern.sub(replacement, text)
+        text = text.strip()
+        if text:
+            return {"text": text, "model": model}
+
+    return None
 
 
 def _speak(script: str, settings: Settings) -> Optional[Dict[str, Any]]:
@@ -174,12 +195,70 @@ def _speak(script: str, settings: Settings) -> Optional[Dict[str, Any]]:
         )
         return None
 
+    content = _repair_wav_header(response.content)
     return {
-        "audio": base64.b64encode(response.content).decode("ascii"),
-        "mimeType": response.headers.get("Content-Type", "audio/mpeg"),
+        "audio": base64.b64encode(content).decode("ascii"),
+        "mimeType": _audio_mime(content, response.headers.get("Content-Type", "")),
         "model": model,
         "voice": settings.openrouter_tts_voice,
     }
+
+
+def _repair_wav_header(content: bytes) -> bytes:
+    """Correct the length fields in a streamed WAV header.
+
+    The speech endpoint streams, so it writes its header before it knows how
+    long the audio will be and leaves placeholder sizes behind. The result
+    decodes fine but reports a nonsense length — 4.5 MB of speech arrived
+    claiming 1073709056 frames, about twelve hours — and a browser trusts that
+    field, so the player shows an absurd duration and the scrubber is unusable.
+
+    Both length fields are recomputed from the bytes actually received.
+    """
+    if len(content) < 44 or content[:4] != b"RIFF" or content[8:12] != b"WAVE":
+        return content
+
+    total = len(content)
+    index = 12
+    while index + 8 <= total:
+        chunk_id = content[index:index + 4]
+        chunk_size = int.from_bytes(content[index + 4:index + 8], "little")
+        if chunk_id == b"data":
+            actual = total - (index + 8)
+            if chunk_size == actual and int.from_bytes(content[4:8], "little") == total - 8:
+                return content
+            patched = bytearray(content)
+            patched[4:8] = (total - 8).to_bytes(4, "little")
+            patched[index + 4:index + 8] = actual.to_bytes(4, "little")
+            return bytes(patched)
+        # A placeholder size on a non-data chunk would send this past the end;
+        # stop rather than walk off into the audio.
+        if chunk_size <= 0 or index + 8 + chunk_size > total:
+            break
+        index += 8 + chunk_size + (chunk_size & 1)
+    return content
+
+
+def _audio_mime(content: bytes, reported: str) -> str:
+    """Name the container from its magic bytes, not from the response header.
+
+    The header cannot be trusted for playback: this provider returns a RIFF/WAV
+    container while reporting `audio/pcm;rate=24000;channels=1`. No browser
+    plays `audio/pcm`, so a blob built from that label leaves the <audio>
+    element silent with no error to explain it. The first four bytes say what
+    the file actually is.
+    """
+    if content[:4] == b"RIFF":
+        return "audio/wav"
+    if content[:4] == b"OggS":
+        return "audio/ogg"
+    if content[:4] == b"fLaC":
+        return "audio/flac"
+    if content[:3] == b"ID3" or content[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"):
+        return "audio/mpeg"
+    # Nothing recognised. Prefer a sane default over a label the browser will
+    # refuse outright.
+    return reported if reported.startswith("audio/") and "pcm" not in reported else "audio/wav"
 
 
 def build_narration(recap: Dict[str, Any], settings: Settings, title: str = "") -> Optional[Dict[str, Any]]:
