@@ -312,11 +312,17 @@ export default function Practice() {
 
             {isPlayground && !exercises.length && (
               <p className="practice-note">
-                <Icon name="info" size={15} />
-                {loadFailed
-                  ? 'Exercises for this material could not be loaded, so only the playground is here. The editor still runs normally.'
-                  : (practice.reason ??
-                    'This material does not teach programming, so there are no exercises for it — but the playground still works.')}
+                <Icon name={exercisesLoading ? 'hourglass_top' : 'info'} size={15} />
+                {/* Three different situations, and saying the wrong one is worse
+                    than saying nothing. `practice` is null until the request
+                    settles, so it is read optionally: the page no longer waits
+                    for it before rendering. */}
+                {exercisesLoading
+                  ? 'Reading your notes for something worth practising. The playground below already works.'
+                  : loadFailed
+                    ? 'Exercises for this material could not be loaded, so only the playground is here. The editor still runs normally.'
+                    : (practice?.reason ??
+                      'This material does not teach programming, so there are no exercises for it — but the playground still works.')}
               </p>
             )}
           </div>
