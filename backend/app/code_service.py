@@ -1,16 +1,22 @@
-"""Coding help for the practice panel, on NVIDIA NIM.
+"""Coding help for the practice panel: OpenRouter first, NVIDIA NIM as fallback.
 
-`qwen2.5-coder-32b-instruct` is a code-specialised model, which is the right
-tool for reading a student's Python or JavaScript and saying why it failed — a
-general chat model reasons about code noticeably less reliably. NIM also
-already appears in the architecture as the generation failover, so this adds a
-use for a provider the project has, not a new dependency on another vendor.
+Two callers with deliberately different rules share this module.
 
-The rule this service exists to enforce is pedagogical, not technical: **it
-must not write the answer.** A student who is handed working code has learned
-nothing and knows it. The prompt asks for the reason and the next thing to
-check, and the response is filtered for code blocks before it is returned, so a
-model that ignores the instruction still cannot leak a solution.
+`explain_failure` backs the graded exercises, and the rule it enforces is
+pedagogical, not technical: **it must not write the answer.** A student handed
+working code has learned nothing and knows it. The prompt asks for the reason
+and the next thing to check, and the reply is stripped of code blocks before it
+is returned, so a model that ignores the instruction still cannot leak a
+solution.
+
+`chat_about_code` backs the IDE agent, where there is no answer to protect in
+the Playground and being shown the fix is the point. It keeps the same
+restraint when the caller says the student is on a graded exercise.
+
+On providers: OpenRouter is preferred because the model is pinned in
+configuration rather than discovered by probing. The NIM chain remains as a
+fallback so the feature survives either provider being unavailable — see the
+note on MODELS for how much of NIM's code-model catalogue is dead on this key.
 """
 
 from __future__ import annotations
@@ -253,7 +259,7 @@ version of the function they are being asked to write. Explain the reasoning,
 show at most a two-line fragment or a worked example on DIFFERENT data, and name
 the next thing for them to change."""
 
-_FIRST_FENCE = re.compile(r"```[a-zA-Z0-9_+-]*\n([\s\S]*?)```")
+_FENCED_BLOCK = re.compile(r"```[a-zA-Z0-9_+-]*\n([\s\S]*?)```")
 
 
 def chat_about_code(
@@ -305,16 +311,32 @@ def chat_about_code(
         return None
 
     text = result["text"]
-    suggestion = None
-    if allow_solutions:
-        match = _FIRST_FENCE.search(text)
-        if match:
-            body = match.group(1).strip()
-            # A one-liner is a fragment being quoted, not a file worth offering
-            # to overwrite the editor with.
-            if body.count("\n") >= 2:
-                suggestion = body
-    else:
-        text = _FENCE.sub("", text).strip() or result["text"]
+    suggestion = _applyable_block(text) if allow_solutions else None
+    if not allow_solutions:
+        # Never fall back to the unstripped reply here. When a model answers a
+        # graded exercise with nothing but a code block — which it does, when
+        # asked directly for the answer — stripping leaves an empty string, and
+        # returning the original in its place handed over the very solution
+        # this branch exists to withhold.
+        text = _FENCE.sub("", text).strip() or (
+            "That reply was nothing but code, and you are on a graded exercise, so I have "
+            "held it back. Tell me which line you are unsure about and I will explain what "
+            "it needs to do."
+        )
 
     return {"text": text, "model": result["model"], "suggestion": suggestion}
+
+
+def _applyable_block(text: str) -> Optional[str]:
+    """The fenced block worth offering to replace the editor with, if any.
+
+    Not simply the first one. Asked why their code is wrong, a model quotes the
+    offending couple of lines before showing the repaired function, so taking
+    the first block meant "Apply to editor" almost never appeared -- and when it
+    did, it would have pasted the bug straight back in. The longest block is the
+    one that looks like a whole file; anything under three lines is a fragment
+    being discussed rather than a program.
+    """
+    blocks = [block.strip() for block in _FENCED_BLOCK.findall(text)]
+    candidates = [block for block in blocks if block.count("\n") >= 2]
+    return max(candidates, key=len) if candidates else None

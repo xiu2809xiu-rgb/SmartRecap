@@ -24,6 +24,32 @@ class ObjectStorage:
             self._client = boto3.client("s3", region_name=self.region)
         return self._client
 
+    def _signing_client(self):
+        """A client whose credentials were read from IMDS just now.
+
+        Presigning never contacts AWS — it signs locally with whatever
+        credentials are cached. So a revoked key still produces a URL that
+        looks perfectly valid, and the failure only appears when the browser
+        PUTs to it and S3 answers ExpiredToken.
+
+        That is exactly what Learner Lab causes: it revokes the instance role's
+        credentials when a lab session rotates, long before the expiry stamped
+        on them. botocore therefore has no reason to refresh and keeps signing
+        with a dead key for as long as the process lives.
+
+        Building a session per presign re-reads the instance metadata service —
+        one link-local request per upload — which is cheap insurance that the
+        URL handed to the browser is signed with a key that is still alive. If
+        that read fails for any reason, fall back to the long-lived client
+        rather than failing the upload outright.
+        """
+        import boto3
+
+        try:
+            return boto3.Session().client("s3", region_name=self.region)
+        except Exception:
+            return self.client
+
     def object_key(self, key: str) -> str:
         return f"{self.prefix}/{key.lstrip('/')}"
 
@@ -32,7 +58,7 @@ class ObjectStorage:
 
     def presign_upload(self, material_id: str, content_type: str) -> Tuple[str, str]:
         key = self.upload_key(material_id)
-        url = self.client.generate_presigned_url(
+        url = self._signing_client().generate_presigned_url(
             "put_object",
             Params={"Bucket": self.bucket, "Key": key, "ContentType": content_type},
             ExpiresIn=900,
