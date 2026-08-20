@@ -1,4 +1,5 @@
 import asyncio
+import json
 import hashlib
 import hmac
 import logging
@@ -51,11 +52,20 @@ _cards: OwnerMap = OwnerMap()
 _shares: Dict[str, Dict[str, str]] = {}
 _forum_posts: List[Dict[str, Any]] = []
 _illustration_bytes: OwnerMap = OwnerMap()
+# Narration audio when S3 is not configured. Lost on restart, which is why the
+# S3 path is preferred: history that disappears when the box reboots is not
+# history. The script and its metadata live on the material either way.
+_narration_bytes: OwnerMap = OwnerMap()
 _illustrations_inflight: OwnerSet = OwnerSet()
 _illustration_last_generated: OwnerMap = OwnerMap()
 _chat_illustration_last_generated: OwnerMap = OwnerMap()
 _chat_answers: OwnerMap = OwnerMap()
 _tasks: set[asyncio.Task] = set()
+
+
+# Kept per material. Enough to compare a few takes, bounded so a student who
+# keeps asking for another one does not fill the bucket.
+NARRATION_HISTORY_LIMIT = 8
 
 
 def _now() -> str:
@@ -1529,19 +1539,41 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
     async def narration_is_available() -> Dict[str, Any]:
         return {"available": narration_available(settings)}
 
+    def _narration_summary(item: Dict[str, Any]) -> Dict[str, Any]:
+        """The parts of a stored take that are safe and useful to send.
+
+        Everything except the storage key, which is an internal pointer and has
+        no business in a response body.
+        """
+        return {key: value for key, value in item.items() if not key.startswith("_")}
+
+    @router.get("/materials/{material_id}/narrations")
+    async def list_narrations(material_id: str) -> Dict[str, Any]:
+        material = _require_material(material_id)
+        takes = material.get("narrations") or []
+        return {"narrations": [_narration_summary(item) for item in takes]}
+
     @router.post("/materials/{material_id}/narration")
-    async def narrate_material(material_id: str) -> Dict[str, Any]:
-        """Read this recap aloud.
+    async def narrate_material(material_id: str, request: Request) -> Dict[str, Any]:
+        """Read this recap aloud, and keep the take.
 
         A language model rewrites the notes as spoken prose first, because a
         speech model handed recap JSON pronounces the bullet characters and the
         citation ids. See `narration.py`.
 
-        The audio is deliberately not cached on the material. It comes back as
-        base64 and a couple of minutes of speech is megabytes — well past
-        DynamoDB's 400 KB item ceiling, so persisting it would corrupt the
-        record it was attached to. The browser keeps the blob instead.
+        Send `instruction` with `basedOn` to revise an existing take rather than
+        generate an unrelated one -- "slower", "focus on the handshake".
+
+        The audio never goes on the material record. A couple of minutes of
+        speech is megabytes, well past DynamoDB's 400 KB item ceiling, so it
+        goes to S3 and only the pointer is stored. The script is small and lives
+        on the record, so the transcript survives even if the audio is swept.
         """
+        raw_body = await request.body()
+        body = json.loads(raw_body) if raw_body else {}
+        instruction = str(body.get("instruction") or "").strip()
+        based_on = str(body.get("basedOn") or "").strip()
+
         material = _require_material(material_id)
         recap = material.get("recap") or {}
         if not recap.get("sections") and not recap.get("summary"):
@@ -1555,17 +1587,121 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
                 detail="Read-aloud is not configured on this deployment.",
             )
 
+        takes = list(material.get("narrations") or [])
+        previous_script = ""
+        if instruction:
+            source = next(
+                (t for t in takes if t.get("id") == based_on),
+                takes[-1] if takes else None,
+            )
+            previous_script = str((source or {}).get("script") or "")
+
         result = await run_in_threadpool(
-            build_narration, recap, settings, material.get("title") or ""
+            build_narration,
+            recap,
+            settings,
+            material.get("title") or "",
+            instruction,
+            previous_script,
         )
         if not result:
             raise HTTPException(status_code=502, detail="Could not write the narration script just now.")
-        if not result.get("audio"):
-            # The script survived but the speech model did not answer. Return
-            # 200 with the transcript: a readable script is a real result, and
-            # the client says plainly that the audio leg failed.
-            return {**result, "audioFailed": True}
-        return result
+
+        take: Dict[str, Any] = {
+            "id": _id("nar"),
+            "script": result["script"],
+            "scriptModel": result["scriptModel"],
+            "instruction": instruction,
+            "basedOn": based_on if instruction else "",
+            "createdAt": _now(),
+            "seconds": result.get("seconds"),
+            "mimeType": result.get("mimeType"),
+            "speechModel": result.get("speechModel"),
+            "voice": result.get("voice"),
+        }
+
+        raw_audio = result.get("raw")
+        if not raw_audio:
+            # The script survived but the speech model did not answer. Keep the
+            # take anyway: a readable transcript is a real result, and it can be
+            # revised and re-voiced later.
+            take["audioFailed"] = True
+        elif storage.ready:
+            try:
+                take["_storageKey"] = await run_in_threadpool(
+                    storage.put_binary,
+                    "narrations/{}/{}.wav".format(material_id, take["id"]),
+                    raw_audio,
+                    take["mimeType"] or "audio/wav",
+                )
+            except Exception as exc:
+                logger.warning("narration upload failed material=%s error=%s", material_id, exc)
+                _narration_bytes[take["id"]] = (raw_audio, take["mimeType"] or "audio/wav")
+        else:
+            _narration_bytes[take["id"]] = (raw_audio, take["mimeType"] or "audio/wav")
+
+        takes.append(take)
+        # Drop the oldest beyond the cap, and take their audio with them rather
+        # than leaving objects in the bucket that nothing points at.
+        while len(takes) > NARRATION_HISTORY_LIMIT:
+            oldest = takes.pop(0)
+            _narration_bytes.pop(str(oldest.get("id")), None)
+            if oldest.get("_storageKey") and storage.ready:
+                try:
+                    await run_in_threadpool(storage.delete_key, oldest["_storageKey"])
+                except Exception as exc:
+                    logger.warning("could not delete narration audio: %s", exc)
+
+        material["narrations"] = takes
+        await persist("material", material_id, material)
+        return _narration_summary(take)
+
+    @router.get("/materials/{material_id}/narrations/{narration_id}/audio")
+    async def get_narration_audio(material_id: str, narration_id: str) -> Response:
+        material = _require_material(material_id)
+        take = next(
+            (t for t in (material.get("narrations") or []) if t.get("id") == narration_id),
+            None,
+        )
+        if not take:
+            raise HTTPException(status_code=404, detail="That narration does not exist.")
+
+        if take.get("_storageKey") and storage.ready:
+            content, content_type = await run_in_threadpool(storage.get_binary, take["_storageKey"])
+        else:
+            cached = _narration_bytes.get(narration_id)
+            if not cached:
+                raise HTTPException(
+                    status_code=404,
+                    detail="That narration's audio is no longer stored. Generate it again.",
+                )
+            content, content_type = cached
+
+        return Response(
+            content=content,
+            media_type=content_type or "audio/wav",
+            headers={"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"},
+        )
+
+    @router.delete("/materials/{material_id}/narrations/{narration_id}", status_code=204)
+    async def delete_narration(material_id: str, narration_id: str) -> Response:
+        material = _require_material(material_id)
+        takes = list(material.get("narrations") or [])
+        remaining = [t for t in takes if t.get("id") != narration_id]
+        if len(remaining) == len(takes):
+            raise HTTPException(status_code=404, detail="That narration does not exist.")
+
+        removed = next(t for t in takes if t.get("id") == narration_id)
+        _narration_bytes.pop(narration_id, None)
+        if removed.get("_storageKey") and storage.ready:
+            try:
+                await run_in_threadpool(storage.delete_key, removed["_storageKey"])
+            except Exception as exc:
+                logger.warning("could not delete narration audio: %s", exc)
+
+        material["narrations"] = remaining
+        await persist("material", material_id, material)
+        return Response(status_code=204)
 
     @router.get("/materials/{material_id}/practice")
     async def get_practice(material_id: str, refresh: str = "") -> Dict[str, Any]:

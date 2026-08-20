@@ -320,8 +320,39 @@ const live = {
   narration: {
     /** Whether this deployment has the read-aloud models configured. */
     available: () => request('/narration/available'),
-    /** Rewrite this recap as spoken prose and synthesise it. Returns base64 audio. */
-    create: (materialId) => request(`/materials/${materialId}/narration`, { method: 'POST' }),
+    /** Every take kept for this material, oldest first. */
+    list: (materialId) => request(`/materials/${materialId}/narrations`),
+    /**
+     * Produce a take. With `instruction` and `basedOn` it revises that take
+     * rather than generating an unrelated one.
+     */
+    create: (materialId, body = {}) =>
+      request(`/materials/${materialId}/narration`, { method: 'POST', body }),
+    remove: (materialId, narrationId) =>
+      request(`/materials/${materialId}/narrations/${narrationId}`, { method: 'DELETE' }),
+    /**
+     * The audio itself, as a Blob.
+     *
+     * Fetched rather than pointed at with an <audio src>, because the route is
+     * behind the Bearer session and an audio element cannot send a header. The
+     * caller owns the object URL it makes from this and must revoke it.
+     */
+    audio: async (materialId, narrationId) => {
+      const token = tokenStore.get();
+      const res = await fetch(`${BASE}/materials/${materialId}/narrations/${narrationId}/audio`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        throw new ApiError(
+          res.status === 404
+            ? 'That recording is no longer stored. Generate it again.'
+            : 'Could not load that recording.',
+          res.status,
+          null,
+        );
+      }
+      return res.blob();
+    },
   },
 
   binders: {

@@ -130,6 +130,34 @@ class ObjectStorage:
         finally:
             body.close()
 
+    def put_binary(self, key: str, content: bytes, content_type: str) -> str:
+        """Store an arbitrary binary object. Same shape as put_image, named for
+        what it is: narration audio is not an image and should not pretend to be."""
+        object_key = self.object_key(key)
+        self.client.put_object(
+            Bucket=self.bucket,
+            Key=object_key,
+            Body=content,
+            ContentType=content_type,
+            ServerSideEncryption="AES256",
+        )
+        return object_key
+
+    def get_binary(self, key: str, max_bytes: int = 24_000_000) -> Tuple[bytes, str]:
+        """Read a stored binary object. The ceiling is generous because a few
+        minutes of 24 kHz mono speech is several megabytes."""
+        if not key.startswith(f"{self.prefix}/"):
+            raise ValueError("The S3 object key is outside the configured prefix.")
+        response = self.client.get_object(Bucket=self.bucket, Key=key)
+        body = response["Body"]
+        try:
+            content = body.read(max_bytes + 1)
+            if len(content) > max_bytes:
+                raise ValueError("The stored object exceeds the safety limit.")
+            return content, str(response.get("ContentType") or "application/octet-stream")
+        finally:
+            body.close()
+
     def delete_key(self, key: str) -> None:
         if not self.ready:
             return

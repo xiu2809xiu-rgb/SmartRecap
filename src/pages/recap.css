@@ -592,23 +592,96 @@
   color: var(--warn);
 }
 
-.narration-transcript summary {
-  cursor: pointer;
-  font-size: var(--t-xs);
-  color: var(--ink-3);
-  font-weight: 600;
-}
 
-.narration-transcript p {
-  margin-top: 9px;
-  font-size: var(--t-sm);
-  line-height: 1.7;
-  color: var(--ink-2);
-  white-space: pre-wrap;
-}
 
 @media (prefers-reduced-motion: reduce) {
   .narration, .narration-wave i { animation: none !important; }
 }
 
 @media print { .narrate-btn, .narration-audio { display: none !important; } }
+
+/* --------------------------------------------------- narration history */
+
+.narrate-actions { margin-top: 14px; }
+.narrate-btn { margin-top: 0; }
+
+.narration-takes { display: flex; flex-direction: column; gap: 10px; margin: 0 0 16px; padding: 0; list-style: none; }
+
+.narration-take {
+  padding: 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--glass-line);
+  background: var(--ground);
+  animation: narration-in 260ms var(--spring) both;
+}
+
+/* The newest take is the one a revision is measured against, so it is the one
+   worth finding at a glance. */
+.narration-take.is-latest { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+
+.narration-take-head { display: flex; align-items: flex-start; gap: 10px; }
+.narration-take-meta { flex: 1; min-width: 0; }
+.narration-take-title { font-size: var(--t-sm); font-weight: 620; color: var(--ink); }
+.narration-take-sub { margin-top: 2px; font-size: 0.7rem; color: var(--ink-4); }
+
+.narration-take-num {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--ink-2);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.narration-load { margin-top: 9px; }
+.narration-take .narration-audio { margin: 10px 0 0; }
+.narration-take .narration-note { margin: 9px 0 0; }
+
+.narration-transcript-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 9px;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  color: var(--ink-3);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.narration-transcript-toggle:hover { color: var(--ink); }
+
+.narration-script {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--glass-line);
+  font-size: var(--t-sm);
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+
+.narration-refine { border-top: 1px solid var(--glass-line); padding-top: 13px; }
+.narration-refine-label { font-size: var(--t-xs); font-weight: 650; color: var(--ink-2); margin-bottom: 9px; }
+.narration-presets { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 10px; }
+
+.narration-preset {
+  padding: 7px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-line);
+  background: var(--ground);
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.narration-preset:hover:not(:disabled) { border-color: var(--accent); color: var(--ink); }
+.narration-preset:disabled { opacity: 0.55; }
+
+.narration-form { display: flex; gap: 8px; }
+.narration-form .input { flex: 1; min-width: 0; }
+.narration-form .btn { flex-shrink: 0; padding-inline: 13px; }

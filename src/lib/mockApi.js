@@ -1110,9 +1110,19 @@ export const mockApi = {
       await sleep(60);
       return { available: false };
     },
+    async list() {
+      await sleep(60);
+      return { narrations: [] };
+    },
     async create() {
       // Demo mode has no speech model, and a canned recording of the wrong
       // notes would be worse than no audio at all.
+      throw Object.assign(new Error('Read-aloud needs a live backend.'), { status: 501 });
+    },
+    async remove() {
+      throw Object.assign(new Error('Read-aloud needs a live backend.'), { status: 501 });
+    },
+    async audio() {
       throw Object.assign(new Error('Read-aloud needs a live backend.'), { status: 501 });
     },
     /**
