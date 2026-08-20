@@ -427,6 +427,11 @@ export const mockApi = {
       await sleep(300);
       return { materialId: makeId('m'), uploadUrl: null, fileName };
     },
+    /** Mirrors live.uploads.send: there is no URL to sign, so just mint an id. */
+    async send() {
+      await sleep(300);
+      return makeId('m');
+    },
     async put() {
       await sleep(400);
     },

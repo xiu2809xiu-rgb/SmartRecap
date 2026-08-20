@@ -786,7 +786,10 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
         else:
             upload_url = "/api/uploads/{}/content".format(material_id)
         _uploads[material_id] = upload
-        return {"materialId": material_id, "uploadUrl": upload_url}
+        # Echo the content type back. The presigned signature covers it, so the
+        # browser has to send this exact value on the PUT — returning it removes
+        # any chance of the two sides computing it differently.
+        return {"materialId": material_id, "uploadUrl": upload_url, "contentType": content_type}
 
     @router.put("/uploads/{material_id}/content", status_code=204)
     async def put_upload(material_id: str, request: Request) -> Response:

@@ -134,6 +134,46 @@ async function request(path, { method = 'GET', body, signal, auth = true } = {})
  * the presigned signature still validates because path and query are untouched.
  * Production is unaffected: the URL is returned exactly as the backend sent it.
  */
+/**
+ * PUT a file to a presigned URL and fail loudly.
+ *
+ * S3 answers a rejected upload with an XML body naming the reason —
+ * SignatureDoesNotMatch, AccessDenied, EntityTooLarge. Swallowing that and
+ * showing "check your connection" sent us chasing a network fault when the
+ * signature was the problem, so the code is surfaced in the message.
+ *
+ * `contentType` must be byte-identical to the one the URL was signed with: the
+ * signature covers it, so any drift is a 403. It is threaded through from the
+ * create call rather than recomputed here, which is what stops the two sides
+ * from ever disagreeing.
+ */
+async function putSignedFile(uploadUrl, file, contentType) {
+  const target = uploadTarget(uploadUrl);
+  const headers = { 'Content-Type': contentType };
+  if (uploadUrl.startsWith('/')) {
+    const token = tokenStore.get();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
+
+  const res = await fetch(target, { method: 'PUT', headers, body: file });
+  if (res.ok) return;
+
+  let reason = '';
+  try {
+    const body = await res.text();
+    reason = (body.match(/<Code>([^<]+)<\/Code>/) ?? [])[1] ?? '';
+  } catch {
+    // A body we cannot read is not worth failing twice over.
+  }
+  throw new ApiError(
+    reason
+      ? `The storage service rejected this upload (${res.status} ${reason}).`
+      : `The storage service rejected this upload (HTTP ${res.status}).`,
+    res.status,
+    null,
+  );
+}
+
 function uploadTarget(uploadUrl) {
   const apiOrigin = BASE.startsWith('http') ? new URL(BASE).origin : window.location.origin;
   const absolute = new URL(uploadUrl, apiOrigin);
@@ -219,16 +259,45 @@ const live = {
      * that one is behind the Bearer session, so it needs the header the S3
      * case must not send.
      */
-    put: async (uploadUrl, file) => {
-      const target = uploadTarget(uploadUrl);
-      const headers = { 'Content-Type': file.type || 'application/octet-stream' };
-      if (uploadUrl.startsWith('/')) {
-        const token = tokenStore.get();
-        if (token) headers.Authorization = `Bearer ${token}`;
+    /**
+     * Create an upload session and send the bytes, retrying once if the
+     * credentials behind the URL died in between.
+     *
+     * The presigned URL carries the EC2 instance role's temporary STS token.
+     * On Learner Lab that token rotates, and one signed shortly before a
+     * rotation is refused with ExpiredToken even though it was valid when
+     * issued and is nowhere near its own 15-minute expiry. Nothing on the
+     * client can extend it — the only repair is a freshly signed URL, so ask
+     * for one and send again. The retry yields a new materialId, which is why
+     * this returns it rather than leaving the caller holding the stale one.
+     */
+    send: async (file) => {
+      const payload = {
+        fileName: file.name,
+        contentType: file.type || 'application/octet-stream',
+        sizeBytes: file.size,
+      };
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        const created = await live.uploads.create(payload);
+        if (!created.uploadUrl) return created.materialId;
+        try {
+          await live.uploads.put(created.uploadUrl, file, created.contentType);
+          return created.materialId;
+        } catch (error) {
+          const expired = /ExpiredToken|TokenRefreshRequired|InvalidToken/i.test(error.message ?? '');
+          if (!expired || attempt === 2) throw error;
+        }
       }
-      const res = await fetch(target, { method: 'PUT', headers, body: file });
-      if (!res.ok) throw new ApiError('Could not upload your file. Check your connection and try again.', res.status, null);
+      throw new ApiError('Could not upload your file.', 0, null);
     },
+
+    /**
+     * `contentType` is the value the backend echoed back from create, so it is
+     * exactly what the URL was signed with. It falls back to the file's own
+     * type only for an older backend that does not return it.
+     */
+    put: (uploadUrl, file, contentType) =>
+      putSignedFile(uploadUrl, file, contentType || file.type || 'application/octet-stream'),
   },
 
   jobs: {
@@ -278,16 +347,8 @@ const live = {
      * Direct-to-S3 PUT — same shape as `uploads.put` for a single Material,
      * including the same local-fallback auth header (see its comment).
      */
-    put: async (uploadUrl, file) => {
-      const target = uploadTarget(uploadUrl);
-      const headers = { 'Content-Type': 'application/pdf' };
-      if (uploadUrl.startsWith('/')) {
-        const token = tokenStore.get();
-        if (token) headers.Authorization = `Bearer ${token}`;
-      }
-      const res = await fetch(target, { method: 'PUT', headers, body: file });
-      if (!res.ok) throw new ApiError('Could not upload your file. Check your connection and try again.', res.status, null);
-    },
+    /** Binder sources are always signed as application/pdf by the backend. */
+    put: (uploadUrl, file, contentType) => putSignedFile(uploadUrl, file, contentType || 'application/pdf'),
     commit: (binderId, sourceId) => request(`/binders/${binderId}/sources/${sourceId}/commit`, { method: 'POST' }),
     retry: (binderId, sourceId) => request(`/binders/${binderId}/sources/${sourceId}/retry`, { method: 'POST' }),
     rename: (sourceId, displayName) => request(`/sources/${sourceId}`, { method: 'PATCH', body: { displayName } }),
