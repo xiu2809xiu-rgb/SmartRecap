@@ -63,6 +63,16 @@ _chat_answers: OwnerMap = OwnerMap()
 _tasks: set[asyncio.Task] = set()
 
 
+# How long a running quiz job may sit before another may be started.
+#
+# The 409 guard below refuses a second quiz while one is running, which is
+# right -- two generations racing on one material would fight over the excluded
+# prompts. But a job that dies mid-flight never leaves the running state, and
+# the material was then locked out of quiz generation for the life of the
+# process. Generously longer than any real generation, including a hard quiz
+# with all its critiques.
+QUIZ_JOB_STALE_SECONDS = 900
+
 # Kept per material. Enough to compare a few takes, bounded so a student who
 # keeps asking for another one does not fill the bucket.
 NARRATION_HISTORY_LIMIT = 8
@@ -906,12 +916,25 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
             provider_error = hard_quiz_provider_error(settings)
             if provider_error:
                 raise HTTPException(status_code=503, detail=provider_error)
-        if any(
-            job.get("kind") == "quiz"
-            and job.get("materialId") == material_id
-            and job.get("status") == "running"
-            for job in _jobs.values()
-        ):
+        # Only a job that is genuinely still working blocks a new one. A stale
+        # one is retired here rather than blocking this material forever.
+        now = time.monotonic()
+        blocking = False
+        for job in _jobs.values():
+            if job.get("kind") != "quiz" or job.get("materialId") != material_id:
+                continue
+            if job.get("status") != "running":
+                continue
+            if now - float(job.get("startedAt") or now) > QUIZ_JOB_STALE_SECONDS:
+                logger.warning("retiring stale quiz job %s for material %s", job.get("id"), material_id)
+                job.update(
+                    status="failed",
+                    stage="failed",
+                    error="Quiz generation stopped responding and was cancelled.",
+                )
+                continue
+            blocking = True
+        if blocking:
             raise HTTPException(status_code=409, detail="A quiz is already being generated for this material.")
         job_id = _id("job")
         excluded_prompts = [
@@ -936,6 +959,7 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
             "materialId": material_id,
             "kind": "quiz",
             "status": "running",
+            "startedAt": time.monotonic(),
             "stage": "queued",
             "stageLabel": "Quiz generation queued",
             "progress": 0,

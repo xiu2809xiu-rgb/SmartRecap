@@ -136,6 +136,7 @@ END SOURCE COLLECTION""".format(
     candidate = to_study_pack(message.parsed)
     candidate.providers = []
     _repair_citation_metadata(candidate, sources)
+    _prune_ungrounded_definitions(candidate, sources)
     _validate_citations(candidate, sources)
     _validate_recap_quality(candidate, sources)
     return candidate
@@ -144,6 +145,40 @@ END SOURCE COLLECTION""".format(
 def generate_study_pack(text: str, labels: List[str], filename: str, mode: str, settings: Settings) -> StudyPack:
     source = SourceRecord(id="single-source", filename=filename, content_type="text/plain", size=len(text.encode("utf-8")), text=text, labels=labels or ["Section 1"])
     return generate_notebook_pack([source], Path(filename).stem, mode, settings)
+
+
+def _prune_ungrounded_definitions(pack: StudyPack, sources: List[SourceRecord]) -> None:
+    """Drop definitions whose term appears nowhere in the sources.
+
+    The grounding rule behind this is right: a defined term should be one the
+    student will actually meet in their notes. But a model asked for
+    definitions will occasionally coin a phrase the notes never use -- and
+    failing the whole recap over one invented term threw away work that was
+    otherwise fine. Measured on the same notes it took out roughly two runs in
+    three, which is what "sometimes it errors" looked like from outside.
+
+    Dropping rather than repointing is deliberate. The citation's excerpt has
+    already been repaired to be exact against its own source; moving it to a
+    different source would invalidate the excerpt to save a definition that was
+    never grounded anyway.
+
+    StudyPack requires at least two definitions. If pruning would go below that
+    the pack is genuinely too thin, so it is left alone and validation refuses
+    it honestly.
+    """
+    if not sources:
+        return
+    normalized = {source.id: _normalized(source.text) for source in sources}
+    kept = [
+        definition
+        for definition in pack.definitions
+        if _normalized(definition.term)
+        and _normalized(definition.term) in normalized.get(definition.citation.source_id, "")
+    ]
+    dropped = len(pack.definitions) - len(kept)
+    if dropped and len(kept) >= 2:
+        logger.info("dropped %d ungrounded definition(s) from the recap", dropped)
+        pack.definitions = kept
 
 
 def _generate_compatible_pack(
@@ -188,6 +223,7 @@ END SOURCE COLLECTION""".format(title=title[:200], mode=mode, context=_balanced_
     pack = to_study_pack(message.parsed)
     pack.providers = []
     _repair_citation_metadata(pack, sources)
+    _prune_ungrounded_definitions(pack, sources)
     _validate_citations(pack, sources)
     _validate_recap_quality(pack, sources)
     return pack
@@ -241,6 +277,7 @@ def generate_notebook_pack(sources: List[SourceRecord], title: str, mode: str, s
         try:
             pack = generate_gemini_pack(sources, title, mode, settings)
             _repair_citation_metadata(pack, sources)
+            _prune_ungrounded_definitions(pack, sources)
             _validate_citations(pack, sources)
             _validate_recap_quality(pack, sources)
             provenance = [{"name": "Google Gemini", "model": settings.gemini_model, "role": "draft"}]

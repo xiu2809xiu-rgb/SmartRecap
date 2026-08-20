@@ -160,29 +160,39 @@ class StudyPack(BaseModel):
         return value
 
 
-# StudyPack as a provider is asked to produce it: identical, minus `providers`.
+# StudyPack as a provider is asked to produce it: without `providers` or `quiz`.
 #
-# That field is List[Dict[str, str]], and a free-form object carries no
+# `providers` is List[Dict[str, str]], and a free-form object carries no
 # `required` key, which OpenAI strict structured output rejects outright --
 # "Invalid schema for response_format 'StudyPack': 'required' is required to be
 # supplied". It is why recaps could never be generated on an OpenAI-compatible
-# provider while quizzes could: QuizPack has no such field.
+# provider while quizzes could: QuizPack has no such field. Provenance is
+# something the application knows and a model does not, so asking for it was
+# always wrong.
 #
-# Provenance is something the application knows and the model does not, so
-# asking a model for it was always wrong. Drafts are converted with
-# `to_study_pack()`, which runs every StudyPack validator on the way through.
+# `quiz` is dropped for a different reason. Strict mode requires every property
+# to be present, so the model must emit model_answer and rubric on a
+# multiple-choice question -- which QuizQuestion's own validator forbids as
+# "Objective questions cannot include short-answer grading fields". The two
+# rules cannot both be satisfied, and it made recap generation fail at random
+# depending on how many objective questions the model happened to write.
+#
+# Nothing is lost: a material's quiz always comes from the quiz endpoint, and
+# the recap's embedded questions were never shown to anyone.
+_DRAFT_EXCLUDED = {"providers", "quiz"}
+
 StudyPackDraft = create_model(
     "StudyPackDraft",
     **{
         name: (field.annotation, field)
         for name, field in StudyPack.model_fields.items()
-        if name != "providers"
+        if name not in _DRAFT_EXCLUDED
     },
 )
 
 
 def to_study_pack(draft: "StudyPackDraft") -> StudyPack:
-    return StudyPack(**draft.model_dump(), providers=[])
+    return StudyPack(**draft.model_dump(), providers=[], quiz=[])
 
 
 _ALLOWED_AVATAR_IDS = {
