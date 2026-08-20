@@ -160,3 +160,84 @@ class GoogleGuestPromotionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CitationRepairTests(unittest.TestCase):
+    """A cited excerpt must end up an exact substring of the source.
+
+    Models re-type quotes rather than copying them: whitespace collapses across
+    a PDF line break, a quote character is swapped, a word is added or dropped.
+    Every one of those used to fail the exact-substring check and reject the
+    whole quiz. Repair may only ever move the citation onto a real span --
+    never invent support for one that has none.
+    """
+
+    TEXT = (
+        "[Page 1]\n"
+        "A linked list is a linear data structure where each node holds a value\n"
+        "and a reference to the next node in the sequence.\n"
+        "To insert at the head, create the node, point its next at the current\n"
+        "head, then move head to the new node.\n"
+        "\n"
+        "[Page 2]\n"
+        "Traversal walks the list from head until next is null, visiting each\n"
+        "node exactly once, which costs linear time.\n"
+    )
+
+    def _source(self):
+        return SourceRecord(
+            id="src_1",
+            filename="Linked Lists (Solutions).pdf",
+            content_type="application/pdf",
+            size=len(self.TEXT),
+            text=self.TEXT,
+            labels=["Page 1", "Page 2"],
+            warnings=[],
+        )
+
+    def _repair(self, excerpt, label="Page 9", source_name="wrong.pdf"):
+        from app.ai_service import _repair_citation_list
+
+        citation = Citation(
+            source_id="src_1", source_name=source_name, label=label, excerpt=excerpt
+        )
+        source = self._source()
+        _repair_citation_list([citation], [source])
+        return citation, source
+
+    def test_collapsed_whitespace_is_restored(self):
+        citation, source = self._repair(
+            "each node holds a value and a reference to the next node"
+        )
+        self.assertIn(citation.excerpt, source.text)
+
+    def test_inserted_word_is_tolerated(self):
+        citation, source = self._repair(
+            "Traversal walks the entire list from head until next is null"
+        )
+        self.assertIn(citation.excerpt, source.text)
+
+    def test_dropped_word_is_tolerated(self):
+        citation, source = self._repair(
+            "create the node, point its next at current head"
+        )
+        self.assertIn(citation.excerpt, source.text)
+
+    def test_trailing_words_the_model_added_are_dropped(self):
+        citation, source = self._repair(
+            "visiting each node exactly once, which costs linear time in all cases"
+        )
+        self.assertIn(citation.excerpt, source.text)
+
+    def test_wrong_metadata_is_corrected_to_the_real_owner(self):
+        citation, source = self._repair(
+            "Traversal walks the list from head until next is null"
+        )
+        self.assertEqual(citation.source_name, source.filename)
+        self.assertIn(citation.label, source.labels)
+
+    def test_fabricated_excerpt_is_not_repaired_into_the_source(self):
+        citation, source = self._repair(
+            "Quantum entanglement governs pointer arithmetic in Rust"
+        )
+        self.assertNotIn(citation.excerpt, source.text)

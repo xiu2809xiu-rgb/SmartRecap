@@ -514,6 +514,48 @@ def _repair_citation_list(citations: Iterable[Citation], sources: List[SourceRec
                                 source_words[index].start():source_words[index + width - 1].end()
                             ]
                             candidates[(source.id, label, raw_excerpt)] = (source, label, raw_excerpt)
+        # Last chance: anchor on the longest run of the excerpt's words that
+        # appears contiguously in the source, and cite exactly that span.
+        #
+        # The two attempts above both demand every word of the model's excerpt
+        # line up. One inserted or dropped word defeats them, which is common
+        # when a model re-types a quote across a PDF line break or tidies up
+        # spacing in a code listing — the reported failures were four citations
+        # on a linked-lists solutions PDF. Rejecting the whole quiz for that is
+        # far worse than citing the passage the model was clearly pointing at.
+        #
+        # This cannot invent support: the span is copied out of the source and
+        # still has to survive the exact-substring check in validation. It only
+        # changes which real span gets cited.
+        if not candidates:
+            excerpt_words = [
+                match.group(0).casefold()
+                for match in re.finditer(r"[^\W_]+", excerpt, flags=re.UNICODE)
+            ]
+            required = max(4, int(len(excerpt_words) * 0.6))
+            if len(excerpt_words) >= 4:
+                best_length = 0
+                for source in sources:
+                    for label, section in _source_sections(source):
+                        spans = list(re.finditer(r"[^\W_]+", section, flags=re.UNICODE))
+                        folded = [match.group(0).casefold() for match in spans]
+                        run, previous = 0, [0] * (len(excerpt_words) + 1)
+                        for src_index in range(len(folded)):
+                            current = [0] * (len(excerpt_words) + 1)
+                            for ex_index in range(len(excerpt_words)):
+                                if folded[src_index] != excerpt_words[ex_index]:
+                                    continue
+                                run = previous[ex_index] + 1
+                                current[ex_index + 1] = run
+                                if run >= required and run > best_length:
+                                    best_length = run
+                                    start = spans[src_index - run + 1].start()
+                                    candidates = {
+                                        (source.id, label, section[start:spans[src_index].end()]): (
+                                            source, label, section[start:spans[src_index].end()],
+                                        )
+                                    }
+                            previous = current
         if not candidates:
             continue
 
