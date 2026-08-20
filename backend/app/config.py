@@ -70,9 +70,29 @@ class Settings(BaseSettings):
     # and wavespeed serve it fine. nscale is used because it returns the image
     # bytes as base64 in one response, where fal-ai returns a URL that would
     # need a second fetch to a host we would then have to allowlist.
+    # Together AI first when configured. Its schnell endpoint has a genuinely
+    # free tier rather than a credit balance that runs out, which is what the
+    # Hugging Face token does after a few dozen images.
+    together_api_key: SecretStr = SecretStr("")
+    together_base_url: str = "https://api.together.xyz/v1"
+    together_image_model: str = "black-forest-labs/FLUX.1-schnell-Free"
     hf_api_token: SecretStr = SecretStr("")
-    hf_image_provider: str = "nscale"
-    hf_image_model: str = "black-forest-labs/FLUX.1-schnell"
+    # Preferred: FLUX.1-dev on fal-ai, at 28 steps. Schnell is distilled down to
+    # one-to-four steps for speed and drops fine detail to get there, which is
+    # what makes its diagrams look smeared. Dev costs a couple of seconds more
+    # and comes back sharp.
+    #
+    # This one uses the provider's own route because the OpenAI-style
+    # /v1/images/generations path answers "Model not supported by provider" for
+    # dev on every provider that serves it.
+    hf_image_provider: str = "fal-ai"
+    hf_image_path: str = "fal-ai/flux/dev"
+    hf_image_model: str = "black-forest-labs/FLUX.1-dev"
+    hf_image_steps: int = 28
+    # Fallback: schnell on nscale, which answers the OpenAI-style route and
+    # returns the bytes inline. Faster, lower quality, no second fetch.
+    hf_fallback_provider: str = "nscale"
+    hf_fallback_model: str = "black-forest-labs/FLUX.1-schnell"
     # If JWT_SECRET is absent, each process gets an unpredictable development-only
     # key. Sessions intentionally stop working after a restart rather than using a
     # checked-in or deterministic fallback.
