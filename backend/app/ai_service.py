@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from openai import OpenAI
+from pydantic import ValidationError
 
 from .config import Settings
 from .gemini_service import generate_gemini_pack, generate_gemini_quiz
@@ -481,6 +482,32 @@ def generate_notebook_quiz(
         draft = candidate
         providers.append({"name": name, "model": model, "role": role})
 
+    def attempt(produce, name: str, model: str, role: str, tries: int = 2) -> None:
+        """Draft with one provider, retrying a bad draft but not a dead provider.
+
+        A model occasionally returns a pack that fails the type contract or the
+        grounding checks -- a duplicated question, an option index out of range.
+        That is a bad roll, not a broken provider, and asking again usually
+        works. Without this a single bad draft consumed the whole chain and the
+        request ended on the local extractive fallback, which cannot build ten
+        distinct questions from a short handout and fails outright. Measured on
+        one handout, easy and hard both failed that way while medium happened to
+        succeed.
+
+        A 429, a 402 or a timeout is not retried: the answer will be the same
+        and the next provider is the better move.
+        """
+        for index in range(1, tries + 1):
+            try:
+                accept(produce(), name, model, role)
+                return
+            except Exception as exc:
+                errors.append("{}: {}".format(name, exc))
+                logger.warning("%s quiz %s failed (try %d): %s", name, role, index, str(exc)[:200])
+                retryable = isinstance(exc, (ValueError, ValidationError))
+                if not retryable or index == tries or draft is not None:
+                    return
+
     # Hard quizzes draft on the Azure deployment first, everything else on
     # Gemini.
     #
@@ -496,30 +523,22 @@ def generate_notebook_quiz(
         and bool(settings.azure_openai_deployment.strip())
     )
     if azure_first:
-        try:
-            accept(
-                _generate_openai_quiz(
-                    sources, difficulty, question_count, settings, topics,
-                    excluded_prompts, question_types, public=False, compatible=None,
-                ),
-                "Azure OpenAI", settings.azure_openai_deployment, "draft",
-            )
-        except Exception as exc:
-            errors.append("Azure OpenAI: {}".format(exc))
-            logger.warning("Azure quiz draft failed: %s", exc)
+        attempt(
+            lambda: _generate_openai_quiz(
+                sources, difficulty, question_count, settings, topics,
+                excluded_prompts, question_types, public=False, compatible=None,
+            ),
+            "Azure OpenAI", settings.azure_openai_deployment, "draft",
+        )
 
     if draft is None and not settings.demo_mode and settings.gemini_ready:
-        try:
-            accept(
-                generate_gemini_quiz(
-                    sources, difficulty, question_count, settings, topics,
-                    excluded_prompts, question_types,
-                ),
-                "Google Gemini", settings.gemini_model, "draft",
-            )
-        except Exception as exc:
-            errors.append("Gemini: {}".format(exc))
-            logger.warning("Gemini quiz draft failed: %s", exc)
+        attempt(
+            lambda: generate_gemini_quiz(
+                sources, difficulty, question_count, settings, topics,
+                excluded_prompts, question_types,
+            ),
+            "Google Gemini", settings.gemini_model, "draft",
+        )
 
     fallback_providers = []
     if not azure_first and not settings.demo_mode and settings.azure_ready and settings.azure_openai_deployment.strip():
@@ -532,15 +551,13 @@ def generate_notebook_quiz(
     for name, model, public, compatible in fallback_providers:
         if draft is not None:
             break
-        try:
-            candidate = _generate_openai_quiz(
+        attempt(
+            lambda public=public, compatible=compatible: _generate_openai_quiz(
                 sources, difficulty, question_count, settings, topics,
                 excluded_prompts, question_types, public=public, compatible=compatible,
-            )
-            accept(candidate, name, model, "fallback draft")
-        except Exception as exc:
-            errors.append("{}: {}".format(name, exc))
-            logger.warning("%s quiz fallback failed: %s", name, exc)
+            ),
+            name, model, "fallback draft",
+        )
 
     if draft is None:
         draft = _demo_quiz_pack(sources, difficulty, question_count, question_types, topics, excluded_prompts)
