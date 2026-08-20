@@ -22,6 +22,22 @@ class Settings(BaseSettings):
     openrouter_api_key: SecretStr = SecretStr("")
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_model: str = ""
+    # The IDE coding agent. Separate from `openrouter_model` so changing the
+    # recap failover model does not silently change what reviews code.
+    openrouter_code_model: str = "poolside/laguna-s-2.1:free"
+    # Tried in order after the model above. These are free tiers, so the failure
+    # to design around is a 429, not an outage: the first live attempt at
+    # narration died on "temporarily rate-limited upstream" while a perfectly
+    # good model sat configured beside it. Comma separated so it is tunable
+    # from the environment without a code change.
+    openrouter_code_fallbacks: str = "google/gemma-4-31b-it:free,z-ai/glm-5.2:free"
+    # Read-aloud. Both are overridable from the environment because a model id
+    # is a moving target — the previous coding model was retired mid-project.
+    # Turns a recap into a script meant to be heard rather than read. Separate
+    # from the TTS model: one writes the words, the other speaks them.
+    openrouter_narration_model: str = "z-ai/glm-5.2:free"
+    openrouter_tts_model: str = "deepgram/flux-tts:free"
+    openrouter_tts_voice: str = "flux-alexis-en"
     nvidia_api_key: SecretStr = SecretStr("")
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     nvidia_model: str = ""
@@ -45,6 +61,45 @@ class Settings(BaseSettings):
     pollinations_base_url: str = "https://gen.pollinations.ai"
     pollinations_model: str = "flux"
     pollinations_api_key: SecretStr = SecretStr("")
+    # Hugging Face is the preferred image generator when a token is present:
+    # FLUX.1-schnell produces markedly better diagrams than the Pollinations
+    # default, and Pollinations stays as the no-token fallback.
+    #
+    # The provider is part of the route, not a detail. hf-inference no longer
+    # serves FLUX at all -- it answers 410 "deprecated" -- while nscale, fal-ai
+    # and wavespeed serve it fine. nscale is used because it returns the image
+    # bytes as base64 in one response, where fal-ai returns a URL that would
+    # need a second fetch to a host we would then have to allowlist.
+    # Together AI first when configured. Its schnell endpoint has a genuinely
+    # free tier rather than a credit balance that runs out, which is what the
+    # Hugging Face token does after a few dozen images.
+    together_api_key: SecretStr = SecretStr("")
+    together_base_url: str = "https://api.together.xyz/v1"
+    together_image_model: str = "black-forest-labs/FLUX.1-schnell-Free"
+    hf_api_token: SecretStr = SecretStr("")
+    hf_chat_base_url: str = "https://router.huggingface.co/v1"
+    # Open-weight models reached through the same token as the image models.
+    # Reasoning model for writing recaps, general instruct model for answering
+    # questions. Both are optional: they join the provider chain when the token
+    # has credit and are skipped when it does not.
+    hf_reasoning_model: str = "deepseek-ai/DeepSeek-R1"
+    hf_chat_model: str = "Qwen/Qwen2.5-72B-Instruct"
+    # Preferred: FLUX.1-dev on fal-ai, at 28 steps. Schnell is distilled down to
+    # one-to-four steps for speed and drops fine detail to get there, which is
+    # what makes its diagrams look smeared. Dev costs a couple of seconds more
+    # and comes back sharp.
+    #
+    # This one uses the provider's own route because the OpenAI-style
+    # /v1/images/generations path answers "Model not supported by provider" for
+    # dev on every provider that serves it.
+    hf_image_provider: str = "fal-ai"
+    hf_image_path: str = "fal-ai/flux/dev"
+    hf_image_model: str = "black-forest-labs/FLUX.1-dev"
+    hf_image_steps: int = 28
+    # Fallback: schnell on nscale, which answers the OpenAI-style route and
+    # returns the bytes inline. Faster, lower quality, no second fetch.
+    hf_fallback_provider: str = "nscale"
+    hf_fallback_model: str = "black-forest-labs/FLUX.1-schnell"
     # If JWT_SECRET is absent, each process gets an unpredictable development-only
     # key. Sessions intentionally stop working after a restart rather than using a
     # checked-in or deterministic fallback.

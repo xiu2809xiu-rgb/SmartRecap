@@ -99,13 +99,9 @@ export default function Upload() {
     setBusy(true);
     setError(null);
     try {
-      const { materialId, uploadUrl } = await api.uploads.create({
-        fileName: file.name,
-        contentType: file.type || 'application/octet-stream',
-        sizeBytes: file.size,
-      });
-
-      if (uploadUrl) await api.uploads.put(uploadUrl, file);
+      // Handles signing, sending, and re-signing if the instance role's
+      // temporary credentials rotate mid-upload. See api.uploads.send.
+      const materialId = await api.uploads.send(file);
 
       const { jobId } = await api.jobs.start({
         materialId,

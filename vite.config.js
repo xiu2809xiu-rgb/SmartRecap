@@ -1,8 +1,60 @@
 import { defineConfig } from 'vite';
+import https from 'node:https';
 import react from '@vitejs/plugin-react';
 
+/**
+ * Tunnel for the presigned upload PUT, development only.
+ *
+ * `POST /api/uploads` hands back an absolute S3 URL, so the browser talks to
+ * S3 directly and the /api proxy never sees it. The bucket's CORS lists only
+ * the deployed web origin, so that PUT fails from localhost.
+ *
+ * api.js rewrites those URLs to /__dev-s3/<host>/<key>?<query>. This forwards
+ * them on, and the presigned signature still validates because:
+ *   - path and query are passed through byte for byte, and
+ *   - the only headers forwarded are content-type and content-length. S3 signs
+ *     `host` and `content-type`; node sets Host from the upstream host here,
+ *     and the browser's Origin and Referer are dropped rather than confusing
+ *     the signature check.
+ *
+ * This is a plugin and not a `server.proxy` entry because Vite's proxy is
+ * node-http-proxy, which has no per-request `router` option — that belongs to
+ * http-proxy-middleware. Configured there, every request went to one fixed
+ * host and S3 answered 403 SignatureDoesNotMatch.
+ */
+function devS3Tunnel() {
+  return {
+    name: 'dev-s3-tunnel',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/__dev-s3', (req, res, next) => {
+        const match = (req.url || '').match(/^\/([^/]+)(\/.*)$/);
+        if (!match) return next();
+        const [, host, pathAndQuery] = match;
+
+        const headers = {};
+        for (const name of ['content-type', 'content-length']) {
+          if (req.headers[name]) headers[name] = req.headers[name];
+        }
+
+        const upstream = https.request({ host, path: pathAndQuery, method: req.method, headers }, (upstreamRes) => {
+          res.statusCode = upstreamRes.statusCode || 502;
+          upstreamRes.pipe(res);
+        });
+        upstream.on('error', (error) => {
+          res.statusCode = 502;
+          res.end(`dev-s3 tunnel could not reach ${host}: ${error.message}`);
+        });
+        req.pipe(upstream);
+      });
+    },
+  };
+}
+
+const DEV_API_TARGET = process.env.DEV_API_TARGET || 'http://127.0.0.1:8000';
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), devS3Tunnel()],
   server: {
     // Pinned, and strict on purpose.
     //
@@ -16,8 +68,16 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      '/api': 'http://127.0.0.1:8000',
-      '/ws': { target: 'ws://127.0.0.1:8000', ws: true },
+      // Defaults to a backend on this machine. Point it at a deployed API with
+      //   DEV_API_TARGET=https://your-host npm run dev
+      // Going through the proxy keeps the browser same-origin, so the deployed
+      // CORS_ORIGINS does not have to list localhost to make dev work.
+      '/api': { target: DEV_API_TARGET, changeOrigin: true },
+      '/ws': { target: DEV_API_TARGET.replace(/^http/, 'ws'), ws: true, changeOrigin: true },
+
+      // The presigned upload PUT is tunnelled by the devS3Tunnel plugin below
+      // rather than by this table, because it has to pick its upstream host
+      // per request and `server.proxy` cannot do that.
     },
     watch: {
       ignored: ['**/backend/.venv/**', '**/.paddlex/**', '**/__pycache__/**'],

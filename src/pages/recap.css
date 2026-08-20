@@ -314,10 +314,12 @@
 
 .ask-panel {
   position: fixed;
-  right: 0;
-  top: 66px;
-  bottom: 0;
+  inset: 66px 0 0 auto;
   width: min(420px, 92vw);
+  height: auto;
+  max-height: calc(100dvh - 66px);
+  box-sizing: border-box;
+  overflow: hidden;
   z-index: 45;
   display: flex;
   flex-direction: column;
@@ -336,6 +338,21 @@
   .recap-shell.ask-open { padding-right: 440px; }
 }
 
+/* On a phone the study bar wraps to two rows, so a panel pinned below a fixed
+   66px would sit under it. Full height sidesteps the coupling entirely, and the
+   panel already carries its own heading and close button. */
+@media (max-width: 680px) {
+  .ask-panel {
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-left: 0;
+  }
+}
+
 .ask-head {
   display: flex;
   align-items: flex-start;
@@ -348,7 +365,16 @@
 .ask-head h2 { font-size: 1.0625rem; }
 .ask-head p { font-size: var(--t-xs); color: var(--ink-3); margin-top: 3px; }
 
-.ask-thread { flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+/* min-height:0 is load-bearing: a column flex item defaults to min-height:auto,
+   so a long thread grew the panel instead of scrolling and pushed the composer
+   below the viewport. */
+.ask-thread { flex: 1; min-height: 0; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+
+.ask-empty { margin: auto 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; color: var(--ink-3); }
+.ask-empty > .material-symbols-rounded { color: var(--accent); }
+.ask-empty-title { font-size: var(--t-sm); font-weight: 650; color: var(--ink); }
+.ask-empty-body { font-size: var(--t-xs); line-height: 1.6; color: var(--ink-3); }
+.ask-empty .ask-hint { margin-top: 12px; width: 100%; }
 
 .ask-hint p { font-size: var(--t-xs); color: var(--ink-4); margin-bottom: 9px; }
 .ask-hint ul { display: flex; flex-direction: column; gap: 7px; }
@@ -387,8 +413,13 @@
   font-size: var(--t-sm);
   line-height: 1.6;
   color: var(--ink);
-  white-space: pre-wrap;
 }
+
+/* No white-space: pre-wrap here. Answers render through SafeMarkdown, whose
+   block elements already carry their own spacing; pre-wrap additionally
+   preserved the newlines between them and opened a blank line at every gap. */
+.ask-answer-markdown > *:first-child { margin-top: 0; }
+.ask-answer-markdown > *:last-child { margin-bottom: 0; }
 
 .ask-a.is-error { background: var(--bad-bg); border-color: color-mix(in srgb, var(--bad) 34%, transparent); }
 .ask-a.is-ungrounded { background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
@@ -515,3 +546,152 @@
 .quiz-generation-options { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .quiz-type-picker button { display: inline-flex; align-items: center; gap: 4px; }
 @media (max-width: 720px) { .quiz-generation-options { align-items: flex-start; flex-direction: column; } .quiz-type-picker { flex-wrap: wrap; } }
+
+/* ------------------------------------------------------------- narration */
+
+.narrate-btn { margin-top: 14px; }
+.narrate-btn.is-working { color: var(--ink-3); }
+
+.narration {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--glass-line);
+  background: var(--ground-sunken);
+  animation: narration-in 320ms var(--spring) both;
+}
+
+@keyframes narration-in {
+  from { transform: translateY(6px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.narration-head { display: flex; align-items: center; gap: 11px; margin-bottom: 11px; }
+.narration-head h3 { font-size: var(--t-sm); font-weight: 650; }
+.narration-head p { font-size: var(--t-xs); color: var(--ink-4); margin-top: 2px; }
+
+/* A four-bar equaliser standing in for "this is audio". Purely decorative, so
+   it is hidden from assistive tech and stops under reduced motion. */
+.narration-wave { display: inline-flex; align-items: flex-end; gap: 3px; height: 22px; }
+
+.narration-wave i {
+  width: 3px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--aurora-violet), var(--accent-hot));
+  animation: narration-bar 1.15s var(--ease) infinite;
+}
+
+.narration-wave i:nth-child(1) { height: 40%; animation-delay: 0s; }
+.narration-wave i:nth-child(2) { height: 85%; animation-delay: 0.12s; }
+.narration-wave i:nth-child(3) { height: 60%; animation-delay: 0.24s; }
+.narration-wave i:nth-child(4) { height: 35%; animation-delay: 0.36s; }
+
+@keyframes narration-bar {
+  0%, 100% { transform: scaleY(0.45); }
+  50% { transform: scaleY(1); }
+}
+
+.narration-audio { width: 100%; margin-bottom: 10px; }
+
+.narration-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 10px;
+  font-size: var(--t-xs);
+  color: var(--warn);
+}
+
+
+
+@media (prefers-reduced-motion: reduce) {
+  .narration, .narration-wave i { animation: none !important; }
+}
+
+@media print { .narrate-btn, .narration-audio { display: none !important; } }
+
+/* --------------------------------------------------- narration history */
+
+.narrate-actions { margin-top: 14px; }
+.narrate-btn { margin-top: 0; }
+
+.narration-takes { display: flex; flex-direction: column; gap: 10px; margin: 0 0 16px; padding: 0; list-style: none; }
+
+.narration-take {
+  padding: 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--glass-line);
+  background: var(--ground);
+  animation: narration-in 260ms var(--spring) both;
+}
+
+/* The newest take is the one a revision is measured against, so it is the one
+   worth finding at a glance. */
+.narration-take.is-latest { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+
+.narration-take-head { display: flex; align-items: flex-start; gap: 10px; }
+.narration-take-meta { flex: 1; min-width: 0; }
+.narration-take-title { font-size: var(--t-sm); font-weight: 620; color: var(--ink); }
+.narration-take-sub { margin-top: 2px; font-size: 0.7rem; color: var(--ink-4); }
+
+.narration-take-num {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--ink-2);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.narration-load { margin-top: 9px; }
+.narration-take .narration-audio { margin: 10px 0 0; }
+.narration-take .narration-note { margin: 9px 0 0; }
+
+.narration-transcript-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 9px;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  color: var(--ink-3);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.narration-transcript-toggle:hover { color: var(--ink); }
+
+.narration-script {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--glass-line);
+  font-size: var(--t-sm);
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+
+.narration-refine { border-top: 1px solid var(--glass-line); padding-top: 13px; }
+.narration-refine-label { font-size: var(--t-xs); font-weight: 650; color: var(--ink-2); margin-bottom: 9px; }
+.narration-presets { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 10px; }
+
+.narration-preset {
+  padding: 7px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-line);
+  background: var(--ground);
+  color: var(--ink-3);
+  font-size: var(--t-xs);
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.narration-preset:hover:not(:disabled) { border-color: var(--accent); color: var(--ink); }
+.narration-preset:disabled { opacity: 0.55; }
+
+.narration-form { display: flex; gap: 8px; }
+.narration-form .input { flex: 1; min-width: 0; }
+.narration-form .btn { flex-shrink: 0; padding-inline: 13px; }

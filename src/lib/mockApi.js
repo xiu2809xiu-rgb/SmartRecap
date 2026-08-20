@@ -427,6 +427,11 @@ export const mockApi = {
       await sleep(300);
       return { materialId: makeId('m'), uploadUrl: null, fileName };
     },
+    /** Mirrors live.uploads.send: there is no URL to sign, so just mint an id. */
+    async send() {
+      await sleep(300);
+      return makeId('m');
+    },
     async put() {
       await sleep(400);
     },
@@ -1092,6 +1097,33 @@ export const mockApi = {
       // code failed would be the one kind of wrong answer this app exists to
       // prevent.
       throw Object.assign(new Error('Coding help needs a live backend.'), { status: 501 });
+    },
+    async agent() {
+      // Same reasoning as explain(): a fabricated code review reads exactly
+      // like a real one, so demo mode declines instead of inventing it.
+      throw Object.assign(new Error('The coding agent needs a live backend.'), { status: 501 });
+    },
+  },
+
+  narration: {
+    async available() {
+      await sleep(60);
+      return { available: false };
+    },
+    async list() {
+      await sleep(60);
+      return { narrations: [] };
+    },
+    async create() {
+      // Demo mode has no speech model, and a canned recording of the wrong
+      // notes would be worse than no audio at all.
+      throw Object.assign(new Error('Read-aloud needs a live backend.'), { status: 501 });
+    },
+    async remove() {
+      throw Object.assign(new Error('Read-aloud needs a live backend.'), { status: 501 });
+    },
+    async audio() {
+      throw Object.assign(new Error('Read-aloud needs a live backend.'), { status: 501 });
     },
     /**
      * Demo mode calls no model, so these are written by hand — but written to

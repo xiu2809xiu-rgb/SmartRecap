@@ -160,3 +160,188 @@ class GoogleGuestPromotionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CitationRepairTests(unittest.TestCase):
+    """A cited excerpt must end up an exact substring of the source.
+
+    Models re-type quotes rather than copying them: whitespace collapses across
+    a PDF line break, a quote character is swapped, a word is added or dropped.
+    Every one of those used to fail the exact-substring check and reject the
+    whole quiz. Repair may only ever move the citation onto a real span --
+    never invent support for one that has none.
+    """
+
+    TEXT = (
+        "[Page 1]\n"
+        "A linked list is a linear data structure where each node holds a value\n"
+        "and a reference to the next node in the sequence.\n"
+        "To insert at the head, create the node, point its next at the current\n"
+        "head, then move head to the new node.\n"
+        "\n"
+        "[Page 2]\n"
+        "Traversal walks the list from head until next is null, visiting each\n"
+        "node exactly once, which costs linear time.\n"
+    )
+
+    def _source(self):
+        return SourceRecord(
+            id="src_1",
+            filename="Linked Lists (Solutions).pdf",
+            content_type="application/pdf",
+            size=len(self.TEXT),
+            text=self.TEXT,
+            labels=["Page 1", "Page 2"],
+            warnings=[],
+        )
+
+    def _repair(self, excerpt, label="Page 9", source_name="wrong.pdf"):
+        from app.ai_service import _repair_citation_list
+
+        citation = Citation(
+            source_id="src_1", source_name=source_name, label=label, excerpt=excerpt
+        )
+        source = self._source()
+        _repair_citation_list([citation], [source])
+        return citation, source
+
+    def test_collapsed_whitespace_is_restored(self):
+        citation, source = self._repair(
+            "each node holds a value and a reference to the next node"
+        )
+        self.assertIn(citation.excerpt, source.text)
+
+    def test_inserted_word_is_tolerated(self):
+        citation, source = self._repair(
+            "Traversal walks the entire list from head until next is null"
+        )
+        self.assertIn(citation.excerpt, source.text)
+
+    def test_dropped_word_is_tolerated(self):
+        citation, source = self._repair(
+            "create the node, point its next at current head"
+        )
+        self.assertIn(citation.excerpt, source.text)
+
+    def test_trailing_words_the_model_added_are_dropped(self):
+        citation, source = self._repair(
+            "visiting each node exactly once, which costs linear time in all cases"
+        )
+        self.assertIn(citation.excerpt, source.text)
+
+    def test_wrong_metadata_is_corrected_to_the_real_owner(self):
+        citation, source = self._repair(
+            "Traversal walks the list from head until next is null"
+        )
+        self.assertEqual(citation.source_name, source.filename)
+        self.assertIn(citation.label, source.labels)
+
+    def test_fabricated_excerpt_is_not_repaired_into_the_source(self):
+        citation, source = self._repair(
+            "Quantum entanglement governs pointer arithmetic in Rust"
+        )
+        self.assertNotIn(citation.excerpt, source.text)
+
+    def test_excerpt_spanning_a_page_marker_is_kept_within_one_locator(self):
+        """A verbatim quote can straddle a [Page N] marker.
+
+        It belongs to no single section, so the per-section searches could not
+        place it and the metadata check — which runs before the excerpt check —
+        rejected the whole quiz as "invalid source metadata". The repair now
+        keeps the part inside the section it starts in, so the excerpt, the
+        locator, and the source all agree.
+        """
+        spanning = (
+            "and a reference to the next node in the sequence.\n"
+            "\n"
+            "[Page 2]\n"
+            "Traversal walks the list"
+        )
+        citation, source = self._repair(spanning)
+        self.assertIn(citation.excerpt, source.text)
+        self.assertIn(citation.label, source.labels)
+        sections = dict(
+            (label, body) for label, body in _source_sections_for_test(source)
+        )
+        self.assertIn(citation.excerpt, sections[citation.label])
+
+    def test_label_is_taken_from_position_not_from_the_model(self):
+        citation, source = self._repair(
+            "which costs linear time", label="Page 1"
+        )
+        self.assertEqual(citation.label, "Page 2")
+        self.assertIn(citation.excerpt, source.text)
+
+    def test_unknown_source_id_is_snapped_to_the_real_owner(self):
+        from app.ai_service import _repair_citation_list
+
+        source = self._source()
+        citation = Citation(
+            source_id="does_not_exist",
+            source_name="nope.pdf",
+            label="Page 4",
+            excerpt="each node holds a value",
+        )
+        _repair_citation_list([citation], [source])
+        self.assertEqual(citation.source_id, source.id)
+        self.assertEqual(citation.source_name, source.filename)
+        self.assertIn(citation.excerpt, source.text)
+
+
+def _source_sections_for_test(source):
+    from app.ai_service import _source_sections
+
+    return _source_sections(source)
+
+
+class ExercisePromptFilterTests(unittest.TestCase):
+    """The offline answer must never hand back the worksheet's own tasks.
+
+    When every AI provider is unavailable the notebook answer falls back to a
+    keyword match over the sources. On a practicals sheet the best-scoring
+    sentences are the exercises themselves, because they share the student's
+    keywords -- so "what does Quick Sort mean?" was answered with three of the
+    sheet's questions. Matching on "?" alone is not enough: half are imperatives
+    ending in a full stop.
+    """
+
+    def test_questions_and_imperatives_are_treated_as_exercises(self):
+        from app.ai_service import _is_exercise_prompt
+
+        for sentence in (
+            "What is the base case in a recursive sorting algorithm?",
+            "Explain how the divide-and-conquer strategy is applied in Merge Sort.",
+            "(a) State the time complexity of Quick Sort.",
+            "3. Draw the resulting tree after each insertion.",
+        ):
+            self.assertTrue(_is_exercise_prompt(sentence), sentence)
+
+    def test_explanatory_prose_is_kept(self):
+        from app.ai_service import _is_exercise_prompt
+
+        for sentence in (
+            "Quick Sort picks a pivot element and partitions the list.",
+            "A recursive sort stops when a sublist has zero or one element.",
+            "Balanced partitions keep the recursion depth at log n.",
+            # Guards the word boundary: these begin with "state" and "list".
+            "Statements are executed in order.",
+            "Listing every node would take linear time.",
+        ):
+            self.assertFalse(_is_exercise_prompt(sentence), sentence)
+
+    def test_offline_answer_never_returns_an_exercise(self):
+        from app.ai_service import _demo_answer
+
+        text = (
+            "[Page 1]\n"
+            "Quick Sort picks a pivot and partitions the list around it.\n"
+            "What is the base case in a recursive sorting algorithm?\n"
+            "Explain how divide-and-conquer applies to Quick Sort.\n"
+        )
+        source = SourceRecord(
+            id="src_1", filename="practical.pdf", content_type="application/pdf",
+            size=len(text), text=text, labels=["Page 1"], warnings=[],
+        )
+        answer = _demo_answer([source], "What does Quick Sort mean?").answer
+        self.assertNotIn("What is the base case", answer)
+        self.assertNotIn("Explain how divide-and-conquer", answer)

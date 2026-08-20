@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from './api.js';
 import { useAuth } from './auth.jsx';
 
@@ -18,18 +18,39 @@ export function StoreProvider({ children }) {
   const [status, setStatus] = useState('idle'); // idle | loading | ready | error
   const [error, setError] = useState(null);
 
-  const refresh = useCallback(async () => {
-    setStatus('loading');
+  const inFlight = useRef(null);
+
+  /**
+   * Reload the library.
+   *
+   * `quiet` is for revalidating a list that is already on screen: it skips the
+   * loading state so the page does not flash, and a failure leaves the existing
+   * data alone rather than replacing a working library with an error. A loud
+   * refresh is the first load, where there is nothing to preserve.
+   *
+   * Concurrent callers share one request. The provider refreshes on sign-in and
+   * the library revalidates on mount, which would otherwise fire two identical
+   * fetches on the first render after login.
+   */
+  const refresh = useCallback(async ({ quiet = false } = {}) => {
+    if (inFlight.current) return inFlight.current;
+    if (!quiet) setStatus('loading');
     setError(null);
-    try {
-      const [m, a] = await Promise.all([api.materials.list(), api.quiz.attempts()]);
-      setMaterials(m ?? []);
-      setAttempts(a ?? []);
-      setStatus('ready');
-    } catch (e) {
-      setError(e);
-      setStatus('error');
-    }
+    const run = (async () => {
+      try {
+        const [m, a] = await Promise.all([api.materials.list(), api.quiz.attempts()]);
+        setMaterials(m ?? []);
+        setAttempts(a ?? []);
+        setStatus('ready');
+      } catch (e) {
+        setError(e);
+        setStatus((prev) => (quiet && prev === 'ready' ? 'ready' : 'error'));
+      } finally {
+        inFlight.current = null;
+      }
+    })();
+    inFlight.current = run;
+    return run;
   }, []);
 
   useEffect(() => {

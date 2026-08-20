@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api, apiAssetUrl } from '../lib/api.js';
+import { api } from '../lib/api.js';
+import AuthImage from '../components/AuthImage.jsx';
 import { useStore } from '../lib/store.jsx';
 import { useJobs } from '../lib/jobs.jsx';
 import { enableCompletionNotifications } from '../lib/notifications.js';
@@ -8,6 +9,8 @@ import { usePrefs } from '../lib/prefs.jsx';
 import { StudyShell } from '../components/layout/Shells.jsx';
 import { CitationProvider, Claim, SourceCard, CitationRibbon } from '../components/Citations.jsx';
 import AskPanel from '../components/AskPanel.jsx';
+import NarrationButton from '../components/NarrationButton.jsx';
+import ErrorBoundary from '../components/ErrorBoundary.jsx';
 import NormalNotes from '../components/NormalNotes.jsx';
 import { buildDocumentNotes } from '../lib/documentNotes.js';
 import { Icon, Spinner, Empty, Modal, CopyButton, useToast } from '../components/ui.jsx';
@@ -268,6 +271,9 @@ export default function Recap() {
                     The short version
                   </h2>
                   <p className="tldr-summary">{recap.summary}</p>
+                  <ErrorBoundary scope="Read-aloud">
+                    <NarrationButton materialId={id} />
+                  </ErrorBoundary>
                 </section>
               </FadeContent>
 
@@ -286,7 +292,7 @@ export default function Recap() {
                   <div className="study-visual-grid">
                     {material.illustrations.map((illustration) => (
                       <figure key={illustration.id}>
-                        <img src={apiAssetUrl(illustration.path)} alt={`Educational illustration for ${illustration.topic}`} loading="lazy" />
+                        <AuthImage path={illustration.path} alt={`Educational illustration for ${illustration.topic}`} />
                         <figcaption><strong>{illustration.topic}</strong><span>{illustration.provider} · {illustration.model}</span></figcaption>
                       </figure>
                     ))}
@@ -561,7 +567,9 @@ export default function Recap() {
           </CitationProvider>
         )}
 
-        <AskPanel material={material} open={askOpen} onClose={() => setAskOpen(false)} />
+        <ErrorBoundary scope="The Ask panel">
+          <AskPanel material={material} open={askOpen} onClose={() => setAskOpen(false)} />
+        </ErrorBoundary>
       </div>
 
       <Modal open={exportOpen} onClose={() => setExportOpen(false)} title="Export this recap">

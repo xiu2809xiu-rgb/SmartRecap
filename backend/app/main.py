@@ -3,6 +3,7 @@ import logging
 import secrets
 import time
 from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from multiprocessing import get_context
 from pathlib import Path
 from typing import List
@@ -25,6 +26,7 @@ from .ui_api import build_ui_router, owned_quiz_snapshot
 settings = get_settings()
 logger = logging.getLogger("smartrecap")
 _ocr_process_pool = ProcessPoolExecutor(max_workers=2, mp_context=get_context("spawn"))
+_ocr_pool_lock = asyncio.Lock()
 app = FastAPI(title="SmartRecap API", version="1.0.0", docs_url="/api/docs", redoc_url=None)
 app.router.route_class = AuthenticatedRoute
 app.add_middleware(CORSMiddleware, allow_origins=settings.allowed_origins, allow_credentials=False, allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"], allow_headers=["Content-Type", "Authorization"])
@@ -125,20 +127,45 @@ def _extract_source(content: bytes, filename: str, content_type: str, deep_ocr: 
     return SourceRecord(id=secrets.token_urlsafe(8), filename=filename, content_type=content_type, size=len(content), text=text, labels=labels or ["Section 1"], warnings=list(dict.fromkeys(warnings)))
 
 
+async def _replace_ocr_pool(broken: ProcessPoolExecutor) -> None:
+    """Swap in a fresh pool after a worker died mid-task.
+
+    PaddleOCR and Pix2Text run native code that can abort the whole worker
+    process. concurrent.futures then marks the executor permanently broken, so
+    without this every later extraction fails until someone restarts the
+    service. The identity check means concurrent callers hitting the same crash
+    rebuild the pool once between them rather than once each.
+    """
+    global _ocr_process_pool
+    async with _ocr_pool_lock:
+        if _ocr_process_pool is broken:
+            broken.shutdown(wait=False)
+            _ocr_process_pool = ProcessPoolExecutor(max_workers=2, mp_context=get_context("spawn"))
+
+
 async def _extract_source_async(content: bytes, filename: str, content_type: str, deep_ocr: bool) -> SourceRecord:
-    loop = asyncio.get_running_loop()
-    future = loop.run_in_executor(
-        _ocr_process_pool,
-        _extract_source,
-        content,
-        filename or "upload",
-        content_type or "application/octet-stream",
-        deep_ocr,
-    )
     timeout = settings.ocr_time_budget_seconds + 30
     if settings.enable_math_ocr:
         timeout += max(20, settings.ocr_time_budget_seconds // 2)
-    return await asyncio.wait_for(future, timeout=timeout)
+    for attempt in (1, 2):
+        pool = _ocr_process_pool
+        loop = asyncio.get_running_loop()
+        try:
+            future = loop.run_in_executor(
+                pool,
+                _extract_source,
+                content,
+                filename or "upload",
+                content_type or "application/octet-stream",
+                deep_ocr,
+            )
+            return await asyncio.wait_for(future, timeout=timeout)
+        except BrokenProcessPool:
+            logger.warning("OCR worker died source=%s attempt=%s; rebuilding pool", filename, attempt)
+            await _replace_ocr_pool(pool)
+    raise ExtractionError(
+        "The OCR worker stopped unexpectedly while reading {}. The reader has been restarted, so retrying usually works.".format(filename)
+    )
 
 
 app.include_router(build_ui_router(_extract_source_async, settings))

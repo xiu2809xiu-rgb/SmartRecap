@@ -1,0 +1,93 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Additive SmartRecap S3 upload observer; does not replace the EC2 FastAPI request path.
+
+Parameters:
+  SourceBucketName:
+    Type: String
+    Description: Existing private S3 bucket used by FastAPI.
+  TableName:
+    Type: String
+    Description: Existing DynamoDB table used by FastAPI.
+  LambdaRoleArn:
+    Type: String
+    AllowedPattern: '^arn:aws:iam::[0-9]{12}:role/.+$'
+    Description: Existing Learner Lab role allowed to read S3, write DynamoDB, and emit logs.
+  CodeBucketName:
+    Type: String
+    Description: S3 bucket containing the Lambda zip artifact; may be SourceBucketName.
+  CodeObjectKey:
+    Type: String
+    Description: Key of the Lambda zip artifact.
+  ObjectPrefix:
+    Type: String
+    Default: smartrecap
+    AllowedPattern: '^[A-Za-z0-9._/-]+$'
+  ObservationTtlDays:
+    Type: Number
+    Default: 7
+    MinValue: 1
+    MaxValue: 30
+
+Resources:
+  UploadObserverFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-function'
+      Description: Records an isolated, idempotent receipt when a SmartRecap source PDF reaches S3.
+      Runtime: python3.12
+      Architectures: [x86_64]
+      Handler: upload_observer.handler
+      Role: !Ref LambdaRoleArn
+      Timeout: 15
+      MemorySize: 128
+      Code:
+        S3Bucket: !Ref CodeBucketName
+        S3Key: !Ref CodeObjectKey
+      Environment:
+        Variables:
+          SOURCE_BUCKET: !Ref SourceBucketName
+          TABLE_NAME: !Ref TableName
+          OBJECT_PREFIX: !Ref ObjectPrefix
+          OBSERVATION_TTL_DAYS: !Ref ObservationTtlDays
+      Tags:
+        - {Key: Project, Value: SmartRecap}
+        - {Key: Component, Value: UploadObserver}
+
+  UploadCreatedRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Route only SmartRecap source-upload creation events to the observer.
+      State: ENABLED
+      EventPattern:
+        source: [aws.s3]
+        detail-type: [Object Created]
+        detail:
+          bucket:
+            name: [!Ref SourceBucketName]
+          object:
+            key:
+              - prefix: !Sub '${ObjectPrefix}/uploads/'
+      Targets:
+        - Id: UploadObserver
+          Arn: !GetAtt UploadObserverFunction.Arn
+          RetryPolicy:
+            MaximumEventAgeInSeconds: 3600
+            MaximumRetryAttempts: 2
+
+  AllowEventBridgeInvoke:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref UploadObserverFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt UploadCreatedRule.Arn
+
+Outputs:
+  FunctionName:
+    Value: !Ref UploadObserverFunction
+  EventRuleName:
+    Value: !Ref UploadCreatedRule
+  ObservedKeyPrefix:
+    Value: !Sub '${ObjectPrefix}/uploads/'
+  ReceiptNamespace:
+    Value: 'UPLOAD#<source-id> / OBSERVATION'

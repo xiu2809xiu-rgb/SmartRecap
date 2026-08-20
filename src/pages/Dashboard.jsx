@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useStore, studyStats } from '../lib/store.jsx';
 import { useAuth } from '../lib/auth.jsx';
@@ -20,7 +20,7 @@ const SORTS = [
 ];
 
 export default function Dashboard() {
-  const { materials, attempts, status, removeMaterial, attemptsFor } = useStore();
+  const { materials, attempts, status, error, refresh, removeMaterial, attemptsFor } = useStore();
   const { user } = useAuth();
   const { allowMascot } = usePrefs();
   const navigate = useNavigate();
@@ -63,11 +63,44 @@ export default function Dashboard() {
     return materials[0] ?? null;
   }, [materials, bestScore]);
 
+  /**
+   * Re-check the library whenever this page is opened.
+   *
+   * The store otherwise loads once at sign-in and never again, so a recap that
+   * finished while this tab was not watching the job — a second tab, a job that
+   * outlived the page that registered it — only appeared after a full reload.
+   * Quiet, so returning to a library that is already on screen does not blank
+   * it for the length of a fetch.
+   */
+  useEffect(() => {
+    refresh({ quiet: true });
+  }, [refresh]);
+
   if (status === 'loading') {
     return (
       <div className="shell dash-loading" role="status">
         <Spinner size={22} />
         <span>Loading your library…</span>
+      </div>
+    );
+  }
+
+  // A failed load used to fall through to "Your library is empty", which reads
+  // as "you have nothing" when it means "we could not ask". Say which it is.
+  if (status === 'error') {
+    return (
+      <div className="shell dash">
+        <Empty
+          icon="cloud_off"
+          title="Could not load your library"
+          body={error?.message || 'The server did not answer. Your materials are safe — this is only the list.'}
+          action={
+            <button type="button" className="btn btn-primary" onClick={() => refresh()}>
+              <Icon name="refresh" size={18} />
+              Try again
+            </button>
+          }
+        />
       </div>
     );
   }

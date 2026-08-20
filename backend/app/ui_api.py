@@ -1,4 +1,5 @@
 import asyncio
+import json
 import hashlib
 import hmac
 import logging
@@ -29,7 +30,8 @@ from .ai_service import (
     hard_quiz_provider_error,
 )
 from .config import Settings
-from .code_service import coding_help_available, explain_failure
+from .code_service import chat_about_code, coding_help_available, explain_failure
+from .narration import build_narration, narration_available
 from .google_auth import verify_google_id_token
 from .image_service import generate_image, verify_raster_image
 from .models import ChatIllustrationRequest, Citation, IllustrationGenerationRequest, MaterialAskRequest, QuizGenerationRequest, SourceRecord, StudyPack
@@ -50,11 +52,30 @@ _cards: OwnerMap = OwnerMap()
 _shares: Dict[str, Dict[str, str]] = {}
 _forum_posts: List[Dict[str, Any]] = []
 _illustration_bytes: OwnerMap = OwnerMap()
+# Narration audio when S3 is not configured. Lost on restart, which is why the
+# S3 path is preferred: history that disappears when the box reboots is not
+# history. The script and its metadata live on the material either way.
+_narration_bytes: OwnerMap = OwnerMap()
 _illustrations_inflight: OwnerSet = OwnerSet()
 _illustration_last_generated: OwnerMap = OwnerMap()
 _chat_illustration_last_generated: OwnerMap = OwnerMap()
 _chat_answers: OwnerMap = OwnerMap()
 _tasks: set[asyncio.Task] = set()
+
+
+# How long a running quiz job may sit before another may be started.
+#
+# The 409 guard below refuses a second quiz while one is running, which is
+# right -- two generations racing on one material would fight over the excluded
+# prompts. But a job that dies mid-flight never leaves the running state, and
+# the material was then locked out of quiz generation for the life of the
+# process. Generously longer than any real generation, including a hard quiz
+# with all its critiques.
+QUIZ_JOB_STALE_SECONDS = 900
+
+# Kept per material. Enough to compare a few takes, bounded so a student who
+# keeps asking for another one does not fill the bucket.
+NARRATION_HISTORY_LIMIT = 8
 
 
 def _now() -> str:
@@ -390,6 +411,17 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
     register_owner_hydrator(hydrate_owner)
 
     async def persist(kind: str, record_id: str, value: Any) -> None:
+        """Write a record to durable storage, best effort.
+
+        Deliberately does not raise. Every caller has already updated the
+        in-memory state that serves requests, so a failure here means the work
+        succeeded but may not survive a restart -- not that the work failed.
+
+        This matters because the backing store is a Learner Lab account whose
+        credentials are revoked every few hours. Letting DynamoDB take a user's
+        finished recap, quiz or message down with it was the difference between
+        an app that degrades and one that looks broken every afternoon.
+        """
         owner_id = current_owner_id()
         stored = deepcopy(value)
         if isinstance(stored, dict):
@@ -397,11 +429,17 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
             if isinstance(value, dict):
                 value["ownerId"] = owner_id
         if repository.ready:
-            await run_in_threadpool(repository.save, owner_id, kind, record_id, stored)
+            try:
+                await run_in_threadpool(repository.save, owner_id, kind, record_id, stored)
+            except Exception as exc:
+                logger.warning("persist failed kind=%s id=%s error=%s", kind, record_id, str(exc)[:160])
 
     async def persist_public(kind: str, record_id: str, value: Any) -> None:
         if repository.ready:
-            await run_in_threadpool(repository.save_public, kind, record_id, deepcopy(value))
+            try:
+                await run_in_threadpool(repository.save_public, kind, record_id, deepcopy(value))
+            except Exception as exc:
+                logger.warning("public persist failed kind=%s id=%s error=%s", kind, record_id, str(exc)[:160])
 
     async def remove_persisted(kind: str, record_id: str) -> None:
         if repository.ready:
@@ -472,14 +510,39 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
                 material = await run_in_threadpool(_translate_material, material, language, settings)
 
             _materials[material_id] = material
-            if storage.ready:
-                await run_in_threadpool(
-                    storage.put_json,
-                    "materials/{}/result.json".format(material_id),
-                    _materials[material_id],
+
+            # From here the recap exists and is verified. Everything below is
+            # durability -- an S3 snapshot and the DynamoDB records -- and none
+            # of it can make the notes any more or less correct.
+            #
+            # It used to sit inside the same try, so when the lab session ended
+            # and its credentials were revoked, PutObject answered AccessDenied
+            # and a finished, grounded recap was thrown away and reported to the
+            # student as a failed upload. Archiving is allowed to fail; the work
+            # is not discarded for it. The material says so, so nobody is misled
+            # into thinking it is safely stored.
+            archive_failure = None
+            try:
+                if storage.ready:
+                    await run_in_threadpool(
+                        storage.put_json,
+                        "materials/{}/result.json".format(material_id),
+                        _materials[material_id],
+                    )
+                await persist("source", material_id, [item.model_dump() for item in _sources[material_id]])
+                await persist("material", material_id, _materials[material_id])
+            except Exception as archive_exc:
+                archive_failure = str(archive_exc)
+                logger.warning(
+                    "recap archiving failed material=%s error=%s", material_id, archive_failure[:200]
                 )
-            await persist("source", material_id, [item.model_dump() for item in _sources[material_id]])
-            await persist("material", material_id, _materials[material_id])
+                _materials[material_id]["warnings"] = list(
+                    dict.fromkeys(
+                        (_materials[material_id].get("warnings") or [])
+                        + ["These notes are ready, but could not be saved to cloud storage, so they may not survive a server restart."]
+                    )
+                )
+
             job.update(status="ready", stage="done", progress=100, stageLabel="Recap ready")
             _uploads.pop(material_id, None)
         except Exception as exc:
@@ -785,7 +848,10 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
         else:
             upload_url = "/api/uploads/{}/content".format(material_id)
         _uploads[material_id] = upload
-        return {"materialId": material_id, "uploadUrl": upload_url}
+        # Echo the content type back. The presigned signature covers it, so the
+        # browser has to send this exact value on the PUT — returning it removes
+        # any chance of the two sides computing it differently.
+        return {"materialId": material_id, "uploadUrl": upload_url, "contentType": content_type}
 
     @router.put("/uploads/{material_id}/content", status_code=204)
     async def put_upload(material_id: str, request: Request) -> Response:
@@ -867,12 +933,25 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
             provider_error = hard_quiz_provider_error(settings)
             if provider_error:
                 raise HTTPException(status_code=503, detail=provider_error)
-        if any(
-            job.get("kind") == "quiz"
-            and job.get("materialId") == material_id
-            and job.get("status") == "running"
-            for job in _jobs.values()
-        ):
+        # Only a job that is genuinely still working blocks a new one. A stale
+        # one is retired here rather than blocking this material forever.
+        now = time.monotonic()
+        blocking = False
+        for job in _jobs.values():
+            if job.get("kind") != "quiz" or job.get("materialId") != material_id:
+                continue
+            if job.get("status") != "running":
+                continue
+            if now - float(job.get("startedAt") or now) > QUIZ_JOB_STALE_SECONDS:
+                logger.warning("retiring stale quiz job %s for material %s", job.get("id"), material_id)
+                job.update(
+                    status="failed",
+                    stage="failed",
+                    error="Quiz generation stopped responding and was cancelled.",
+                )
+                continue
+            blocking = True
+        if blocking:
             raise HTTPException(status_code=409, detail="A quiz is already being generated for this material.")
         job_id = _id("job")
         excluded_prompts = [
@@ -897,6 +976,7 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
             "materialId": material_id,
             "kind": "quiz",
             "status": "running",
+            "startedAt": time.monotonic(),
             "stage": "queued",
             "stageLabel": "Quiz generation queued",
             "progress": 0,
@@ -1144,25 +1224,34 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
                     explanation,
                     settings,
                 )
-                content, content_type, digest = await run_in_threadpool(generate_image, prompt, settings)
+                content, content_type, digest, image_provider, image_model = await run_in_threadpool(generate_image, prompt, settings)
                 illustration_id = "img_{}".format(digest)
                 item = {
                     "id": illustration_id,
                     "topic": str(section.get("heading") or "Study concept"),
-                    "provider": "Pollinations.ai",
-                    "model": settings.pollinations_model,
+                    "provider": image_provider,
+                    "model": image_model,
                     "path": "/api/materials/{}/illustrations/{}".format(material_id, illustration_id),
                     "createdAt": _now(),
                 }
+                # The picture already exists at this point. If durable storage
+                # will not take it -- which is what an expired lab session looks
+                # like -- keep it in memory rather than discarding a generated
+                # image and failing the whole batch.
+                stored = False
                 if storage.ready:
                     extension = {"image/png": "png", "image/webp": "webp"}.get(content_type, "jpg")
-                    item["_storageKey"] = await run_in_threadpool(
-                        storage.put_image,
-                        "generated/{}/{}.{}".format(material_id, illustration_id, extension),
-                        content,
-                        content_type,
-                    )
-                else:
+                    try:
+                        item["_storageKey"] = await run_in_threadpool(
+                            storage.put_image,
+                            "generated/{}/{}.{}".format(material_id, illustration_id, extension),
+                            content,
+                            content_type,
+                        )
+                        stored = True
+                    except Exception as store_exc:
+                        logger.warning("illustration upload failed: %s", str(store_exc)[:160])
+                if not stored:
                     _illustration_bytes[illustration_id] = (content, content_type)
                 created.append(item)
             material["illustrations"] = created
@@ -1298,26 +1387,33 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
                 str(cached_answer["answer"])[:1200],
                 settings,
             )
-            content, content_type, digest = await run_in_threadpool(generate_image, prompt, settings)
+            content, content_type, digest, image_provider, image_model = await run_in_threadpool(generate_image, prompt, settings)
             illustration_id = "chat_{}".format(digest)
             item = {
                 "id": illustration_id,
                 "topic": str(cached_answer["question"])[:120],
-                "provider": "Pollinations.ai",
-                "model": settings.pollinations_model,
+                "provider": image_provider,
+                "model": image_model,
                 "kind": "chat",
                 "path": "/api/materials/{}/illustrations/{}".format(material_id, illustration_id),
                 "createdAt": _now(),
             }
+            # Same reasoning as the batch path: a generated visual is not
+            # thrown away because object storage is unavailable.
+            stored = False
             if storage.ready:
                 extension = {"image/png": "png", "image/webp": "webp"}.get(content_type, "jpg")
-                item["_storageKey"] = await run_in_threadpool(
-                    storage.put_image,
-                    "generated/{}/chat/{}.{}".format(material_id, illustration_id, extension),
-                    content,
-                    content_type,
-                )
-            else:
+                try:
+                    item["_storageKey"] = await run_in_threadpool(
+                        storage.put_image,
+                        "generated/{}/chat/{}.{}".format(material_id, illustration_id, extension),
+                        content,
+                        content_type,
+                    )
+                    stored = True
+                except Exception as store_exc:
+                    logger.warning("chat illustration upload failed: %s", str(store_exc)[:160])
+            if not stored:
                 _illustration_bytes[illustration_id] = (content, content_type)
             material["chatIllustrations"] = (previous + [item])[-12:]
             await persist("material", material_id, material)
@@ -1480,9 +1576,214 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
             raise HTTPException(status_code=502, detail="Could not reach the coding model just now.")
         return {"explanation": result["text"], "model": result["model"]}
 
+    @router.post("/practice/agent")
+    async def practice_agent(request: Request) -> Dict[str, Any]:
+        """One turn of the IDE coding agent.
+
+        Separate from /practice/explain on purpose. That endpoint is prompted to
+        withhold a solution because handing a graded exercise's answer over
+        teaches nothing. This one is a pair-programmer for the Playground, and
+        it still applies the same restraint when the caller says the student is
+        on a graded exercise.
+
+        The provider key stays here. It is read from the server's settings and
+        never reaches the browser, so the bundle cannot leak it.
+        """
+        body = await request.json()
+        messages = [m for m in (body.get("messages") or []) if isinstance(m, dict)]
+        if not messages:
+            raise HTTPException(status_code=422, detail="Ask the agent something first.")
+        if not coding_help_available(settings):
+            raise HTTPException(
+                status_code=501,
+                detail="The coding agent is not configured on this deployment.",
+            )
+
+        result = await run_in_threadpool(
+            chat_about_code,
+            language=str(body.get("language") or "python"),
+            code=str(body.get("code") or ""),
+            brief=str(body.get("brief") or ""),
+            output=str(body.get("output") or ""),
+            messages=messages,
+            allow_solutions=bool(body.get("allowSolutions")),
+            settings=settings,
+        )
+        if not result:
+            raise HTTPException(status_code=502, detail="Could not reach the coding model just now.")
+        return {"reply": result["text"], "model": result["model"], "suggestion": result["suggestion"]}
+
     @router.get("/practice/help-available")
     async def practice_help_available() -> Dict[str, Any]:
         return {"available": coding_help_available(settings)}
+
+    @router.get("/narration/available")
+    async def narration_is_available() -> Dict[str, Any]:
+        return {"available": narration_available(settings)}
+
+    def _narration_summary(item: Dict[str, Any]) -> Dict[str, Any]:
+        """The parts of a stored take that are safe and useful to send.
+
+        Everything except the storage key, which is an internal pointer and has
+        no business in a response body.
+        """
+        return {key: value for key, value in item.items() if not key.startswith("_")}
+
+    @router.get("/materials/{material_id}/narrations")
+    async def list_narrations(material_id: str) -> Dict[str, Any]:
+        material = _require_material(material_id)
+        takes = material.get("narrations") or []
+        return {"narrations": [_narration_summary(item) for item in takes]}
+
+    @router.post("/materials/{material_id}/narration")
+    async def narrate_material(material_id: str, request: Request) -> Dict[str, Any]:
+        """Read this recap aloud, and keep the take.
+
+        A language model rewrites the notes as spoken prose first, because a
+        speech model handed recap JSON pronounces the bullet characters and the
+        citation ids. See `narration.py`.
+
+        Send `instruction` with `basedOn` to revise an existing take rather than
+        generate an unrelated one -- "slower", "focus on the handshake".
+
+        The audio never goes on the material record. A couple of minutes of
+        speech is megabytes, well past DynamoDB's 400 KB item ceiling, so it
+        goes to S3 and only the pointer is stored. The script is small and lives
+        on the record, so the transcript survives even if the audio is swept.
+        """
+        raw_body = await request.body()
+        body = json.loads(raw_body) if raw_body else {}
+        instruction = str(body.get("instruction") or "").strip()
+        based_on = str(body.get("basedOn") or "").strip()
+
+        material = _require_material(material_id)
+        recap = material.get("recap") or {}
+        if not recap.get("sections") and not recap.get("summary"):
+            raise HTTPException(
+                status_code=422,
+                detail="This material has no recap to read yet. Generate the notes first.",
+            )
+        if not narration_available(settings):
+            raise HTTPException(
+                status_code=501,
+                detail="Read-aloud is not configured on this deployment.",
+            )
+
+        takes = list(material.get("narrations") or [])
+        previous_script = ""
+        if instruction:
+            source = next(
+                (t for t in takes if t.get("id") == based_on),
+                takes[-1] if takes else None,
+            )
+            previous_script = str((source or {}).get("script") or "")
+
+        result = await run_in_threadpool(
+            build_narration,
+            recap,
+            settings,
+            material.get("title") or "",
+            instruction,
+            previous_script,
+        )
+        if not result:
+            raise HTTPException(status_code=502, detail="Could not write the narration script just now.")
+
+        take: Dict[str, Any] = {
+            "id": _id("nar"),
+            "script": result["script"],
+            "scriptModel": result["scriptModel"],
+            "instruction": instruction,
+            "basedOn": based_on if instruction else "",
+            "createdAt": _now(),
+            "seconds": result.get("seconds"),
+            "mimeType": result.get("mimeType"),
+            "speechModel": result.get("speechModel"),
+            "voice": result.get("voice"),
+        }
+
+        raw_audio = result.get("raw")
+        if not raw_audio:
+            # The script survived but the speech model did not answer. Keep the
+            # take anyway: a readable transcript is a real result, and it can be
+            # revised and re-voiced later.
+            take["audioFailed"] = True
+        elif storage.ready:
+            try:
+                take["_storageKey"] = await run_in_threadpool(
+                    storage.put_binary,
+                    "narrations/{}/{}.wav".format(material_id, take["id"]),
+                    raw_audio,
+                    take["mimeType"] or "audio/wav",
+                )
+            except Exception as exc:
+                logger.warning("narration upload failed material=%s error=%s", material_id, exc)
+                _narration_bytes[take["id"]] = (raw_audio, take["mimeType"] or "audio/wav")
+        else:
+            _narration_bytes[take["id"]] = (raw_audio, take["mimeType"] or "audio/wav")
+
+        takes.append(take)
+        # Drop the oldest beyond the cap, and take their audio with them rather
+        # than leaving objects in the bucket that nothing points at.
+        while len(takes) > NARRATION_HISTORY_LIMIT:
+            oldest = takes.pop(0)
+            _narration_bytes.pop(str(oldest.get("id")), None)
+            if oldest.get("_storageKey") and storage.ready:
+                try:
+                    await run_in_threadpool(storage.delete_key, oldest["_storageKey"])
+                except Exception as exc:
+                    logger.warning("could not delete narration audio: %s", exc)
+
+        material["narrations"] = takes
+        await persist("material", material_id, material)
+        return _narration_summary(take)
+
+    @router.get("/materials/{material_id}/narrations/{narration_id}/audio")
+    async def get_narration_audio(material_id: str, narration_id: str) -> Response:
+        material = _require_material(material_id)
+        take = next(
+            (t for t in (material.get("narrations") or []) if t.get("id") == narration_id),
+            None,
+        )
+        if not take:
+            raise HTTPException(status_code=404, detail="That narration does not exist.")
+
+        if take.get("_storageKey") and storage.ready:
+            content, content_type = await run_in_threadpool(storage.get_binary, take["_storageKey"])
+        else:
+            cached = _narration_bytes.get(narration_id)
+            if not cached:
+                raise HTTPException(
+                    status_code=404,
+                    detail="That narration's audio is no longer stored. Generate it again.",
+                )
+            content, content_type = cached
+
+        return Response(
+            content=content,
+            media_type=content_type or "audio/wav",
+            headers={"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"},
+        )
+
+    @router.delete("/materials/{material_id}/narrations/{narration_id}", status_code=204)
+    async def delete_narration(material_id: str, narration_id: str) -> Response:
+        material = _require_material(material_id)
+        takes = list(material.get("narrations") or [])
+        remaining = [t for t in takes if t.get("id") != narration_id]
+        if len(remaining) == len(takes):
+            raise HTTPException(status_code=404, detail="That narration does not exist.")
+
+        removed = next(t for t in takes if t.get("id") == narration_id)
+        _narration_bytes.pop(narration_id, None)
+        if removed.get("_storageKey") and storage.ready:
+            try:
+                await run_in_threadpool(storage.delete_key, removed["_storageKey"])
+            except Exception as exc:
+                logger.warning("could not delete narration audio: %s", exc)
+
+        material["narrations"] = remaining
+        await persist("material", material_id, material)
+        return Response(status_code=204)
 
     @router.get("/materials/{material_id}/practice")
     async def get_practice(material_id: str, refresh: str = "") -> Dict[str, Any]:

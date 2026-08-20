@@ -1,6 +1,6 @@
 from typing import Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator, model_validator
 
 
 class Citation(BaseModel):
@@ -38,7 +38,11 @@ class QuizQuestion(BaseModel):
     prompt: str
     options: List[str] = Field(default_factory=list, max_length=6)
     answer: Optional[Union[int, List[int]]] = None
-    model_answer: Optional[str] = Field(default=None, min_length=1, max_length=2000, alias="modelAnswer")
+    # No min_length: strict structured output forces a model to emit this key
+    # even on a multiple-choice question, where "" is the only sensible value.
+    # The blank is normalised to None in validate_type_contract, which still
+    # refuses a short-answer question that has no real model answer.
+    model_answer: Optional[str] = Field(default=None, max_length=2000, alias="modelAnswer")
     key_concepts: List[str] = Field(default_factory=list, max_length=8, alias="keyConcepts")
     rubric: Optional[str] = Field(default=None, max_length=1000)
     explanation: str
@@ -47,6 +51,22 @@ class QuizQuestion(BaseModel):
 
     @model_validator(mode="after")
     def validate_type_contract(self):
+        # Blank grading fields count as absent.
+        #
+        # OpenAI strict structured output requires every property to be present,
+        # so a model has no way to omit modelAnswer or rubric on a
+        # multiple-choice question -- it emits "" or an empty list. Those are
+        # not short-answer grading fields, but the contract below read them as
+        # such and rejected the entire quiz: "10 validation errors for
+        # QuizPack" on a hard quiz, which is what made generation fail at
+        # random. Normalising here keeps the rule itself strict; a short-answer
+        # question with a blank model answer is still refused below.
+        if isinstance(self.model_answer, str) and not self.model_answer.strip():
+            self.model_answer = None
+        if isinstance(self.rubric, str) and not self.rubric.strip():
+            self.rubric = None
+        self.key_concepts = [item for item in self.key_concepts if item and item.strip()]
+
         if self.type in {"single", "multi"}:
             if not 2 <= len(self.options) <= 6:
                 raise ValueError("Objective questions require 2 to 6 options")
@@ -63,8 +83,22 @@ class QuizQuestion(BaseModel):
                 if len(set(self.answer)) != len(self.answer):
                     raise ValueError("Multi-select answer indexes must be unique")
                 self.answer = sorted(self.answer)
-            if self.model_answer is not None or self.key_concepts or self.rubric is not None:
-                raise ValueError("Objective questions cannot include short-answer grading fields")
+            # Extra grading fields are dropped, not rejected.
+            #
+            # Strict structured output requires every property to be present,
+            # and on a hard quiz a model reliably fills keyConcepts on
+            # multiple-choice questions too. Refusing the pack for that threw
+            # away ten perfectly good questions -- it was the whole of "10
+            # validation errors for QuizPack", and it made hard quizzes fail
+            # every time rather than occasionally.
+            #
+            # Nothing is lost by clearing them: objective questions are scored
+            # from options and answer alone, and these fields are never read.
+            # A question that is genuinely malformed still fails the checks
+            # above, which are what actually guard correctness.
+            self.model_answer = None
+            self.rubric = None
+            self.key_concepts = []
         else:
             if self.options or self.answer is not None:
                 raise ValueError("Short-answer questions cannot include options or an objective answer")
@@ -158,6 +192,41 @@ class StudyPack(BaseModel):
         if len(prompts) != len(set(prompts)):
             raise ValueError("Quiz questions must be unique")
         return value
+
+
+# StudyPack as a provider is asked to produce it: without `providers` or `quiz`.
+#
+# `providers` is List[Dict[str, str]], and a free-form object carries no
+# `required` key, which OpenAI strict structured output rejects outright --
+# "Invalid schema for response_format 'StudyPack': 'required' is required to be
+# supplied". It is why recaps could never be generated on an OpenAI-compatible
+# provider while quizzes could: QuizPack has no such field. Provenance is
+# something the application knows and a model does not, so asking for it was
+# always wrong.
+#
+# `quiz` is dropped for a different reason. Strict mode requires every property
+# to be present, so the model must emit model_answer and rubric on a
+# multiple-choice question -- which QuizQuestion's own validator forbids as
+# "Objective questions cannot include short-answer grading fields". The two
+# rules cannot both be satisfied, and it made recap generation fail at random
+# depending on how many objective questions the model happened to write.
+#
+# Nothing is lost: a material's quiz always comes from the quiz endpoint, and
+# the recap's embedded questions were never shown to anyone.
+_DRAFT_EXCLUDED = {"providers", "quiz"}
+
+StudyPackDraft = create_model(
+    "StudyPackDraft",
+    **{
+        name: (field.annotation, field)
+        for name, field in StudyPack.model_fields.items()
+        if name not in _DRAFT_EXCLUDED
+    },
+)
+
+
+def to_study_pack(draft: "StudyPackDraft") -> StudyPack:
+    return StudyPack(**draft.model_dump(), providers=[], quiz=[])
 
 
 _ALLOWED_AVATAR_IDS = {

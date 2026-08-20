@@ -979,3 +979,50 @@
 
   .auth-head { flex-wrap: wrap; }
 }
+
+/* A caught render error. Deliberately plain and always legible: this is what
+   shows when the styled component it replaced could not render at all. */
+.crash {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 14px 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--bad) 38%, transparent);
+  background: var(--bad-bg);
+  color: var(--ink);
+}
+
+.crash > .material-symbols-rounded { color: var(--bad); flex-shrink: 0; }
+.crash > div { flex: 1; min-width: 0; }
+.crash-title { font-weight: 650; font-size: var(--t-sm); }
+.crash-detail { margin-top: 4px; font-size: var(--t-xs); color: var(--ink-2); word-break: break-word; }
+
+/* Placeholder while a private image is being fetched with its session header,
+   and the fallback when that fetch fails. Sized by the container so the layout
+   does not jump when the real image arrives. */
+.auth-image {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 120px;
+  border-radius: inherit;
+  color: var(--ink-4);
+}
+
+.auth-image.is-loading {
+  background: linear-gradient(100deg, var(--ground-sunken) 30%, var(--glass-line) 50%, var(--ground-sunken) 70%);
+  background-size: 220% 100%;
+  animation: auth-image-shimmer 1.3s var(--ease) infinite;
+}
+
+@keyframes auth-image-shimmer {
+  to { background-position: -220% 0; }
+}
+
+.auth-image.is-failed { background: var(--ground-sunken); }
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-image.is-loading { animation: none; }
+}

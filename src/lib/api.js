@@ -125,6 +125,79 @@ async function request(path, { method = 'GET', body, signal, auth = true } = {})
   return payload;
 }
 
+/**
+ * Route an absolute presigned upload URL through the dev server in development.
+ *
+ * The bucket's CORS lists the deployed web origin only, so a direct PUT from
+ * localhost is blocked by the browser and surfaces as "Failed to fetch". Vite
+ * proxies /__dev-s3/<host>/<key> back to S3 with the Host header restored, and
+ * the presigned signature still validates because path and query are untouched.
+ * Production is unaffected: the URL is returned exactly as the backend sent it.
+ */
+/**
+ * PUT a file to a presigned URL and fail loudly.
+ *
+ * S3 answers a rejected upload with an XML body naming the reason —
+ * SignatureDoesNotMatch, AccessDenied, EntityTooLarge. Swallowing that and
+ * showing "check your connection" sent us chasing a network fault when the
+ * signature was the problem, so the code is surfaced in the message.
+ *
+ * `contentType` must be byte-identical to the one the URL was signed with: the
+ * signature covers it, so any drift is a 403. It is threaded through from the
+ * create call rather than recomputed here, which is what stops the two sides
+ * from ever disagreeing.
+ */
+async function putSignedFile(uploadUrl, file, contentType) {
+  const target = uploadTarget(uploadUrl);
+  const headers = { 'Content-Type': contentType };
+  if (uploadUrl.startsWith('/')) {
+    const token = tokenStore.get();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
+
+  const res = await fetch(target, { method: 'PUT', headers, body: file });
+  if (res.ok) return;
+
+  let reason = '';
+  try {
+    const body = await res.text();
+    reason = (body.match(/<Code>([^<]+)<\/Code>/) ?? [])[1] ?? '';
+  } catch {
+    // A body we cannot read is not worth failing twice over.
+  }
+  throw new ApiError(
+    reason
+      ? `The storage service rejected this upload (${res.status} ${reason}).`
+      : `The storage service rejected this upload (HTTP ${res.status}).`,
+    res.status,
+    null,
+  );
+}
+
+function uploadTarget(uploadUrl) {
+  const apiOrigin = BASE.startsWith('http') ? new URL(BASE).origin : window.location.origin;
+  const absolute = new URL(uploadUrl, apiOrigin);
+  // A relative URL is one of our own routes. It must never go through the
+  // tunnel below, which forwards only content-type and content-length and
+  // would drop the Authorization header these routes require.
+  if (uploadUrl.startsWith('/')) return absolute.toString();
+  if (!import.meta.env?.DEV || absolute.origin === window.location.origin) return absolute.toString();
+  return `/__dev-s3/${absolute.host}${absolute.pathname}${absolute.search}`;
+}
+
+function lobbyRequest(path, options = {}) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 12_000);
+  return request(path, { ...options, signal: controller.signal })
+    .catch((cause) => {
+      if (cause?.name === 'AbortError') {
+        throw new ApiError('The lobby server took too long to respond. Check your connection and try again.', 0, null);
+      }
+      throw cause;
+    })
+    .finally(() => window.clearTimeout(timer));
+}
+
 const live = {
   mode: 'live',
 
@@ -190,17 +263,76 @@ const live = {
      * that one is behind the Bearer session, so it needs the header the S3
      * case must not send.
      */
-    put: async (uploadUrl, file) => {
-      const apiOrigin = BASE.startsWith('http') ? new URL(BASE).origin : window.location.origin;
-      const target = new URL(uploadUrl, apiOrigin).toString();
-      const headers = { 'Content-Type': file.type || 'application/octet-stream' };
-      if (uploadUrl.startsWith('/')) {
-        const token = tokenStore.get();
-        if (token) headers.Authorization = `Bearer ${token}`;
+    /**
+     * Create an upload session and send the bytes, retrying once if the
+     * credentials behind the URL died in between.
+     *
+     * The presigned URL carries the EC2 instance role's temporary STS token.
+     * On Learner Lab that token rotates, and one signed shortly before a
+     * rotation is refused with ExpiredToken even though it was valid when
+     * issued and is nowhere near its own 15-minute expiry. Nothing on the
+     * client can extend it — the only repair is a freshly signed URL, so ask
+     * for one and send again. The retry yields a new materialId, which is why
+     * this returns it rather than leaving the caller holding the stale one.
+     */
+    send: async (file) => {
+      const payload = {
+        fileName: file.name,
+        contentType: file.type || 'application/octet-stream',
+        sizeBytes: file.size,
+      };
+      let lastError = null;
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        const created = await live.uploads.create(payload);
+        // No presigned URL means object storage is not configured, and the
+        // backend is already expecting the bytes itself.
+        if (!created.uploadUrl) {
+          await live.uploads.relay(created.materialId, file, created.contentType);
+          return created.materialId;
+        }
+        try {
+          await live.uploads.put(created.uploadUrl, file, created.contentType);
+          return created.materialId;
+        } catch (error) {
+          lastError = error;
+          // A rotated-but-live credential is fixed by asking for a fresh URL.
+          if (/ExpiredToken|TokenRefreshRequired|InvalidToken/i.test(error.message ?? '') && attempt === 1) {
+            continue;
+          }
+          // Anything else the storage service refuses is not something the
+          // browser can fix by trying again -- the credentials behind the URL
+          // are simply dead, which on Learner Lab happens every time a session
+          // ends. Hand the bytes to our own backend instead, which reads them
+          // straight out of the request. Losing durable storage for one upload
+          // is a far better outcome than refusing to accept the file at all.
+          await live.uploads.relay(created.materialId, file, created.contentType);
+          return created.materialId;
+        }
       }
-      const res = await fetch(target, { method: 'PUT', headers, body: file });
-      if (!res.ok) throw new ApiError('Could not upload your file. Check your connection and try again.', res.status, null);
+      throw lastError ?? new ApiError('Could not upload your file.', 0, null);
     },
+
+    /**
+     * Send the bytes to the backend's own upload route.
+     *
+     * The fallback for when object storage will not take them. The job reads
+     * `upload["content"]` before it ever looks at S3, so a relayed upload runs
+     * through the pipeline exactly like a stored one.
+     */
+    relay: (materialId, file, contentType) =>
+      putSignedFile(
+        `/api/uploads/${materialId}/content`,
+        file,
+        contentType || file.type || 'application/octet-stream',
+      ),
+
+    /**
+     * `contentType` is the value the backend echoed back from create, so it is
+     * exactly what the URL was signed with. It falls back to the file's own
+     * type only for an older backend that does not return it.
+     */
+    put: (uploadUrl, file, contentType) =>
+      putSignedFile(uploadUrl, file, contentType || file.type || 'application/octet-stream'),
   },
 
   jobs: {
@@ -216,6 +348,46 @@ const live = {
     helpAvailable: () => request('/practice/help-available'),
     /** Why did this attempt fail? Never returns a corrected solution. */
     explain: (payload) => request('/practice/explain', { method: 'POST', body: payload }),
+    /** One turn of the IDE coding agent. The provider key stays server-side. */
+    agent: (payload) => request('/practice/agent', { method: 'POST', body: payload }),
+  },
+
+  narration: {
+    /** Whether this deployment has the read-aloud models configured. */
+    available: () => request('/narration/available'),
+    /** Every take kept for this material, oldest first. */
+    list: (materialId) => request(`/materials/${materialId}/narrations`),
+    /**
+     * Produce a take. With `instruction` and `basedOn` it revises that take
+     * rather than generating an unrelated one.
+     */
+    create: (materialId, body = {}) =>
+      request(`/materials/${materialId}/narration`, { method: 'POST', body }),
+    remove: (materialId, narrationId) =>
+      request(`/materials/${materialId}/narrations/${narrationId}`, { method: 'DELETE' }),
+    /**
+     * The audio itself, as a Blob.
+     *
+     * Fetched rather than pointed at with an <audio src>, because the route is
+     * behind the Bearer session and an audio element cannot send a header. The
+     * caller owns the object URL it makes from this and must revoke it.
+     */
+    audio: async (materialId, narrationId) => {
+      const token = tokenStore.get();
+      const res = await fetch(`${BASE}/materials/${materialId}/narrations/${narrationId}/audio`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        throw new ApiError(
+          res.status === 404
+            ? 'That recording is no longer stored. Generate it again.'
+            : 'Could not load that recording.',
+          res.status,
+          null,
+        );
+      }
+      return res.blob();
+    },
   },
 
   binders: {
@@ -241,17 +413,8 @@ const live = {
      * Direct-to-S3 PUT — same shape as `uploads.put` for a single Material,
      * including the same local-fallback auth header (see its comment).
      */
-    put: async (uploadUrl, file) => {
-      const apiOrigin = BASE.startsWith('http') ? new URL(BASE).origin : window.location.origin;
-      const target = new URL(uploadUrl, apiOrigin).toString();
-      const headers = { 'Content-Type': 'application/pdf' };
-      if (uploadUrl.startsWith('/')) {
-        const token = tokenStore.get();
-        if (token) headers.Authorization = `Bearer ${token}`;
-      }
-      const res = await fetch(target, { method: 'PUT', headers, body: file });
-      if (!res.ok) throw new ApiError('Could not upload your file. Check your connection and try again.', res.status, null);
-    },
+    /** Binder sources are always signed as application/pdf by the backend. */
+    put: (uploadUrl, file, contentType) => putSignedFile(uploadUrl, file, contentType || 'application/pdf'),
     commit: (binderId, sourceId) => request(`/binders/${binderId}/sources/${sourceId}/commit`, { method: 'POST' }),
     retry: (binderId, sourceId) => request(`/binders/${binderId}/sources/${sourceId}/retry`, { method: 'POST' }),
     rename: (sourceId, displayName) => request(`/sources/${sourceId}`, { method: 'PATCH', body: { displayName } }),
@@ -296,15 +459,15 @@ const live = {
   },
 
   lobbies: {
-    list: () => request('/lobbies'),
-    get: (id) => request(`/lobbies/${id}`),
-    quiz: (id, playerId, reconnectToken) => request(`/lobbies/${id}/quiz?playerId=${encodeURIComponent(playerId)}&token=${encodeURIComponent(reconnectToken)}`),
-    create: (payload) => request('/lobbies', { method: 'POST', body: payload }),
-    join: (id, payload) => request(`/lobbies/${id}/join`, { method: 'POST', body: payload }),
-    ready: (id, payload) => request(`/lobbies/${id}/ready`, { method: 'POST', body: payload }),
-    start: (id, payload) => request(`/lobbies/${id}/start`, { method: 'POST', body: payload }),
-    answer: (id, payload) => request(`/lobbies/${id}/answer`, { method: 'POST', body: payload }),
-    score: (id, payload) => request(`/lobbies/${id}/score`, { method: 'POST', body: payload }),
+    list: () => lobbyRequest('/lobbies', { auth: false }),
+    get: (id) => lobbyRequest(`/lobbies/${id}`, { auth: false }),
+    quiz: (id, playerId, reconnectToken) => lobbyRequest(`/lobbies/${id}/quiz?playerId=${encodeURIComponent(playerId)}&token=${encodeURIComponent(reconnectToken)}`, { auth: false }),
+    create: (payload) => lobbyRequest('/lobbies', { method: 'POST', body: payload }),
+    join: (id, payload) => lobbyRequest(`/lobbies/${id}/join`, { method: 'POST', body: payload, auth: false }),
+    ready: (id, payload) => lobbyRequest(`/lobbies/${id}/ready`, { method: 'POST', body: payload, auth: false }),
+    start: (id, payload) => lobbyRequest(`/lobbies/${id}/start`, { method: 'POST', body: payload, auth: false }),
+    answer: (id, payload) => lobbyRequest(`/lobbies/${id}/answer`, { method: 'POST', body: payload, auth: false }),
+    score: (id, payload) => lobbyRequest(`/lobbies/${id}/score`, { method: 'POST', body: payload, auth: false }),
   },
 
   forum: {
@@ -336,6 +499,25 @@ const live = {
 };
 
 export const api = USE_MOCK ? mockApi : live;
+
+/**
+ * Fetch a backend asset as a Blob, with the session header attached.
+ *
+ * An <img src> cannot send an Authorization header, and the illustration route
+ * is behind the Bearer session like every other private route — so pointing an
+ * image element straight at it returns 401 and renders as a broken image. The
+ * bytes have to be fetched, then handed to the element as an object URL.
+ *
+ * External URLs are returned untouched by apiAssetUrl and never reach here.
+ */
+export async function fetchAssetBlob(path) {
+  const token = tokenStore.get();
+  const res = await fetch(apiAssetUrl(path), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new ApiError('Could not load that image.', res.status, null);
+  return res.blob();
+}
 
 export function apiAssetUrl(path) {
   if (!path) return '';
