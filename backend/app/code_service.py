@@ -71,7 +71,55 @@ _FENCE = re.compile(r"```[\s\S]*?```")
 
 
 def coding_help_available(settings: Settings) -> bool:
-    return bool((settings.nvidia_api_key.get_secret_value() or "").strip())
+    return bool(
+        (settings.openrouter_api_key.get_secret_value() or "").strip()
+        or (settings.nvidia_api_key.get_secret_value() or "").strip()
+    )
+
+
+def _openrouter(
+    *,
+    messages: List[Dict[str, str]],
+    settings: Settings,
+    max_tokens: int,
+    temperature: float,
+) -> Optional[Dict[str, str]]:
+    """First choice for code work: one named model, no guessing.
+
+    Preferred over the NIM chain because the model is pinned in configuration
+    rather than discovered by probing, and because NIM's code-specialised
+    models are not enabled for this account.
+    """
+    key = (settings.openrouter_api_key.get_secret_value() or "").strip()
+    model = (settings.openrouter_code_model or "").strip()
+    if not key or not model:
+        return None
+
+    try:
+        from openai import OpenAI
+    except ImportError:  # pragma: no cover - depends on the deployment
+        return None
+
+    client = OpenAI(
+        base_url=settings.openrouter_base_url.rstrip("/") + "/",
+        api_key=key,
+        timeout=90.0,
+        max_retries=0,
+        # Optional attribution headers; OpenRouter uses them for its leaderboards.
+        default_headers={"HTTP-Referer": (settings.allowed_origins or [""])[0], "X-Title": "SmartRecap"},
+    )
+    try:
+        completion = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        text = (completion.choices[0].message.content or "").strip()
+        return {"text": text, "model": model} if text else None
+    except Exception as exc:
+        logger.warning("OpenRouter model %s unavailable: %s", model, str(exc)[:200])
+        return None
 
 
 def _complete(
@@ -85,7 +133,16 @@ def _complete(
 
     Returns `{"text", "model"}` or None. Both the explainer and the agent go
     through here so a retirement is handled in one place rather than two.
+
+    OpenRouter is tried first when configured; the NIM chain is the fallback so
+    the feature survives either provider being down.
     """
+    preferred = _openrouter(
+        messages=messages, settings=settings, max_tokens=max_tokens, temperature=temperature
+    )
+    if preferred:
+        return preferred
+
     key = (settings.nvidia_api_key.get_secret_value() or "").strip()
     if not key:
         return None

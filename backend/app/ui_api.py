@@ -30,6 +30,7 @@ from .ai_service import (
 )
 from .config import Settings
 from .code_service import chat_about_code, coding_help_available, explain_failure
+from .narration import build_narration, narration_available
 from .google_auth import verify_google_id_token
 from .image_service import generate_image, verify_raster_image
 from .models import ChatIllustrationRequest, Citation, IllustrationGenerationRequest, MaterialAskRequest, QuizGenerationRequest, SourceRecord, StudyPack
@@ -1520,6 +1521,48 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
     @router.get("/practice/help-available")
     async def practice_help_available() -> Dict[str, Any]:
         return {"available": coding_help_available(settings)}
+
+    @router.get("/narration/available")
+    async def narration_is_available() -> Dict[str, Any]:
+        return {"available": narration_available(settings)}
+
+    @router.post("/materials/{material_id}/narration")
+    async def narrate_material(material_id: str) -> Dict[str, Any]:
+        """Read this recap aloud.
+
+        A language model rewrites the notes as spoken prose first, because a
+        speech model handed recap JSON pronounces the bullet characters and the
+        citation ids. See `narration.py`.
+
+        The audio is deliberately not cached on the material. It comes back as
+        base64 and a couple of minutes of speech is megabytes — well past
+        DynamoDB's 400 KB item ceiling, so persisting it would corrupt the
+        record it was attached to. The browser keeps the blob instead.
+        """
+        material = _require_material(material_id)
+        recap = material.get("recap") or {}
+        if not recap.get("sections") and not recap.get("summary"):
+            raise HTTPException(
+                status_code=422,
+                detail="This material has no recap to read yet. Generate the notes first.",
+            )
+        if not narration_available(settings):
+            raise HTTPException(
+                status_code=501,
+                detail="Read-aloud is not configured on this deployment.",
+            )
+
+        result = await run_in_threadpool(
+            build_narration, recap, settings, material.get("title") or ""
+        )
+        if not result:
+            raise HTTPException(status_code=502, detail="Could not write the narration script just now.")
+        if not result.get("audio"):
+            # The script survived but the speech model did not answer. Return
+            # 200 with the transcript: a readable script is a real result, and
+            # the client says plainly that the audio leg failed.
+            return {**result, "audioFailed": True}
+        return result
 
     @router.get("/materials/{material_id}/practice")
     async def get_practice(material_id: str, refresh: str = "") -> Dict[str, Any]:

@@ -248,6 +248,13 @@ const live = {
     agent: (payload) => request('/practice/agent', { method: 'POST', body: payload }),
   },
 
+  narration: {
+    /** Whether this deployment has the read-aloud models configured. */
+    available: () => request('/narration/available'),
+    /** Rewrite this recap as spoken prose and synthesise it. Returns base64 audio. */
+    create: (materialId) => request(`/materials/${materialId}/narration`, { method: 'POST' }),
+  },
+
   binders: {
     list: () => request('/binders'),
     get: (id) => request(`/binders/${id}`),

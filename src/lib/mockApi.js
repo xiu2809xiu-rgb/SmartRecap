@@ -1098,6 +1098,18 @@ export const mockApi = {
       // like a real one, so demo mode declines instead of inventing it.
       throw Object.assign(new Error('The coding agent needs a live backend.'), { status: 501 });
     },
+  },
+
+  narration: {
+    async available() {
+      await sleep(60);
+      return { available: false };
+    },
+    async create() {
+      // Demo mode has no speech model, and a canned recording of the wrong
+      // notes would be worse than no audio at all.
+      throw Object.assign(new Error('Read-aloud needs a live backend.'), { status: 501 });
+    },
     /**
      * Demo mode calls no model, so these are written by hand — but written to
      * the same contract the real generator has to meet. They are about the

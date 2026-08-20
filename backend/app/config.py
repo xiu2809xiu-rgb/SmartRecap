@@ -22,6 +22,16 @@ class Settings(BaseSettings):
     openrouter_api_key: SecretStr = SecretStr("")
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_model: str = ""
+    # The IDE coding agent. Separate from `openrouter_model` so changing the
+    # recap failover model does not silently change what reviews code.
+    openrouter_code_model: str = "poolside/laguna-s-2.1:free"
+    # Read-aloud. Both are overridable from the environment because a model id
+    # is a moving target — the previous coding model was retired mid-project.
+    # Turns a recap into a script meant to be heard rather than read. Separate
+    # from the TTS model: one writes the words, the other speaks them.
+    openrouter_narration_model: str = "z-ai/glm-5.2:free"
+    openrouter_tts_model: str = "deepgram/flux-tts:free"
+    openrouter_tts_voice: str = "flux-alexis-en"
     nvidia_api_key: SecretStr = SecretStr("")
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     nvidia_model: str = ""

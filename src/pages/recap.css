@@ -536,3 +536,79 @@
 .quiz-generation-options { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .quiz-type-picker button { display: inline-flex; align-items: center; gap: 4px; }
 @media (max-width: 720px) { .quiz-generation-options { align-items: flex-start; flex-direction: column; } .quiz-type-picker { flex-wrap: wrap; } }
+
+/* ------------------------------------------------------------- narration */
+
+.narrate-btn { margin-top: 14px; }
+.narrate-btn.is-working { color: var(--ink-3); }
+
+.narration {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--glass-line);
+  background: var(--ground-sunken);
+  animation: narration-in 320ms var(--spring) both;
+}
+
+@keyframes narration-in {
+  from { transform: translateY(6px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.narration-head { display: flex; align-items: center; gap: 11px; margin-bottom: 11px; }
+.narration-head h3 { font-size: var(--t-sm); font-weight: 650; }
+.narration-head p { font-size: var(--t-xs); color: var(--ink-4); margin-top: 2px; }
+
+/* A four-bar equaliser standing in for "this is audio". Purely decorative, so
+   it is hidden from assistive tech and stops under reduced motion. */
+.narration-wave { display: inline-flex; align-items: flex-end; gap: 3px; height: 22px; }
+
+.narration-wave i {
+  width: 3px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--aurora-violet), var(--accent-hot));
+  animation: narration-bar 1.15s var(--ease) infinite;
+}
+
+.narration-wave i:nth-child(1) { height: 40%; animation-delay: 0s; }
+.narration-wave i:nth-child(2) { height: 85%; animation-delay: 0.12s; }
+.narration-wave i:nth-child(3) { height: 60%; animation-delay: 0.24s; }
+.narration-wave i:nth-child(4) { height: 35%; animation-delay: 0.36s; }
+
+@keyframes narration-bar {
+  0%, 100% { transform: scaleY(0.45); }
+  50% { transform: scaleY(1); }
+}
+
+.narration-audio { width: 100%; margin-bottom: 10px; }
+
+.narration-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 10px;
+  font-size: var(--t-xs);
+  color: var(--warn);
+}
+
+.narration-transcript summary {
+  cursor: pointer;
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+  font-weight: 600;
+}
+
+.narration-transcript p {
+  margin-top: 9px;
+  font-size: var(--t-sm);
+  line-height: 1.7;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .narration, .narration-wave i { animation: none !important; }
+}
+
+@media print { .narrate-btn, .narration-audio { display: none !important; } }
