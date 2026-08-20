@@ -16,9 +16,12 @@ export default function AskPanel({ material, open, onClose }) {
   const [thread, setThread] = useState([]);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef(null);
-  const endRef = useRef(null);
+  const threadRef = useRef(null);
 
-  const chunkById = new Map((material.chunks ?? []).map((c) => [c.id, c]));
+  const chunkById = useMemo(
+    () => new Map((material.chunks ?? []).map((c) => [c.id, c])),
+    [material],
+  );
 
   /**
    * Prompts drawn from this material's own key terms and section headings.
@@ -38,8 +41,15 @@ export default function AskPanel({ material, open, onClose }) {
     if (open) inputRef.current?.focus();
   }, [open]);
 
+  /**
+   * Scroll the thread itself rather than calling scrollIntoView on a trailing
+   * node. scrollIntoView walks up and scrolls every scrollable ancestor, and
+   * this panel is fixed over a long page — so it yanked the page behind the
+   * panel on open and after every answer.
+   */
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'end' });
+    const el = threadRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [thread, busy]);
 
   useEffect(() => {
@@ -98,19 +108,31 @@ export default function AskPanel({ material, open, onClose }) {
         </button>
       </header>
 
-      <div className="ask-thread">
-        {thread.length === 0 && suggestions.length > 0 && (
-          <div className="ask-hint">
-            <p>Try one of these:</p>
-            <ul>
-              {suggestions.map((s) => (
-                <li key={s}>
-                  <button type="button" onClick={() => setQuestion(s)}>
-                    {s}
-                  </button>
-                </li>
-              ))}
-            </ul>
+      <div className="ask-thread" ref={threadRef} aria-live="polite">
+        {thread.length === 0 && (
+          <div className="ask-empty">
+            <Icon name="forum" size={26} />
+            <p className="ask-empty-title">Ask anything about this material</p>
+            <p className="ask-empty-body">
+              Every answer quotes the slide it came from. If your deck does not cover
+              something, the answer says so instead of guessing.
+            </p>
+            {/* Suggestions need a recap to draw real terms from. A deck still being
+                processed has none, and the panel used to render nothing at all. */}
+            {suggestions.length > 0 && (
+              <div className="ask-hint">
+                <p>Try one of these:</p>
+                <ul>
+                  {suggestions.map((s) => (
+                    <li key={s}>
+                      <button type="button" onClick={() => setQuestion(s)}>
+                        {s}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
 
@@ -165,7 +187,6 @@ export default function AskPanel({ material, open, onClose }) {
             <span>Searching your material…</span>
           </div>
         )}
-        <div ref={endRef} />
       </div>
 
       <form className="ask-form" onSubmit={ask}>
