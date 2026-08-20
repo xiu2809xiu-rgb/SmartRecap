@@ -77,6 +77,13 @@ class Settings(BaseSettings):
     together_base_url: str = "https://api.together.xyz/v1"
     together_image_model: str = "black-forest-labs/FLUX.1-schnell-Free"
     hf_api_token: SecretStr = SecretStr("")
+    hf_chat_base_url: str = "https://router.huggingface.co/v1"
+    # Open-weight models reached through the same token as the image models.
+    # Reasoning model for writing recaps, general instruct model for answering
+    # questions. Both are optional: they join the provider chain when the token
+    # has credit and are skipped when it does not.
+    hf_reasoning_model: str = "deepseek-ai/DeepSeek-R1"
+    hf_chat_model: str = "Qwen/Qwen2.5-72B-Instruct"
     # Preferred: FLUX.1-dev on fal-ai, at 28 steps. Schnell is distilled down to
     # one-to-four steps for speed and drops fine detail to get there, which is
     # what makes its diagrams look smeared. Dev costs a couple of seconds more

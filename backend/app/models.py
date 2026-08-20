@@ -1,6 +1,6 @@
 from typing import Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator, model_validator
 
 
 class Citation(BaseModel):
@@ -158,6 +158,31 @@ class StudyPack(BaseModel):
         if len(prompts) != len(set(prompts)):
             raise ValueError("Quiz questions must be unique")
         return value
+
+
+# StudyPack as a provider is asked to produce it: identical, minus `providers`.
+#
+# That field is List[Dict[str, str]], and a free-form object carries no
+# `required` key, which OpenAI strict structured output rejects outright --
+# "Invalid schema for response_format 'StudyPack': 'required' is required to be
+# supplied". It is why recaps could never be generated on an OpenAI-compatible
+# provider while quizzes could: QuizPack has no such field.
+#
+# Provenance is something the application knows and the model does not, so
+# asking a model for it was always wrong. Drafts are converted with
+# `to_study_pack()`, which runs every StudyPack validator on the way through.
+StudyPackDraft = create_model(
+    "StudyPackDraft",
+    **{
+        name: (field.annotation, field)
+        for name, field in StudyPack.model_fields.items()
+        if name != "providers"
+    },
+)
+
+
+def to_study_pack(draft: "StudyPackDraft") -> StudyPack:
+    return StudyPack(**draft.model_dump(), providers=[])
 
 
 _ALLOWED_AVATAR_IDS = {
