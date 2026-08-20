@@ -1093,6 +1093,11 @@ export const mockApi = {
       // prevent.
       throw Object.assign(new Error('Coding help needs a live backend.'), { status: 501 });
     },
+    async agent() {
+      // Same reasoning as explain(): a fabricated code review reads exactly
+      // like a real one, so demo mode declines instead of inventing it.
+      throw Object.assign(new Error('The coding agent needs a live backend.'), { status: 501 });
+    },
     /**
      * Demo mode calls no model, so these are written by hand — but written to
      * the same contract the real generator has to meet. They are about the

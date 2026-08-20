@@ -29,7 +29,7 @@ from .ai_service import (
     hard_quiz_provider_error,
 )
 from .config import Settings
-from .code_service import coding_help_available, explain_failure
+from .code_service import chat_about_code, coding_help_available, explain_failure
 from .google_auth import verify_google_id_token
 from .image_service import generate_image, verify_raster_image
 from .models import ChatIllustrationRequest, Citation, IllustrationGenerationRequest, MaterialAskRequest, QuizGenerationRequest, SourceRecord, StudyPack
@@ -1479,6 +1479,43 @@ def build_ui_router(extract_source: ExtractSource, settings: Settings) -> APIRou
         if not result:
             raise HTTPException(status_code=502, detail="Could not reach the coding model just now.")
         return {"explanation": result["text"], "model": result["model"]}
+
+    @router.post("/practice/agent")
+    async def practice_agent(request: Request) -> Dict[str, Any]:
+        """One turn of the IDE coding agent.
+
+        Separate from /practice/explain on purpose. That endpoint is prompted to
+        withhold a solution because handing a graded exercise's answer over
+        teaches nothing. This one is a pair-programmer for the Playground, and
+        it still applies the same restraint when the caller says the student is
+        on a graded exercise.
+
+        The provider key stays here. It is read from the server's settings and
+        never reaches the browser, so the bundle cannot leak it.
+        """
+        body = await request.json()
+        messages = [m for m in (body.get("messages") or []) if isinstance(m, dict)]
+        if not messages:
+            raise HTTPException(status_code=422, detail="Ask the agent something first.")
+        if not coding_help_available(settings):
+            raise HTTPException(
+                status_code=501,
+                detail="The coding agent is not configured on this deployment.",
+            )
+
+        result = await run_in_threadpool(
+            chat_about_code,
+            language=str(body.get("language") or "python"),
+            code=str(body.get("code") or ""),
+            brief=str(body.get("brief") or ""),
+            output=str(body.get("output") or ""),
+            messages=messages,
+            allow_solutions=bool(body.get("allowSolutions")),
+            settings=settings,
+        )
+        if not result:
+            raise HTTPException(status_code=502, detail="Could not reach the coding model just now.")
+        return {"reply": result["text"], "model": result["model"], "suggestion": result["suggestion"]}
 
     @router.get("/practice/help-available")
     async def practice_help_available() -> Dict[str, Any]:

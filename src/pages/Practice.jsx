@@ -10,6 +10,9 @@ import './practice.css';
 // CodeMirror is not on the critical path for any other screen, and a student
 // who never opens practice should never download it.
 const CodeEditor = lazy(() => import('../practice/CodeEditor.jsx'));
+// Same reasoning: the agent pulls in the markdown renderer, which the editor
+// itself does not need.
+const CodeAgent = lazy(() => import('../practice/CodeAgent.jsx'));
 
 /**
  * Practice: write code beside the lecture it came from, and run it.
@@ -73,6 +76,7 @@ export default function Practice() {
   const [helpAvailable, setHelpAvailable] = useState(false);
   const [help, setHelp] = useState({});
   const [helping, setHelping] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -315,6 +319,17 @@ export default function Practice() {
             <div className="practice-bar">
               <span className="chip practice-lang">{language === 'javascript' ? 'JavaScript' : 'Python'}</span>
               <div className="practice-bar-actions">
+                {helpAvailable && (
+                  <button
+                    type="button"
+                    className={`btn btn-sm agent-toggle ${agentOpen ? 'is-open' : ''}`}
+                    onClick={() => setAgentOpen((value) => !value)}
+                    aria-pressed={agentOpen}
+                  >
+                    <Icon name="smart_toy" size={17} />
+                    Agent
+                  </button>
+                )}
                 <button type="button" className="btn btn-ghost btn-sm" onClick={onReset} disabled={busy}>
                   <Icon name="refresh" size={16} />
                   Reset
@@ -467,6 +482,19 @@ export default function Practice() {
             </div>
           </div>
         </div>
+
+        <Suspense fallback={null}>
+          <CodeAgent
+            open={agentOpen}
+            onClose={() => setAgentOpen(false)}
+            language={language}
+            code={code}
+            brief={exercise ? [exercise.title, exercise.brief ?? ''].join('\n\n') : ''}
+            output={[result?.stdout, result?.stderr].filter(Boolean).join('\n')}
+            allowSolutions={isPlayground}
+            onApply={(next) => setDrafts((prev) => ({ ...prev, [draftKey]: next }))}
+          />
+        </Suspense>
       </div>
     </StudyShell>
   );

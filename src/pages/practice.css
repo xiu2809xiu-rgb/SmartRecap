@@ -337,3 +337,247 @@
   font-size: var(--t-xs);
   color: var(--bad);
 }
+
+/* ------------------------------------------------------------ code agent */
+
+.agent-toggle {
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--ink);
+}
+
+.agent-toggle:hover { border-color: var(--accent); }
+
+.agent-toggle.is-open {
+  background: linear-gradient(120deg, var(--aurora-violet), var(--accent-hot));
+  border-color: transparent;
+  color: #fff;
+}
+
+.agent-panel {
+  position: fixed;
+  right: 0;
+  top: 66px;
+  bottom: 0;
+  width: min(420px, 94vw);
+  z-index: 46;
+  display: flex;
+  flex-direction: column;
+  background: var(--ground-raised);
+  border-left: 1px solid var(--glass-line);
+  box-shadow: -24px 0 60px -30px rgba(31, 12, 66, 0.45);
+  animation: agent-in 320ms var(--spring) both;
+}
+
+@keyframes agent-in {
+  from { transform: translateX(28px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.agent-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--glass-line);
+}
+
+.agent-head-text { flex: 1; min-width: 0; }
+.agent-head h2 { font-size: 0.95rem; }
+.agent-head p { font-size: var(--t-xs); color: var(--ink-3); margin-top: 2px; }
+
+/* The one piece of persistent motion: a slow breathing glow that marks the
+   panel as a live thing rather than a static sidebar. */
+.agent-mark {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--aurora-violet), var(--accent-hot));
+  animation: agent-breathe 3.6s var(--ease) infinite;
+}
+
+@keyframes agent-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 46%, transparent); }
+  50% { box-shadow: 0 0 0 7px transparent; }
+}
+
+.agent-thread {
+  flex: 1;
+  /* As in the ask panel: without this the thread grows instead of scrolling
+     and pushes the composer off the bottom. */
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.agent-empty { margin: auto 0; }
+.agent-empty-title { font-size: var(--t-sm); font-weight: 650; color: var(--ink); }
+.agent-empty-body { font-size: var(--t-xs); line-height: 1.6; color: var(--ink-3); margin-top: 5px; }
+
+.agent-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+
+.agent-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-line);
+  background: var(--ground);
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease), transform var(--dur) var(--ease);
+  /* --i staggers the chips in so they arrive as a group rather than a flash. */
+  animation: agent-rise 300ms var(--spring) both;
+  animation-delay: calc(var(--i) * 55ms);
+}
+
+.agent-action:hover { border-color: var(--accent); color: var(--ink); transform: translateY(-1px); }
+
+@keyframes agent-rise {
+  from { transform: translateY(7px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.agent-q {
+  align-self: flex-end;
+  max-width: 88%;
+  padding: 9px 13px;
+  border-radius: 15px 15px 4px 15px;
+  background: var(--accent);
+  color: #fff;
+  font-size: var(--t-sm);
+  line-height: 1.5;
+  animation: agent-rise 240ms var(--spring) both;
+}
+
+.agent-a {
+  position: relative;
+  padding: 12px 14px;
+  border-radius: 15px 15px 15px 4px;
+  background: var(--ground-sunken);
+  border: 1px solid var(--glass-line);
+  font-size: var(--t-sm);
+  line-height: 1.6;
+  color: var(--ink);
+  overflow: hidden;
+  animation: agent-rise 280ms var(--spring) both;
+}
+
+/* A single light sweep as an answer lands — enough to draw the eye to the new
+   message without the panel ever looking busy afterwards. */
+.agent-a::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--accent) 16%, transparent) 50%, transparent 70%);
+  transform: translateX(-100%);
+  animation: agent-sweep 900ms var(--ease) 120ms 1;
+  pointer-events: none;
+}
+
+@keyframes agent-sweep {
+  to { transform: translateX(100%); }
+}
+
+.agent-a.is-error { background: var(--bad-bg); border-color: color-mix(in srgb, var(--bad) 34%, transparent); }
+.agent-a.is-error::after { animation: none; }
+
+.agent-markdown pre {
+  margin: 10px 0;
+  padding: 11px 12px;
+  border-radius: var(--r-sm);
+  background: var(--ground);
+  border: 1px solid var(--glass-line);
+  overflow-x: auto;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.agent-markdown code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.agent-markdown > *:first-child { margin-top: 0; }
+.agent-markdown > *:last-child { margin-bottom: 0; }
+
+.agent-model { margin-top: 9px; font-size: 0.68rem; color: var(--ink-4); letter-spacing: 0.02em; }
+
+.agent-apply {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 11px;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in srgb, var(--accent) 46%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--ink);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.agent-apply:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); border-color: var(--accent); }
+
+.agent-apply.is-applied {
+  border-color: color-mix(in srgb, var(--good, #3ecf8e) 50%, transparent);
+  background: color-mix(in srgb, var(--good, #3ecf8e) 16%, transparent);
+  animation: agent-applied 460ms var(--spring) 1;
+}
+
+@keyframes agent-applied {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+.agent-a.is-thinking { display: flex; align-items: center; gap: 10px; color: var(--ink-3); }
+.agent-a.is-thinking::after { animation: none; }
+.agent-thinking-text { font-size: var(--t-xs); }
+
+.agent-dots { display: inline-flex; gap: 4px; }
+
+.agent-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: agent-bounce 1.05s var(--ease) infinite;
+}
+
+.agent-dots i:nth-child(2) { animation-delay: 0.14s; }
+.agent-dots i:nth-child(3) { animation-delay: 0.28s; }
+
+@keyframes agent-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+
+.agent-form { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--glass-line); }
+.agent-form .btn { flex-shrink: 0; padding-inline: 13px; }
+
+/* Same reasoning as the ask panel: below this width the study bar wraps to two
+   rows, so anything pinned under a fixed 66px ends up beneath it. */
+@media (max-width: 680px) {
+  .agent-panel { top: 0; width: 100vw; }
+}
+
+/* Motion is decoration here. Both the app's own reduced-motion preference and
+   the OS setting turn all of it off, leaving the panel fully usable. */
+.agent-panel.is-still *,
+.agent-panel.is-still {
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-panel *, .agent-panel { animation: none !important; }
+}
+
+@media print {
+  .agent-panel, .agent-toggle { display: none !important; }
+}
