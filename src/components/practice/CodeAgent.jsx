@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from '../lib/api.js';
-import { Icon, Spinner } from '../components/ui.jsx';
-import SafeMarkdown from '../components/SafeMarkdown.jsx';
-import { usePrefs } from '../lib/prefs.jsx';
+import { api } from '../../lib/api.js';
+import { Icon, Spinner } from '../ui.jsx';
+import SafeMarkdown from '../SafeMarkdown.jsx';
+import { usePrefs } from '../../lib/prefs.jsx';
 
 /**
  * The pair-programmer docked beside the practice editor.

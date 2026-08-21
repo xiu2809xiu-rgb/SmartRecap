@@ -5,7 +5,7 @@ import { useStore } from '../lib/store.jsx';
 import { usePrefs } from '../lib/prefs.jsx';
 import { StudyShell } from '../components/layout/Shells.jsx';
 import { Icon, Spinner, Empty, ProgressBar, useToast } from '../components/ui.jsx';
-import Mascot from '../mascot/Mascot.jsx';
+import Mascot from '../components/mascot/Mascot.jsx';
 import { buildFlashcards, repairFlashcards, review, nextDue, dueCount } from '../lib/srs.js';
 import './flashcards.css';
 

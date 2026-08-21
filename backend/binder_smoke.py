@@ -1,5 +1,8 @@
 import sys,time
-sys.path.insert(0,"backend")
+from pathlib import Path
+# Resolved from this file, not the working directory, so the script runs
+# the same from backend/ or from the repository root.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from app.binder_api import _jobs,build_binder_router

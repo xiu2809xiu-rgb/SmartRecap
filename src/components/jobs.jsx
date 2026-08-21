@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, pollJob } from './api.js';
-import { useStore } from './store.jsx';
-import { Icon, ProgressBar, Spinner, useToast } from '../components/ui.jsx';
-import { sendCompletionNotification } from './notifications.js';
+import { api, pollJob } from '../lib/api.js';
+import { useStore } from '../lib/store.jsx';
+import { Icon, ProgressBar, Spinner, useToast } from './ui.jsx';
+import { sendCompletionNotification } from '../lib/notifications.js';
 import './jobs.css';
 
 const STORAGE_KEY = 'smartrecap.jobs.v1';

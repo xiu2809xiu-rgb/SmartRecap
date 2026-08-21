@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import AuroraBackdrop from '../components/AuroraBackdrop.jsx';
-import Mascot from '../mascot/Mascot.jsx';
+import Mascot from '../components/mascot/Mascot.jsx';
 import { lazy, Suspense } from 'react';
 import useAvatarModel from '../components/avatar/useAvatarModel.js';
 import ParticleText from '../components/ParticleText.jsx';

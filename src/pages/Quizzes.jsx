@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
-import { useJobs } from '../lib/jobs.jsx';
+import { useJobs } from '../components/jobs.jsx';
 import { Empty, Icon, Select, Segmented, Spinner, useToast } from '../components/ui.jsx';
 import './quizzes.css';
 

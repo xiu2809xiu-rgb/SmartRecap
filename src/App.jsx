@@ -10,7 +10,7 @@ import {
   RouteSweep,
   useSuspenseProgress,
 } from './components/PageTransition.jsx';
-import { MascotBadge } from './mascot/Mascot.jsx';
+import { MascotBadge } from './components/mascot/Mascot.jsx';
 import ClickSpark from './reactbits/ClickSpark.jsx';
 import './pages/route.css';
 

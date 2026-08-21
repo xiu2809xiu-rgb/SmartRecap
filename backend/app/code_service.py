@@ -26,6 +26,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from .config import Settings
+from .model_chain import ModelChain
 
 logger = logging.getLogger("smartrecap.code")
 
@@ -59,7 +60,9 @@ MODELS = [
 ]
 
 # Set once a model answers, so the dead ones are not retried on every request.
-_resolved: Optional[str] = None
+# ModelChain owns that memory, including clearing it when the whole chain fails
+# so a model that comes back is picked up rather than skipped forever.
+_CHAIN = ModelChain(MODELS, label="NVIDIA NIM")
 
 SYSTEM_PROMPT = """You are helping a polytechnic student debug their own code in a study app.
 
@@ -171,30 +174,23 @@ def _complete(
         logger.warning("openai package missing; coding help unavailable")
         return None
 
-    global _resolved
     client = OpenAI(base_url=BASE_URL, api_key=key, timeout=60.0)
-    candidates = [_resolved] if _resolved else MODELS
 
-    for model in candidates:
-        try:
-            completion = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                top_p=0.7,
-                max_tokens=max_tokens,
-            )
-            text = (completion.choices[0].message.content or "").strip()
-            if text:
-                _resolved = model
-                return {"text": text, "model": model}
-        except Exception as exc:
-            logger.warning("NVIDIA model %s unavailable: %s", model, str(exc)[:160])
+    def ask(model: str) -> Optional[str]:
+        completion = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            top_p=0.7,
+            max_tokens=max_tokens,
+        )
+        return (completion.choices[0].message.content or "").strip()
 
-    # Everything failed. Clear the cache so a recovered model is picked up
-    # rather than being skipped forever.
-    _resolved = None
-    return None
+    answered = _CHAIN.run(ask)
+    if not answered:
+        return None
+    model, text = answered
+    return {"text": text, "model": model}
 
 
 def explain_failure(

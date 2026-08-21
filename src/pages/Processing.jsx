@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { PIPELINE_STAGES } from '../lib/api.js';
-import { useJobs } from '../lib/jobs.jsx';
+import { useJobs } from '../components/jobs.jsx';
 import { usePrefs } from '../lib/prefs.jsx';
 import { Icon, ProgressBar } from '../components/ui.jsx';
 import AuroraBackdrop from '../components/AuroraBackdrop.jsx';
-import Mascot from '../mascot/Mascot.jsx';
-import { STAGE_STATE } from '../mascot/states.js';
+import Mascot from '../components/mascot/Mascot.jsx';
+import { STAGE_STATE } from '../components/mascot/states.js';
 import CountUp from '../reactbits/CountUp.jsx';
 import DecryptedText from '../reactbits/DecryptedText.jsx';
 import './processing.css';

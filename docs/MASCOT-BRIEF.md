@@ -194,4 +194,4 @@ If the model does not appear, the app silently falls back to the procedural Rec
 | Flashcards — session finished | `Celebrate` | 200px |
 | 404 | `Confused` | 280px |
 
-The mapping lives in `src/mascot/states.js` if you want to change it.
+The mapping lives in `src/components/mascot/states.js` if you want to change it.

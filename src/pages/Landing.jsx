@@ -5,7 +5,7 @@ import AuroraBackdrop from '../components/AuroraBackdrop.jsx';
 import ScrollProgress from '../components/ScrollProgress.jsx';
 import PipelineScroll from '../components/PipelineScroll.jsx';
 import AvatarShowcase from '../components/avatar/AvatarShowcase.jsx';
-import Mascot from '../mascot/Mascot.jsx';
+import Mascot from '../components/mascot/Mascot.jsx';
 import { Icon } from '../components/ui.jsx';
 import { usePrefs } from '../lib/prefs.jsx';
 import { SAMPLE_CHUNKS, SAMPLE_RECAP } from '../data/seed.js';

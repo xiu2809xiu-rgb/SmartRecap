@@ -34,7 +34,7 @@ bundle for one screen: `ScrollStack` (lenis), `ElasticSlider` (@chakra-ui/react)
 (@react-three/rapier + meshline). Add the dependency and copy the file in if a
 screen ever needs one.
 
-`ModelViewer.jsx` is vendored but not used directly — `src/mascot/MascotModel.jsx`
+`ModelViewer.jsx` is vendored but not used directly — `src/components/mascot/MascotModel.jsx`
 is derived from it, keeping the bounding-sphere normalisation and adding
 animation-clip playback, which the original does not do.
 
