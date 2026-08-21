@@ -1,0 +1,111 @@
+/* The chosen file, shown as a page rather than announced as a filename. */
+
+.file-preview {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  width: 100%;
+  max-width: 560px;
+  text-align: left;
+}
+
+/* The sheet. Portrait by default because that is the shape of a lecture page;
+   an image or a rendered PDF cover overrides the ratio with its own. */
+.file-sheet {
+  position: relative;
+  flex-shrink: 0;
+  width: 132px;
+  aspect-ratio: 3 / 4;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid var(--glass-line-strong);
+  background: var(--ground-raised);
+  /* Lifted off the drop zone so it reads as a document sitting on a surface. */
+  box-shadow: 0 16px 34px -18px rgba(0, 0, 0, 0.85);
+}
+
+/* A rendered cover supplies its own proportions; the frame follows the art.
+   The backing stays dark rather than white: a slide deck with a dark master
+   otherwise sits inside a bright ring, and `contain` always leaves some
+   backing visible once the ratios differ. */
+.file-sheet.is-art { aspect-ratio: auto; max-height: 168px; background: var(--ground-sunken); }
+
+.file-sheet-art {
+  display: block;
+  width: 100%;
+  max-height: 168px;
+  object-fit: contain;
+}
+
+/* Plain-text files get their opening lines, clipped to the sheet and faded out
+   at the bottom so it reads as the top of a longer document. */
+.file-sheet-text {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 9px 8px;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 5.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+  -webkit-mask-image: linear-gradient(180deg, #000 62%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 62%, transparent 100%);
+}
+
+/* PowerPoint, Word: the format's own mark, on the same sheet. */
+.file-sheet-glyph {
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  border-radius: 18px;
+  color: #fff;
+  background: linear-gradient(140deg, var(--aurora-violet), var(--accent-hot));
+  box-shadow: 0 12px 26px -14px rgba(255, 0, 110, 0.8);
+}
+
+.file-sheet-shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, var(--ground-sunken) 30%, var(--glass-line) 50%, var(--ground-sunken) 70%);
+  background-size: 220% 100%;
+  animation: file-sheet-shimmer 1.25s var(--ease) infinite;
+}
+
+@keyframes file-sheet-shimmer {
+  to { background-position: -220% 0; }
+}
+
+/* --------------------------------------------------------------- the meta */
+
+.file-preview-meta { min-width: 0; }
+
+.file-preview-meta strong { display: block; font-size: 1.0625rem; }
+.file-preview-meta p { margin-top: 4px; font-size: var(--t-xs); color: var(--ink-4); }
+
+.file-preview-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.file-preview-hint { font-size: var(--t-xs); color: var(--ink-4); }
+
+@media (max-width: 620px) {
+  /* Stacked and centred, matching the drop zone's own alignment on a phone. */
+  .file-preview { flex-direction: column; gap: 16px; text-align: center; }
+  .file-preview-meta { max-width: 100%; }
+  .file-preview-actions { justify-content: center; }
+  .file-sheet { width: 116px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .file-sheet-shimmer { animation: none; }
+}

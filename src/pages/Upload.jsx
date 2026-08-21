@@ -7,7 +7,8 @@ import { enableCompletionNotifications } from '../lib/notifications.js';
 import { useToast, Icon } from '../components/ui.jsx';
 import { usePrefs } from '../lib/prefs.jsx';
 import Mascot from '../components/mascot/Mascot.jsx';
-import { FILE_TYPES, fileTypeOf, formatBytes } from '../lib/format.js';
+import FilePreview from '../components/FilePreview.jsx';
+import { fileTypeOf, formatBytes } from '../lib/format.js';
 import { LANGUAGES } from '../lib/languages.js';
 import Stepper, { Step } from '../reactbits/Stepper.jsx';
 import '../reactbits/Stepper.css';
@@ -143,7 +144,6 @@ export default function Upload() {
     }
   };
 
-  const type = file ? (FILE_TYPES[fileTypeOf(file.name)] ?? FILE_TYPES.pdf) : null;
 
   return (
     <div className="shell upload">
@@ -201,27 +201,7 @@ export default function Upload() {
                 onChange={(e) => accept(e.target.files?.[0])}
               />
               {file ? (
-                <div className="drop-file">
-                  <span className={`file-badge is-${fileTypeOf(file.name)}`}>
-                    <Icon name={type.icon} size={22} />
-                  </span>
-                  <div className="truncate">
-                    <strong className="truncate">{file.name}</strong>
-                    <p className="num">
-                      {type.label} · {formatBytes(file.size)}
-                    </p>
-                  </div>
-                  <button
-                    className="icon-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFile(null);
-                    }}
-                    aria-label="Remove the selected file"
-                  >
-                    <Icon name="close" size={18} />
-                  </button>
-                </div>
+                <FilePreview file={file} onRemove={() => setFile(null)} />
               ) : (
                 <>
                   <span className="drop-icon">
