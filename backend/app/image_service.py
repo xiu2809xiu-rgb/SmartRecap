@@ -10,6 +10,7 @@ import httpx
 from PIL import Image, UnidentifiedImageError
 
 from .config import Settings
+from .model_chain import ModelChain
 
 logger = logging.getLogger("smartrecap.images")
 
@@ -23,7 +24,9 @@ _ALLOWED_IMAGE_CDN = ("fal.media", "fal.ai", "together.ai", "togethercomputer.co
 # once it is spent every model answers 402 -- and without this every single
 # illustration would pay two dead round trips before reaching a provider that
 # works. A restart clears it, which is also when a topped-up token is noticed.
-_hf_paywalled = set()
+# Which Hugging Face routes this token cannot pay for. A 402 costs a round trip
+# to discover, so it is remembered rather than rediscovered on every image.
+_HF_CHAIN = ModelChain(("dev", "schnell"), label="Hugging Face")
 
 # Appended to every brief. The prompt writer is already told not to ask for
 # text, but diffusion models add lettering unprompted, and FLUX renders it as
@@ -130,7 +133,7 @@ def _generate_flux_dev(brief: str, settings: Settings, token: str) -> Tuple[byte
     and loses fine detail doing it, which is exactly what shows up as smeared
     labels and mangled arrows in a diagram.
     """
-    if "dev" in _hf_paywalled:
+    if _HF_CHAIN.is_unavailable("dev"):
         raise ValueError("FLUX.1-dev needs provider credit on this token.")
 
     provider = re.sub(r"[^a-z0-9-]", "", settings.hf_image_provider.lower()) or "fal-ai"
@@ -146,7 +149,7 @@ def _generate_flux_dev(brief: str, settings: Settings, token: str) -> Tuple[byte
     if response.status_code in (401, 402, 403):
         # Out of credit, or not entitled. Either way it will not start working
         # mid-process, so stop asking and let the next provider carry it.
-        _hf_paywalled.add("dev")
+        _HF_CHAIN.mark_unavailable("dev")
         raise ValueError("FLUX.1-dev is not available on this token ({}).".format(response.status_code))
     response.raise_for_status()
     body = response.json()
@@ -170,7 +173,7 @@ def _generate_flux_dev(brief: str, settings: Settings, token: str) -> Tuple[byte
 
 def _generate_flux_schnell(brief: str, settings: Settings, token: str) -> Tuple[bytes, str, str, str, str]:
     """Schnell through the OpenAI-style route, which returns the bytes inline."""
-    if "schnell" in _hf_paywalled:
+    if _HF_CHAIN.is_unavailable("schnell"):
         raise ValueError("FLUX.1-schnell needs provider credit on this token.")
 
     provider = re.sub(r"[^a-z0-9-]", "", settings.hf_fallback_provider.lower()) or "nscale"
@@ -183,7 +186,7 @@ def _generate_flux_schnell(brief: str, settings: Settings, token: str) -> Tuple[
             json={"model": model, "prompt": brief + _NO_TEXT_SUFFIX, "response_format": "b64_json"},
         )
     if response.status_code in (401, 402, 403):
-        _hf_paywalled.add("schnell")
+        _HF_CHAIN.mark_unavailable("schnell")
         raise ValueError("FLUX.1-schnell is not available on this token ({}).".format(response.status_code))
     response.raise_for_status()
 

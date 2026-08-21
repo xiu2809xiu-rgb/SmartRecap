@@ -5,7 +5,7 @@ import { useAuth } from '../lib/auth.jsx';
 import { useStore } from '../lib/store.jsx';
 import { api, isDemo } from '../lib/api.js';
 import { Icon, Modal, Segmented, useToast } from '../components/ui.jsx';
-import Mascot from '../mascot/Mascot.jsx';
+import Mascot from '../components/mascot/Mascot.jsx';
 import FaceEnrolment from '../components/auth/FaceEnrolment.jsx';
 import '../components/auth/auth-methods.css';
 import './settings.css';

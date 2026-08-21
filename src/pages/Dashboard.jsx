@@ -5,7 +5,7 @@ import { useAuth } from '../lib/auth.jsx';
 import { usePrefs } from '../lib/prefs.jsx';
 import { Icon, Empty, Segmented, Spinner, Modal, useToast } from '../components/ui.jsx';
 import { StatTile } from '../components/charts/Charts.jsx';
-import Mascot from '../mascot/Mascot.jsx';
+import Mascot from '../components/mascot/Mascot.jsx';
 import { FILE_TYPES, formatBytes, relativeDay } from '../lib/format.js';
 import SpotlightCard from '../reactbits/SpotlightCard.jsx';
 import CountUp from '../reactbits/CountUp.jsx';

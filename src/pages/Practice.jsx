@@ -5,15 +5,15 @@ import { useStore } from '../lib/store.jsx';
 import { StudyShell } from '../components/layout/Shells.jsx';
 import ErrorBoundary from '../components/ErrorBoundary.jsx';
 import { Icon, Spinner, useToast, Segmented } from '../components/ui.jsx';
-import useRunner from '../practice/useRunner.js';
+import useRunner from '../components/practice/useRunner.js';
 import './practice.css';
 
 // CodeMirror is not on the critical path for any other screen, and a student
 // who never opens practice should never download it.
-const CodeEditor = lazy(() => import('../practice/CodeEditor.jsx'));
+const CodeEditor = lazy(() => import('../components/practice/CodeEditor.jsx'));
 // Same reasoning: the agent pulls in the markdown renderer, which the editor
 // itself does not need.
-const CodeAgent = lazy(() => import('../practice/CodeAgent.jsx'));
+const CodeAgent = lazy(() => import('../components/practice/CodeAgent.jsx'));
 
 /**
  * Practice: write code beside the lecture it came from, and run it.

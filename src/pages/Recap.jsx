@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import AuthImage from '../components/AuthImage.jsx';
 import { useStore } from '../lib/store.jsx';
-import { useJobs } from '../lib/jobs.jsx';
+import { useJobs } from '../components/jobs.jsx';
 import { enableCompletionNotifications } from '../lib/notifications.js';
 import { usePrefs } from '../lib/prefs.jsx';
 import { StudyShell } from '../components/layout/Shells.jsx';

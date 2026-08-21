@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import AuroraBackdrop from '../AuroraBackdrop.jsx';
-import Mascot from '../../mascot/Mascot.jsx';
+import Mascot from '../mascot/Mascot.jsx';
 import { Icon } from '../ui.jsx';
 import { useAuth } from '../../lib/auth.jsx';
 import { usePrefs } from '../../lib/prefs.jsx';

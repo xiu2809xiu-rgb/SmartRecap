@@ -6,7 +6,7 @@ import { PrefsProvider } from './lib/prefs.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { AuthProvider } from './lib/auth.jsx';
 import { StoreProvider } from './lib/store.jsx';
-import { JobsProvider } from './lib/jobs.jsx';
+import { JobsProvider } from './components/jobs.jsx';
 import { ToastProvider } from './components/ui.jsx';
 import './styles/base.css';
 import './styles/app.css';

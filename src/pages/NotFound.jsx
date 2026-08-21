@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import AuroraBackdrop from '../components/AuroraBackdrop.jsx';
 import ParticleText from '../components/ParticleText.jsx';
-import Mascot from '../mascot/Mascot.jsx';
+import Mascot from '../components/mascot/Mascot.jsx';
 import { Brand, useSurface } from '../components/layout/Shells.jsx';
 import { Icon } from '../components/ui.jsx';
 import { usePrefs } from '../lib/prefs.jsx';

@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { resolveState } from './states.js';
-import { usePrefs } from '../lib/prefs.jsx';
+import { usePrefs } from '../../lib/prefs.jsx';
 import './mascot.css';
 
 // Everything three.js touches sits behind this boundary, so importing Mascot
