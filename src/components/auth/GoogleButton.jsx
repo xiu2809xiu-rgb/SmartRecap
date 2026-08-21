@@ -1,22 +1,27 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Spinner } from '../ui.jsx';
-import { isGoogleConfigured, requestGoogleCredential } from '../../lib/google.js';
+import { isGoogleConfigured, mountGoogleButton } from '../../lib/google.js';
 import { isDemo } from '../../lib/api.js';
 
 /**
  * "Continue with Google".
  *
- * The mark and the wording follow Google's branding requirements: their
- * four-colour G, unmodified, on a white surface, with the sanctioned phrasing.
- * The button is styled to sit in this design but nothing about the logo or the
- * label is customised, because those are the parts Google does not allow you to
- * change.
+ * When a client id is configured this hands the whole control over to Google:
+ * `mountGoogleButton` has GIS render its own button here, and clicking it opens
+ * the account chooser people recognise — a real popup window on
+ * accounts.google.com, not the corner chip the browser draws for One Tap.
  *
- * Rendering rules:
- *   configured            → the real flow
+ * That is why this component no longer draws its own button in the live case.
+ * GIS attaches the click handler to an element it builds itself, and there is
+ * no supported way to open the chooser from a button of ours; a custom button
+ * can only ever reach One Tap. Google's branding rules point the same way, so
+ * the styling we give up buys back the flow the user expects.
+ *
+ * The custom button below is still used, but only where no real chooser can
+ * open:
  *   demo mode             → visible and simulated, so the team can see the
  *                           design without a client id
- *   live + not configured → hidden, rather than shown broken to a real student
+ *   live + not configured → disabled, with a note saying why
  */
 
 function GoogleMark() {
@@ -42,23 +47,80 @@ function GoogleMark() {
   );
 }
 
+/** The live flow: Google's own button, and the chooser popup behind it. */
+function GoogleHostedButton({ onCredential, onError }) {
+  const hostRef = useRef(null);
+  const [status, setStatus] = useState('loading');
+
+  // Kept in a ref so the GIS callback always reaches the current handlers.
+  // GIS is initialised once per mount; without this it would close over the
+  // props from that first render and go stale.
+  const handlers = useRef({ onCredential, onError });
+  handlers.current = { onCredential, onError };
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return undefined;
+
+    let cleanup;
+    let cancelled = false;
+
+    mountGoogleButton(host, {
+      onCredential: (credential) => handlers.current.onCredential?.(credential),
+      onError: (e) => handlers.current.onError?.(e?.message ?? 'Google sign-in failed.'),
+    })
+      .then((teardown) => {
+        if (cancelled) {
+          teardown();
+          return;
+        }
+        cleanup = teardown;
+        setStatus('ready');
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setStatus('failed');
+        handlers.current.onError?.(e?.message ?? 'Could not load Google sign-in.');
+      });
+
+    return () => {
+      cancelled = true;
+      cleanup?.();
+    };
+  }, []);
+
+  return (
+    <div className="google-host-wrap">
+      <div className="google-host" ref={hostRef} data-status={status} />
+      {status === 'loading' && (
+        <p className="google-demo-note" role="status">
+          <Spinner size={15} /> Loading Google sign-in…
+        </p>
+      )}
+      {status === 'failed' && (
+        <p className="google-demo-note">
+          Google sign-in could not load. Use your email and password instead.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function GoogleButton({ onCredential, onError, disabled, label = 'Continue with Google' }) {
   const [busy, setBusy] = useState(false);
 
-  const configured = isGoogleConfigured || isDemo;
+  if (isGoogleConfigured) {
+    return <GoogleHostedButton onCredential={onCredential} onError={onError} />;
+  }
 
   const run = async () => {
-    if (!configured) return;
+    if (!isDemo) return;
     setBusy(true);
     try {
-      if (!isGoogleConfigured) {
-        // Demo mode: no client id, so no real chooser. The sentinel is
-        // recognised by the demo backend and by nothing else.
-        await new Promise((r) => setTimeout(r, 700));
-        await onCredential('demo-google-credential');
-        return;
-      }
-      await onCredential(await requestGoogleCredential());
+      // Demo mode: no client id, so no real chooser. The sentinel is recognised
+      // by the demo backend and by nothing else.
+      await new Promise((r) => setTimeout(r, 700));
+      await onCredential('demo-google-credential');
     } catch (e) {
       onError?.(e?.message ?? 'Google sign-in failed.');
     } finally {
@@ -68,15 +130,23 @@ export default function GoogleButton({ onCredential, onError, disabled, label = 
 
   return (
     <>
-      <button type="button" className="google-btn" onClick={run} disabled={busy || disabled || !configured} aria-describedby={!configured ? 'google-setup-note' : undefined}>
+      <button
+        type="button"
+        className="google-btn"
+        onClick={run}
+        disabled={busy || disabled || !isDemo}
+        aria-describedby={!isDemo ? 'google-setup-note' : undefined}
+      >
         {busy ? <Spinner size={18} /> : <GoogleMark />}
         <span>{busy ? 'Opening Google…' : label}</span>
       </button>
-      {!configured ? (
-        <p className="google-demo-note" id="google-setup-note">Google sign-in is visible but unavailable until an administrator finishes setup.</p>
-      ) : !isGoogleConfigured ? (
+      {isDemo ? (
         <p className="google-demo-note">Demo mode uses a clearly marked placeholder Google account.</p>
-      ) : null}
+      ) : (
+        <p className="google-demo-note" id="google-setup-note">
+          Google sign-in is visible but unavailable until an administrator finishes setup.
+        </p>
+      )}
     </>
   );
 }

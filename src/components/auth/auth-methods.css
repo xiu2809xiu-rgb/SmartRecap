@@ -307,3 +307,32 @@
 /* ---- the divider between password and the alternatives ---- */
 
 .auth-methods { display: flex; flex-direction: column; gap: 10px; }
+
+/* Google renders its own button into .google-host, so almost nothing here is
+   ours to style — GIS builds the element, sizes it from the `width` option and
+   owns everything inside. What is left is placing it: centred, and filling the
+   column the same way the email button above it does. */
+.google-host-wrap { display: grid; gap: 2px; }
+
+.google-host {
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+}
+
+/* Until GIS has drawn, the host is an empty box; collapsing it stops the form
+   jumping when the button appears. */
+.google-host:empty { min-height: 0; }
+
+/* GIS wraps its button in a div of the exact pixel width it was told to use.
+   Letting that wrapper fill the row keeps the button aligned with the rest of
+   the form at any font-size setting. */
+.google-host > div { max-width: 100%; }
+
+.google-host-wrap .google-demo-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 6px;
+}
