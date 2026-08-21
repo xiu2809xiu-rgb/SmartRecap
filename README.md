@@ -146,6 +146,8 @@ backend/
   infra/                EC2 provisioning: CloudFormation, systemd, nginx
   test/                 tests for the Node backend, no AWS needed
   Dockerfile            containerised FastAPI for EC2
+  binder_smoke.py       end-to-end binder lifecycle check, no AWS or network:
+                        backend/.venv/Scripts/python.exe backend/binder_smoke.py
 docs/
   ARCHITECTURE.md       how it works and why it is shaped this way
   RUN-LOCALLY.md        getting both halves running on one machine
