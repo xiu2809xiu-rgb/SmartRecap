@@ -208,3 +208,19 @@
   .quiz-type-generator { grid-column: auto; }
   .generator-controls .field { min-width: 0; }
 }
+
+/* The generator's five columns need 1221px of a 1096px card, so "Generate quiz"
+   hung 126px past the right edge. The two fixed minimums are the cause -- the
+   notebook picker asks for 220px and the question types for 270px, and with the
+   difficulty and length controls beside them there is nothing left for the
+   button. It gets its own row, aligned right, which is where the primary action
+   of a form belongs anyway. */
+@media (min-width: 701px) {
+  .generator-controls { grid-template-columns: minmax(200px, 1.2fr) auto auto minmax(240px, 1fr); }
+
+  .generator-submit {
+    grid-column: 1 / -1;
+    justify-self: end;
+    min-width: 200px;
+  }
+}

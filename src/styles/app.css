@@ -58,6 +58,11 @@
   display: flex;
   align-items: center;
   gap: 22px;
+  /* Wider than the reading column. .shell caps content at --shell-max (1240px)
+     so prose keeps a comfortable measure, but the bar is chrome, not prose, and
+     at 1240px the seven destinations plus the brand and the account button do
+     not fit -- which is what forced "New recap" onto a second line. */
+  max-width: min(1560px, 100%);
 }
 
 .brand {
@@ -129,6 +134,10 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  /* A destination name is one thing to read, so it never breaks across lines.
+     "New recap" was wrapping to two, which also made the whole bar taller. */
+  white-space: nowrap;
+  flex-shrink: 0;
   padding: 9px 15px;
   border-radius: var(--r-pill);
   font-size: var(--t-sm);
@@ -1031,4 +1040,37 @@
 
 @media (prefers-reduced-motion: reduce) {
   .auth-image.is-loading { animation: none; }
+}
+
+
+/* ------------------------------------------------- nav at every text size
+
+   Measured minimum width for brand + the seven destinations + the account
+   controls, per text setting:
+
+       Small   1206px      Large    1309px
+       Default 1241px      Larger   1376px
+
+   Above those the full labels fit. Below, the words are dropped and the icons
+   stay -- each NavLink already carries a title and an aria-label, so the
+   destination is still named for a pointer and for a screen reader. Below
+   900px the drawer takes over entirely.
+
+   The thresholds have to be written per setting: `em` inside a media query
+   resolves against the browser default, not against the font-size we set on
+   :root, so the query cannot work this out on its own. prefs.jsx publishes
+   data-font-size for exactly this. */
+@media (max-width: 1250px) {
+  .app-link-label { display: none; }
+  .app-link { padding-inline: 11px; }
+}
+
+@media (max-width: 1330px) {
+  :root[data-font-size='lg'] .app-link-label { display: none; }
+  :root[data-font-size='lg'] .app-link { padding-inline: 11px; }
+}
+
+@media (max-width: 1400px) {
+  :root[data-font-size='xl'] .app-link-label { display: none; }
+  :root[data-font-size='xl'] .app-link { padding-inline: 11px; }
 }
