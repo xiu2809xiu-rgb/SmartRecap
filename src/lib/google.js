@@ -55,20 +55,12 @@ function loadScript() {
 }
 
 /**
- * Opens Google's account chooser and resolves with the ID token.
- *
- * Uses the popup flow rather than One Tap. One Tap is dismissible in ways that
- * are hard to distinguish from failure, and on a login screen the user has
- * already declared intent by clicking — a chooser is the honest response to
- * that, and it works in browsers that block third-party cookies.
- */
-/**
  * Google rejects an unregistered origin inside its own popup window, with
  * `Error 400: origin_mismatch`. The app never sees it — no callback fires, so
  * there is nothing to catch and nothing to explain. The best we can do is say,
  * once and early, exactly which origin has to be registered, so the next person
- * who hits it has the answer in the console rather than in a Chinese-language
- * Google error page.
+ * who hits it has the answer in the console rather than in a Google error page
+ * in a language they may not read.
  */
 function warnAboutOrigin() {
   if (!import.meta.env.DEV || typeof window === 'undefined') return;
@@ -79,7 +71,41 @@ function warnAboutOrigin() {
   );
 }
 
-export async function requestGoogleCredential() {
+/** GIS takes an integer width in px and ignores anything over 400. */
+function buttonWidth(container) {
+  const measured = Math.round(container.getBoundingClientRect().width);
+  return Math.max(200, Math.min(400, measured || 320));
+}
+
+/**
+ * Renders Google's own sign-in button into `container` and calls
+ * `onCredential` with the ID token once someone signs in.
+ *
+ * This is the button flow, not One Tap. The distinction is the whole point of
+ * this function, because the two look nothing alike:
+ *
+ *   One Tap (`google.accounts.id.prompt`) is what this used to call. Under
+ *   FedCM the browser — not the page — draws it, as a small chip pinned to the
+ *   top-right corner saying "Sign in to localhost with google.com". It is
+ *   Chrome's own UI, so it cannot be styled, it is easy to miss, and it looks
+ *   nothing like the account chooser people recognise as signing in with
+ *   Google.
+ *
+ *   The button flow opens the real thing: a popup window on accounts.google.com
+ *   with the account list, the avatars and the "Choose an account" heading.
+ *
+ * Both hand back the same signed ID token through the same callback, so the
+ * server side of this is unchanged — `POST /auth/google` still verifies the
+ * JWT against Google's JWKS before it will create a session.
+ *
+ * The button has to be rendered by Google rather than drawn by us: GIS builds
+ * it inside its own element and attaches the click handler itself, and there is
+ * no supported way to trigger the chooser from an arbitrary button. That is
+ * also what Google's branding rules ask for, so the trade is a fair one.
+ *
+ * Returns a cleanup function.
+ */
+export async function mountGoogleButton(container, { onCredential, onError }) {
   if (!isGoogleConfigured) {
     throw new Error('Google sign-in is not configured for this deployment.');
   }
@@ -87,45 +113,55 @@ export async function requestGoogleCredential() {
   warnAboutOrigin();
   const google = await loadScript();
 
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (fn, arg) => {
-      if (settled) return;
-      settled = true;
-      fn(arg);
-    };
-
-    try {
-      google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: (response) => {
-          if (response?.credential) finish(resolve, response.credential);
-          else finish(reject, new Error('Google did not return a credential.'));
-        },
-        cancel_on_tap_outside: true,
-        auto_select: false,
-        use_fedcm_for_prompt: true,
-      });
-
-      // `prompt` reports why it did not show. Treating "not displayed" as a
-      // silent no-op leaves the button spinning forever, so it is surfaced.
-      google.accounts.id.prompt((notification) => {
-        if (notification?.isNotDisplayed?.() || notification?.isSkippedMoment?.()) {
-          const reason = notification.getNotDisplayedReason?.() ?? notification.getSkippedReason?.() ?? '';
-          finish(
-            reject,
-            new Error(
-              reason === 'suppressed_by_user'
-                ? 'Google sign-in was dismissed. Try again, or use your email.'
-                : 'Google could not show its sign-in prompt in this browser. Use your email instead.',
-            ),
-          );
-        }
-      });
-    } catch (e) {
-      finish(reject, e instanceof Error ? e : new Error('Google sign-in failed to start.'));
-    }
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: (response) => {
+      if (response?.credential) onCredential(response.credential);
+      else onError?.(new Error('Google did not return a credential.'));
+    },
+    auto_select: false,
+    cancel_on_tap_outside: true,
+    // Ask for the classic popup rather than the browser-drawn FedCM dialog.
+    // This is the flag that decides which of the two UIs above appears.
+    use_fedcm_for_button: false,
+    use_fedcm_for_prompt: false,
+    // Safari and other ITP browsers partition the storage GIS would otherwise
+    // use to remember the session.
+    itp_support: true,
   });
+
+  const draw = () => {
+    // renderButton appends; without clearing, a re-render on resize would stack
+    // a second button under the first.
+    container.replaceChildren();
+    google.accounts.id.renderButton(container, {
+      type: 'standard',
+      theme: 'outline',
+      size: 'large',
+      text: 'continue_with',
+      shape: 'pill',
+      logo_alignment: 'left',
+      width: buttonWidth(container),
+    });
+  };
+
+  draw();
+
+  // The button's width is baked in at render time, so it has to be redrawn when
+  // the column changes width — a phone rotating, or the font-size setting
+  // moving every rem on the page.
+  let frame = 0;
+  const observer = new ResizeObserver(() => {
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(draw);
+  });
+  observer.observe(container);
+
+  return () => {
+    cancelAnimationFrame(frame);
+    observer.disconnect();
+    container.replaceChildren();
+  };
 }
 
 /** Clears GIS's cached session so the next sign-in shows the chooser again. */
