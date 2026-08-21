@@ -248,9 +248,15 @@
    viewport on a phone — the landing page by 4,419px — which is what made every
    page rubber-band sideways. They are painted layers, so clipping them costs
    nothing visually. */
-.backdrop-fixed,
-.backdrop-static,
-.backdrop-live,
+/* The backdrop layers are deliberately larger than the screen: .backdrop-static
+   sits at inset: -20% so its radial gradients bleed past every edge instead of
+   ending in a visible arc. They cannot widen the document, because .backdrop
+   above them already clips with overflow: hidden.
+
+   An earlier max-width: 100vw here clamped that 140%-wide layer back to 100%
+   while inset: -20% still held its left edge off-screen, which left the right
+   20% of every page with no backdrop behind it -- a hard vertical seam down the
+   whole site. Clip at the parent; never resize the bleed. */
 .route-sweep { max-width: 100vw; overflow: hidden; }
 
 /* ------------------------------------------------------------ site footer */
