@@ -237,7 +237,7 @@ export function AppShell() {
             {APP_LINKS.map((l) => (
               <NavLink key={l.to} to={l.to} end={l.end} title={l.description} aria-label={l.description ? `${l.label}: ${l.description}` : l.label} className={({ isActive }) => `app-link ${isActive ? 'is-on' : ''}`}>
                 <Icon name={l.icon} size={18} />
-                {l.label}
+                <span className="app-link-label">{l.label}</span>
               </NavLink>
             ))}
           </nav>

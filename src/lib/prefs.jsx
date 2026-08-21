@@ -106,6 +106,11 @@ export function PrefsProvider({ children }) {
     // does not, which is what people actually want from a text-size control.
     const size = FONT_SIZES.find((f) => f.value === prefs.fontSize) ?? FONT_SIZES[1];
     root.style.fontSize = `${size.scale}%`;
+    // Also exposed as an attribute, because a media query cannot see this.
+    // `em` and `rem` inside a media query resolve against the browser's own
+    // default, never against a font-size set on :root -- so a breakpoint that
+    // has to move with the text setting has to read it from a selector.
+    root.dataset.fontSize = size.value;
   }, [prefs, resolvedTheme]);
 
   const value = useMemo(() => {
