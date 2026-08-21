@@ -112,32 +112,53 @@ free tiers and are called only from the server — no key ever reaches the brows
 
 ## Repository
 
+The frontend is the root npm package — `package.json`, `vite.config.js`,
+`index.html`, `public/` and `src/` all live at the top level, and Amplify builds
+it from there. There is no `frontend/` directory for that reason; the backend is
+the part that had to be nested.
+
 ```
-src/
-  pages/        13 routes
-  components/   shared UI, the citation ribbon, hand-built SVG charts
-  mascot/       Rec — GLB loader, procedural fallback, state machine
-  reactbits/    vendored React Bits components (see its README)
-  lib/          API client, auth, store, spaced repetition, exporters
-  styles/       design tokens and shared surfaces
+src/                    the frontend, built by Vite from the repository root
+  pages/                25 page components, each with its own stylesheet
+  components/           all UI, including:
+    auth/               sign-in methods — Google, face enrolment
+    avatar/             the learner's own GLB, thought bubbles, stage
+    mascot/             Rec — GLB loader, procedural fallback, state machine
+    practice/           the code editor, its Pyodide worker, the AI helper
+    layout/             shells, the topbar, the mobile drawer
+    charts/             hand-built SVG charts
+  lib/                  logic and state only: API client, auth, store,
+                        spaced repetition, exporters, preferences
+  reactbits/            vendored React Bits components (see its README)
+  styles/               design tokens and shared surfaces
 backend/
-  src/core/     the logic — plain functions, no framework
-  src/ai/       provider failover, prompts, grounding
-  src/extract/  PDF/PPTX/DOCX/image extraction, OCR, chunking
-  src/server.js EC2 adapter (Express)
-  src/handlers/ Lambda adapters
-  infra/        EC2 provisioning: CloudFormation, systemd, nginx
-  template.yaml Lambda: the full serverless stack
-  test/         19 tests, no AWS needed
+  app/                  THE BACKEND THAT RUNS — FastAPI, deployed to EC2
+    main.py             app assembly and router mounting
+    ui_api.py           the routes the frontend calls
+    binder_api.py       multi-source binders
+    social_api.py       lobbies, matchmaking, shared plans
+    ai_service.py       provider failover, prompts, grounding
+    model_chain.py      remembers which provider answered
+    repository.py       persistence
+    extractors.py       PDF/PPTX/DOCX/image extraction, OCR, chunking
+  src/                  the Node/serverless alternative, kept in-tree as a
+                        second architecture — NOT what serves the app
+  infra/                EC2 provisioning: CloudFormation, systemd, nginx
+  test/                 tests for the Node backend, no AWS needed
+  Dockerfile            containerised FastAPI for EC2
 docs/
-  ARCHITECTURE.md      how it works and why it is shaped this way
-  EC2-DEPLOYMENT.md    running the API on EC2, and surviving lab sessions
-  AWS-DEPLOYMENT.md    the serverless alternative
+  ARCHITECTURE.md       how it works and why it is shaped this way
+  RUN-LOCALLY.md        getting both halves running on one machine
+  DOCKER.md             building and running the backend container
+  EC2-DEPLOYMENT.md     running the API on EC2, and surviving lab sessions
+  AWS-DEPLOYMENT.md     the serverless alternative
   LEARNER-LAB-LIMITS.md what the account can and cannot do
-  MASCOT-BRIEF.md      3D model specification and animation clip names
-  REACT-BITS-MAP.md    which component is used where, and why
+  MASCOT-BRIEF.md       3D model specification and animation clip names
+  REACT-BITS-MAP.md     which component is used where, and why
 scripts/
-  check-learner-lab.sh probes your account for what is actually permitted
+  backend.mjs           creates the Python venv and runs uvicorn
+  copy-pyodide.mjs      stages the Pyodide runtime into public/
+  check-learner-lab.sh  probes your account for what is actually permitted
 ```
 
 ---
