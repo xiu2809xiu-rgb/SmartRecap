@@ -67,23 +67,30 @@
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 11px;
-  font-weight: 800;
+  gap: 10px;
   font-size: 1.14rem;
-  letter-spacing: -0.045em;
   flex-shrink: 0;
 }
 
+/* Sized in em so the mark grows with the wordmark beside it, and so both follow
+   the reader's font-size setting. The logo carries its own gradient, so the
+   tile that used to sit behind the old glyph is gone. */
 .brandmark {
-  width: 36px;
-  height: 36px;
-  border-radius: 11px;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  background: linear-gradient(140deg, var(--aurora-violet), var(--accent-hot));
-  box-shadow: 0 8px 22px -6px rgba(255, 0, 110, 0.6);
+  width: 2em;
+  height: 2em;
+  flex-shrink: 0;
 }
+
+/* The kit's wordmark: Manrope, "Smart" SemiBold against "Recap" ExtraBold, at
+   the tracking the outlined lockup was set with. */
+.brand-word {
+  font-family: Manrope, Inter, system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.brand-word strong { font-weight: 800; }
 
 /* GooeyNav's blob is a black rectangle blended with `mix-blend-mode: lighten`.
    Black only disappears against an opaque darker backdrop inside its own

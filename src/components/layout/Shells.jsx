@@ -29,13 +29,19 @@ export function useSurface(surface) {
 export function Brand({ to = '/', compact = false }) {
   return (
     <Link to={to} className="brand" aria-label="SmartRecap home">
-      <span className="brandmark">
-        <svg viewBox="0 0 32 32" width="20" height="20" aria-hidden="true">
-          <path d="M5 6h9a4 4 0 0 1 4 4v16a4 4 0 0 0-4-4H5V6Z" fill="currentColor" opacity="0.75" />
-          <path d="M27 6h-9a4 4 0 0 0-4 4v16a4 4 0 0 1 4-4h9V6Z" fill="currentColor" />
-        </svg>
-      </span>
-      {!compact && <span className="brand-word">SmartRecap</span>}
+      {/* The mark is the logo file itself. The wordmark stays live text rather
+          than the kit's lockup SVG, which buys two things an image cannot: it
+          scales with the reader's font-size setting like every other label, and
+          it takes its colour from the theme, so it stays legible on the light
+          Daylight theme without shipping a second asset. Manrope at 600/800 and
+          -0.01em tracking is what the kit's outlined wordmark was set in, so
+          the result matches the lockup. */}
+      <img className="brandmark" src="/brand/smartrecap-icon.svg" alt="" width="36" height="36" />
+      {!compact && (
+        <span className="brand-word">
+          Smart<strong>Recap</strong>
+        </span>
+      )}
     </Link>
   );
 }
