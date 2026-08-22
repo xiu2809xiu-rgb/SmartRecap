@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from './auth.jsx';
+import { requestSessionAlerts, sessionAlertAsked, sessionAlertState } from './notifications.js';
 
 /**
  * A session that ends on its own.
@@ -162,6 +163,8 @@ export function SessionProvider({ children }) {
   const [remainingMs, setRemainingMs] = useState(GRACE_MS);
   const notificationRef = useRef(null);
   const signingOut = useRef(false);
+  // Guards the one-time signals, so they cannot fire twice for one warning.
+  const signalled = useRef(false);
 
   useTitleFlash(warning);
 
@@ -193,9 +196,48 @@ export function SessionProvider({ children }) {
   const extend = useCallback(() => {
     if (!ownerId) return;
     closeSignals();
+    signalled.current = false;
     setWarning(false);
     writeRecord(freshRecord(ownerId));
   }, [closeSignals, ownerId]);
+
+  /**
+   * Ask for notification permission once, on a real gesture.
+   *
+   * Without this the alert cannot fire for the very person it exists for.
+   * Permission was only ever requested from Upload, Recap and Results, so
+   * anyone who signed in and stayed on their library was never asked — and a
+   * browser at 'default' sends nothing. Measured: with permission the alert
+   * fires; without it, no notification is constructed at all.
+   *
+   * A prompt cannot be raised from a timer, because browsers require a gesture,
+   * so it has to be armed in advance. It waits a minute first: a permission
+   * dialog thrown up the instant someone signs in is the kind users dismiss
+   * reflexively, and there is an hour before the answer is needed.
+   */
+  useEffect(() => {
+    if (status !== 'ready' || !ownerId) return undefined;
+    if (sessionAlertState() !== 'default' || sessionAlertAsked()) return undefined;
+
+    let detach = () => {};
+    const armed = setTimeout(() => {
+      const ask = () => {
+        detach();
+        void requestSessionAlerts();
+      };
+      window.addEventListener('pointerdown', ask, { once: true });
+      window.addEventListener('keydown', ask, { once: true });
+      detach = () => {
+        window.removeEventListener('pointerdown', ask);
+        window.removeEventListener('keydown', ask);
+      };
+    }, 60_000);
+
+    return () => {
+      clearTimeout(armed);
+      detach();
+    };
+  }, [ownerId, status]);
 
   // The clock. One interval, comparing now against the stored deadline, so a
   // throttled or suspended tab still reaches the right conclusion when it wakes.
@@ -234,14 +276,18 @@ export function SessionProvider({ children }) {
 
       if (now >= current.warnAt) {
         setRemainingMs(current.expiresAt - now);
-        setWarning((wasWarning) => {
-          if (!wasWarning) {
-            playChime();
-            notificationRef.current = notify(isGuest);
-          }
-          return true;
-        });
+        // The chime and the notification fire from here rather than from inside
+        // the state updater. An updater must be pure -- React calls it more than
+        // once on purpose to surface side effects hiding in one -- and putting
+        // them there produced a doubled chime and two notifications.
+        if (!signalled.current) {
+          signalled.current = true;
+          playChime();
+          notificationRef.current = notify(isGuest);
+        }
+        setWarning(true);
       } else {
+        signalled.current = false;
         setWarning(false);
       }
     };
