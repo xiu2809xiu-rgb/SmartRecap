@@ -16,7 +16,7 @@ marked with a `SmartRecap change:` comment at the edit site.
 | File | Change | Why |
 |---|---|---|
 | `MagicBento.jsx` | Added a `cards` prop, falling back to the bundled `cardData` | The component hard-codes its own demo copy. Our feature grid has to supply its own. |
-| `ScrollFloat.jsx` | Spaces are emitted as bare text nodes rather than ` ` inside a `.char` span | A non-breaking space carried onto the next line renders a visible indent on any heading that wraps. gsap only ever targets `.char`, which spaces never needed to be. |
+| `ScrollFloat.jsx` | Characters are grouped into a `.word` wrapper, and spaces are bare text nodes rather than `&nbsp;` inside a `.char` span | A non-breaking space carried onto the next line renders a visible indent on any heading that wraps. gsap only ever targets `.char`, which spaces never needed to be. |
 | `DotGrid.jsx` | Null guard at the top of its `onClick` | The handler is bound to `window`, so it also fires for clicks that unmount the grid — every link click in the app shell. By the time it ran the canvas ref was already null, throwing an uncaught TypeError on each navigation. |
 | `Stepper.jsx` | Added `canProceed(step)` and `advanceOnComplete` | Its step indicators called `updateStep(clicked)` for any step, so they were free jump targets — you could click straight to the last step and submit with nothing filled in, and disabling the Continue button did nothing about it. Separately, completing always advanced past the last step into a state that renders neither content nor a footer, which strands the user whenever the callback does not navigate away. |
 

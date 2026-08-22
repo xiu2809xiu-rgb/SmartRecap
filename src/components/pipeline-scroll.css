@@ -227,3 +227,40 @@
   .pipe-card { max-width: none; }
   .pipe-card-title { font-size: var(--t-h3); }
 }
+
+/* A continuous fill behind the dots. The dots mark where the stages are; this
+   shows where the scroll is between them, which is what the stepped index on
+   its own cannot say. */
+.pipe-rail { position: relative; }
+
+.pipe-rail-track {
+  position: absolute;
+  left: 10.25px; /* the dot's centre: 22px wide, 1.5px border */
+  top: 16px;
+  bottom: 16px;
+  width: 1.5px;
+  border-radius: 2px;
+  background: var(--glass-line);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.pipe-rail-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: top;
+  background: linear-gradient(180deg, var(--aurora-violet), var(--accent-hot));
+}
+
+/* The dots sit above the fill. */
+.pipe-step { position: relative; z-index: 1; }
+
+@media (max-width: 860px) {
+  /* The rail runs horizontally there, so a vertical fill would be nonsense. */
+  .pipe-rail-track { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pipe-rail-fill { transition: none; }
+}

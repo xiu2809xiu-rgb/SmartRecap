@@ -20,7 +20,7 @@ import AnimatedContent from '../reactbits/AnimatedContent.jsx';
 import FadeContent from '../reactbits/FadeContent.jsx';
 import SpotlightCard from '../reactbits/SpotlightCard.jsx';
 import MagicBento from '../reactbits/MagicBento.jsx';
-import CardSwap, { Card } from '../reactbits/CardSwap.jsx';
+import Stack from '../reactbits/Stack.jsx';
 import { LogoLoop } from '../reactbits/LogoLoop.jsx';
 import StarBorder from '../reactbits/StarBorder.jsx';
 import Magnet from '../reactbits/Magnet.jsx';
@@ -30,7 +30,7 @@ import '../reactbits/ShinyText.css';
 import '../reactbits/GradientText.css';
 import '../reactbits/SpotlightCard.css';
 import '../reactbits/MagicBento.css';
-import '../reactbits/CardSwap.css';
+import '../reactbits/Stack.css';
 import '../reactbits/LogoLoop.css';
 import '../reactbits/StarBorder.css';
 import '../reactbits/ScrollFloat.css';
@@ -253,18 +253,30 @@ export default function Landing() {
 
           <div className="how-visual">
             {allowEffects ? (
-              <CardSwap width={420} height={300} cardDistance={52} verticalDistance={58} delay={3600} pauseOnHover skewAmount={5}>
-                {STEPS.map((s) => (
-                  <Card key={s.n} className="swap-card">
+              /* Stack rather than CardSwap. CardSwap drives a 3D shuffle through
+                 gsap on a fixed pixel box: the motion is timed rather than
+                 physical, so it lands with a snap, and the fan reached outside
+                 its container badly enough to need clipping on a phone. Stack
+                 animates on a spring, sizes itself from its container, and can
+                 be dragged — which suits a deck of slides, and lets someone read
+                 a card at their own pace instead of waiting for the next tick. */
+              <Stack
+                cards={STEPS.map((s) => (
+                  <article className="swap-card" key={s.n}>
                     <span className="swap-icon">
                       <Icon name={s.icon} size={24} />
                     </span>
                     <span className="swap-n num">{s.n}</span>
                     <h4>{s.title}</h4>
                     <p>{s.body}</p>
-                  </Card>
+                  </article>
                 ))}
-              </CardSwap>
+                autoplay
+                autoplayDelay={4200}
+                pauseOnHover
+                sendToBackOnClick
+                animationConfig={{ stiffness: 200, damping: 24 }}
+              />
             ) : (
               <div className="how-visual-static">
                 {STEPS.map((s) => (

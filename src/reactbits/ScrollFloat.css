@@ -13,3 +13,11 @@
 .char {
   display: inline-block;
 }
+
+/* SmartRecap change: a word-level wrapper so line breaks land between words.
+   Each .char is an inline-block, so without this a heading could break in the
+   middle of a word. */
+.word {
+  display: inline-block;
+  white-space: nowrap;
+}

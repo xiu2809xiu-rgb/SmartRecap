@@ -187,8 +187,15 @@ export function MarketingShell({ children }) {
             </nav>
           </div>
           <div className="foot-bottom">
-            <p>Built for the Nanyang Polytechnic Cloud Computing Club AWS hackathon — Problem Statement 1.</p>
-            <p>Interface components from React Bits.</p>
+            <p>
+              Built for the Nanyang Polytechnic Cloud Computing Club AWS hackathon — Problem
+              Statement 1. By Team Stay Grounded.
+            </p>
+            {/* The React Bits credit that used to sit here is gone from the page,
+                not from the project: it is a copy-and-own library under MIT, and
+                the obligation is to keep the notice with the source. It lives in
+                src/reactbits/LICENSE and src/reactbits/README.md. */}
+            <p className="foot-signature">Interface by Richie Koh.</p>
           </div>
         </div>
       </footer>

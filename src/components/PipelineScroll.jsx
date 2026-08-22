@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useScroll, useMotionValueEvent } from 'motion/react';
+import { motion, useScroll, useMotionValueEvent, useSpring } from 'motion/react';
 import { Icon } from './ui.jsx';
 import { usePrefs } from '../lib/prefs.jsx';
 import './pipeline-scroll.css';
@@ -89,6 +89,12 @@ export default function PipelineScroll() {
     offset: ['start start', 'end end'],
   });
 
+  // The stage index is a whole number, so it can only ever snap. This is the
+  // same journey as a continuous value, spring-smoothed, and it drives the fill
+  // running down the rail: between two stages there is still something moving,
+  // which is the difference between stepping and scrolling.
+  const railProgress = useSpring(scrollYProgress, { stiffness: 120, damping: 30, restDelta: 0.001 });
+
   useMotionValueEvent(scrollYProgress, 'change', (value) => {
     if (reduced) return;
     // The 1.04 does not add a lead-in — it slightly narrows every band and so
@@ -147,6 +153,9 @@ export default function PipelineScroll() {
           <div className="pipe-body">
             {/* The rail is the progress indicator and the nav at once. */}
             <ol className="pipe-rail" aria-label="Pipeline stages">
+              <span className="pipe-rail-track" aria-hidden="true">
+                <motion.span className="pipe-rail-fill" style={{ scaleY: railProgress }} />
+              </span>
               {STAGES.map((s, i) => (
                 <li
                   key={s.id}
@@ -163,7 +172,13 @@ export default function PipelineScroll() {
               ))}
             </ol>
 
-            <div className={`pipe-card ${stage.keystone ? 'is-keystone' : ''}`}>
+            <motion.div
+              key={stage.id}
+              className={`pipe-card ${stage.keystone ? 'is-keystone' : ''}`}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.34, ease: [0.22, 0.61, 0.36, 1] }}
+            >
               <span className="pipe-card-icon">
                 <Icon name={stage.icon} size={26} />
               </span>
@@ -179,7 +194,7 @@ export default function PipelineScroll() {
                   This is the step the whole product is for.
                 </p>
               )}
-            </div>
+            </motion.div>
           </div>
         </div>
       </div>
