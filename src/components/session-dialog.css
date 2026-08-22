@@ -1,0 +1,75 @@
+.session-dialog {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+/* ------------------------------------------------------------- the countdown */
+
+.session-ring {
+  position: relative;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 104px;
+  height: 104px;
+}
+
+.session-ring svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* Twelve o'clock start, draining clockwise, which is how a countdown is read. */
+  transform: rotate(-90deg);
+}
+
+.session-ring circle {
+  fill: none;
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+
+.session-ring-track { stroke: var(--tint-2); }
+
+.session-ring-value {
+  stroke: url(#session-gradient), var(--accent-hot);
+  stroke: var(--accent-hot);
+  /* 2 * pi * r, with r = 52. */
+  stroke-dasharray: 327;
+  transition: stroke-dashoffset 1s linear;
+}
+
+.session-ring strong {
+  position: relative;
+  font-size: 1.4rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.session-dialog-copy { min-width: 0; }
+.session-dialog-copy p { color: var(--ink-2); font-size: var(--t-sm); line-height: 1.55; }
+
+.session-dialog-consequence {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--r);
+  border: 1px solid var(--glass-line);
+  background: var(--tint);
+  font-size: var(--t-xs) !important;
+}
+
+.session-dialog-consequence .material-symbols-rounded { flex-shrink: 0; color: var(--accent-cool); }
+
+@media (max-width: 520px) {
+  .session-dialog { flex-direction: column; text-align: center; gap: 16px; }
+  .session-dialog-consequence { text-align: left; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-ring-value { transition: none; }
+}

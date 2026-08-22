@@ -148,3 +148,21 @@
 @media (max-width: 1180px) {
   .auth-learner { top: -64px; width: min(280px, 86vw); }
 }
+
+/* Why the previous session ended, shown when the session timer sent them here.
+   A login screen that appears without explanation reads as a fault. */
+.auth-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border-radius: var(--r);
+  border: 1px solid color-mix(in srgb, var(--accent-cool) 34%, transparent);
+  background: color-mix(in srgb, var(--accent-cool) 10%, transparent);
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: 1.5;
+}
+
+.auth-notice .material-symbols-rounded { flex-shrink: 0; color: var(--accent-cool); }

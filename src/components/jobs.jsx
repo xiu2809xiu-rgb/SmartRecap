@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, pollJob } from '../lib/api.js';
+import { useAuth } from '../lib/auth.jsx';
 import { useStore } from '../lib/store.jsx';
 import { Icon, ProgressBar, Spinner, useToast } from './ui.jsx';
 import { sendCompletionNotification } from '../lib/notifications.js';
@@ -9,17 +10,44 @@ import './jobs.css';
 const STORAGE_KEY = 'smartrecap.jobs.v1';
 const JobsContext = createContext(null);
 
-function loadJobs() {
+/**
+ * Jobs are stored against the account that started them.
+ *
+ * They used to be a bare array, restored on mount whatever the auth state was,
+ * and nothing cleared them on sign-out. On a shared machine that meant the next
+ * person to open the browser saw the previous student's work — the material's
+ * title, sitting in the activity panel on the public landing page, with no
+ * session and no way to have asked for it. The server was never the problem;
+ * every route already refuses an unauthenticated request. This was the browser
+ * showing something it had kept.
+ *
+ * Stamping the owner on the record and refusing to restore a mismatch closes
+ * that, and means a second account signing in on the same machine starts empty
+ * rather than inheriting.
+ */
+function loadJobs(ownerId) {
+  if (!ownerId) return [];
   try {
-    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-    return Array.isArray(value) ? value.slice(0, 8) : [];
+    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+    if (!value || value.ownerId !== ownerId || !Array.isArray(value.jobs)) return [];
+    return value.jobs.slice(0, 8);
   } catch {
     return [];
   }
 }
 
+function clearJobs() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 export function JobsProvider({ children }) {
-  const [jobs, setJobs] = useState(loadJobs);
+  const { user, status } = useAuth();
+  const ownerId = user?.id ?? null;
+  const [jobs, setJobs] = useState([]);
   const [collapsed, setCollapsed] = useState(false);
   const polling = useRef(new Map());
   const { upsertMaterial } = useStore();
@@ -104,14 +132,28 @@ export function JobsProvider({ children }) {
     [navigate, patchJob, toast, upsertMaterial],
   );
 
+  // Adopt this account's jobs, and drop everything on sign-out. Waiting for
+  // `status` to settle matters: restoring before auth resolves would show the
+  // previous owner's jobs for the moment it takes to find out who is here.
   useEffect(() => {
+    if (status !== 'ready') return;
+    if (!ownerId) {
+      setJobs([]);
+      clearJobs();
+      return;
+    }
+    setJobs(loadJobs(ownerId));
+  }, [ownerId, status]);
+
+  useEffect(() => {
+    if (status !== 'ready' || !ownerId) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs.slice(0, 8)));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ownerId, jobs: jobs.slice(0, 8) }));
     } catch {
       /* storage unavailable */
     }
     jobs.filter((job) => job.status === 'running').forEach(monitor);
-  }, [jobs, monitor]);
+  }, [jobs, monitor, ownerId, status]);
 
   useEffect(() => () => {
     polling.current.forEach((controller) => controller.abort());
@@ -126,6 +168,7 @@ export function JobsProvider({ children }) {
   return (
     <JobsContext.Provider value={value}>
       {children}
+      {ownerId && (
       <JobCenter
         jobs={jobs}
         collapsed={collapsed}
@@ -133,6 +176,7 @@ export function JobsProvider({ children }) {
         onDismiss={dismissJob}
         onOpen={openJob}
       />
+      )}
     </JobsContext.Provider>
   );
 }
