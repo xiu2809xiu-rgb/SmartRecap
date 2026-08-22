@@ -49,3 +49,14 @@
   [data-surface='study'] .job-center,
   [data-surface='study'] .job-center-collapsed { left: 12px; right: auto; }
 }
+/* Stage text beside the control that reopens the full progress screen. */
+.job-running-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.job-running-foot .job-stage { margin: 0; min-width: 0; }
+.job-running-foot .btn { flex-shrink: 0; }
