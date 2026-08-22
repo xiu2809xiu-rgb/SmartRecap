@@ -73,12 +73,25 @@
 }
 
 /* Sized in em so the mark grows with the wordmark beside it, and so both follow
-   the reader's font-size setting. The logo carries its own gradient, so the
-   tile that used to sit behind the old glyph is gone. */
+   the reader's font-size setting.
+
+   The dark plate is not decoration. The mark is fine line-art in violet-to-pink,
+   and the top of the landing page is a violet-to-magenta gradient -- close
+   enough in hue that the logo dissolved into it. The kit runs into the same
+   problem and answers it the same way, shipping dark-tile variants for exactly
+   this; the plate is its --sr-dark. On a plate the mark reads against any
+   backdrop, dark theme or light, instead of only against the ones that happen
+   to contrast. */
 .brandmark {
-  width: 2em;
-  height: 2em;
+  width: 2.35em;
+  height: 2.35em;
   flex-shrink: 0;
+  padding: 0.2em;
+  border-radius: 0.66em;
+  background: #0e1118;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.09),
+    0 6px 18px -8px rgba(252, 80, 150, 0.65);
 }
 
 /* The kit's wordmark: Manrope, "Smart" SemiBold against "Recap" ExtraBold, at
