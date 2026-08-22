@@ -312,11 +312,24 @@
    ours to style — GIS builds the element, sizes it from the `width` option and
    owns everything inside. What is left is placing it: centred, and filling the
    column the same way the email button above it does. */
-.google-host-wrap { display: grid; gap: 2px; }
+/* minmax(0, 1fr) rather than a bare `grid`, and min-width: 0 below it. A grid
+   track and a grid item both floor at min-content by default, and the button
+   GIS draws is a fixed pixel width -- so once it had rendered at the desktop
+   width the host could never measure narrower than that button, whatever the
+   card did around it. The observer in lib/google.js watches the host for a
+   width change to know when to redraw, so the floor pinned the button at its
+   first size: it overflowed the card on a narrow screen and never scaled back
+   down. */
+.google-host-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+}
 
 .google-host {
   display: flex;
   justify-content: center;
+  min-width: 0;
   min-height: 44px;
 }
 

@@ -18,6 +18,18 @@ export const isGoogleConfigured = !!GOOGLE_CLIENT_ID;
 
 let scriptPromise = null;
 
+/**
+ * Which mount currently owns a container.
+ *
+ * `mountGoogleButton` is async, and React StrictMode mounts an effect, unmounts
+ * it and mounts it again — so in development two calls are in flight over the
+ * same element at once. Both draw; then the first one's teardown resolves last
+ * and clears the button the second one had just drawn, leaving an empty
+ * container that reported `ready`. A stale run must not clear, or redraw into,
+ * a container a newer run has taken over.
+ */
+const owners = new WeakMap();
+
 function loadScript() {
   if (typeof window === 'undefined') return Promise.reject(new Error('No window'));
   if (window.google?.accounts?.id) return Promise.resolve(window.google);
@@ -113,6 +125,11 @@ export async function mountGoogleButton(container, { onCredential, onError }) {
   warnAboutOrigin();
   const google = await loadScript();
 
+  // Claimed after the await, so the run that draws last is the run that owns
+  // the container.
+  const token = {};
+  owners.set(container, token);
+
   google.accounts.id.initialize({
     client_id: GOOGLE_CLIENT_ID,
     callback: (response) => {
@@ -130,7 +147,13 @@ export async function mountGoogleButton(container, { onCredential, onError }) {
     itp_support: true,
   });
 
+  // The width the button was last drawn at. Redrawing is only correct when this
+  // changes; see the observer below for why that distinction matters.
+  let drawnWidth = 0;
+
   const draw = () => {
+    if (owners.get(container) !== token) return;
+    drawnWidth = buttonWidth(container);
     // renderButton appends; without clearing, a re-render on resize would stack
     // a second button under the first.
     container.replaceChildren();
@@ -141,7 +164,7 @@ export async function mountGoogleButton(container, { onCredential, onError }) {
       text: 'continue_with',
       shape: 'pill',
       logo_alignment: 'left',
-      width: buttonWidth(container),
+      width: drawnWidth,
     });
   };
 
@@ -150,8 +173,16 @@ export async function mountGoogleButton(container, { onCredential, onError }) {
   // The button's width is baked in at render time, so it has to be redrawn when
   // the column changes width — a phone rotating, or the font-size setting
   // moving every rem on the page.
+  //
+  // Only on width. ResizeObserver reports height as well, and GSI restyles its
+  // own iframe continuously, which nudges the container's height. Redrawing on
+  // that fed straight back into itself: tear down, render a new iframe, the new
+  // iframe changes height, observe, tear down again — about eight rebuilds a
+  // second for as long as the page was open, which is what made the sign-in
+  // page flicker.
   let frame = 0;
   const observer = new ResizeObserver(() => {
+    if (buttonWidth(container) === drawnWidth) return;
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(draw);
   });
@@ -160,6 +191,10 @@ export async function mountGoogleButton(container, { onCredential, onError }) {
   return () => {
     cancelAnimationFrame(frame);
     observer.disconnect();
+    // A newer mount owns the container — its button is the live one, so leave
+    // it alone. Clearing here is what emptied the host under StrictMode.
+    if (owners.get(container) !== token) return;
+    owners.delete(container);
     container.replaceChildren();
   };
 }
