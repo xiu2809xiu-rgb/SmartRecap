@@ -695,3 +695,22 @@
 .narration-form { display: flex; gap: 8px; }
 .narration-form .input { flex: 1; min-width: 0; }
 .narration-form .btn { flex-shrink: 0; padding-inline: 13px; }
+
+/* The material opened without a recap: a notice above whatever text survived.
+   Informational rather than an error -- nothing failed here. */
+.recap-missing { padding-block: 24px 40px; }
+
+.recap-missing-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  margin-bottom: 22px;
+  padding: 14px 16px;
+  border-radius: var(--r);
+  border: 1px solid color-mix(in srgb, var(--accent-cool) 32%, transparent);
+  background: color-mix(in srgb, var(--accent-cool) 9%, transparent);
+}
+
+.recap-missing-notice .material-symbols-rounded { flex-shrink: 0; color: var(--accent-cool); }
+.recap-missing-notice strong { display: block; font-size: var(--t-sm); }
+.recap-missing-notice p { margin-top: 4px; font-size: var(--t-xs); color: var(--ink-2); line-height: 1.5; }

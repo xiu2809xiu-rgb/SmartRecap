@@ -7,7 +7,10 @@ function MathText({ children, block = false }) {
 }
 
 export default function NormalNotes({ material, sections }) {
-  const recap = material.recap;
+  // A material can reach here without a recap -- see the note in Recap.jsx.
+  // The document view is built from the extracted chunks, so it still has
+  // everything it needs; only the takeaways strip comes from the recap.
+  const recap = material.recap ?? {};
   const takeaways = recap.sections?.find((section) => section.id === 'takeaways')?.points ?? [];
 
   return (

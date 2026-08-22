@@ -40,7 +40,7 @@ export function toMarkdown(material) {
   const lines = [];
 
   lines.push(`# ${material.title}`, '');
-  lines.push(`*${material.module} · ${material.pageCount} pages · ${recap.readMinutes} minute read*`, '');
+  lines.push(`*${material.module} · ${material.pageCount} pages${recap?.readMinutes ? ` · ${recap.readMinutes} minute read` : ''}*`, '');
   lines.push('## Summary', '', recap.summary, '');
 
   for (const section of recap.sections) {

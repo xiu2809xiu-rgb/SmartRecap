@@ -83,7 +83,7 @@ export default function SharedRecap() {
           <p className="eyebrow">Shared recap</p>
           <h1>{material.title}</h1>
           <p className="shared-meta">
-            {material.module} · {material.pageCount} pages · {recap.readMinutes} minute read
+            {material.module} · {material.pageCount} pages{recap?.readMinutes ? ` · ${recap.readMinutes} minute read` : ''}
           </p>
         </header>
 
