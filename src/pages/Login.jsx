@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import AuthLayout from './AuthLayout.jsx';
 import { Icon, Spinner } from '../components/ui.jsx';
 import { useAuth } from '../lib/auth.jsx';
@@ -20,6 +20,17 @@ export default function Login() {
   const faceAvailable = useFaceAvailability();
 
   const from = location.state?.from ?? '/app';
+
+  // Why the last session ended, set by the session timer before it navigates
+  // here. Landing on a login screen with no explanation reads like a bug; this
+  // is the difference between "it logged me out" and "it signed me out for me".
+  const [params] = useSearchParams();
+  const ended = params.get('ended');
+  const endedMessage = {
+    timeout: 'Your session reached its one-hour limit and nobody confirmed they were still here, so you were signed out to keep this browser safe for the next person.',
+    manual: 'Signed out. See you next time.',
+    elsewhere: 'You were signed out in another tab.',
+  }[ended];
   const go = () => navigate(from, { replace: true });
 
   const onSubmit = async (e) => {
@@ -72,6 +83,13 @@ export default function Login() {
         </div>
       }
     >
+      {endedMessage && (
+        <p className="auth-notice" role="status">
+          <Icon name="lock_clock" size={18} />
+          {endedMessage}
+        </p>
+      )}
+
       <form className="auth-form" onSubmit={onSubmit} noValidate>
         <div className="field">
           <label htmlFor="login-email">Email</label>

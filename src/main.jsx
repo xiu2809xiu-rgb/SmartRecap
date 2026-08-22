@@ -7,6 +7,8 @@ import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { AuthProvider } from './lib/auth.jsx';
 import { StoreProvider } from './lib/store.jsx';
 import { JobsProvider } from './components/jobs.jsx';
+import { SessionProvider } from './lib/session.jsx';
+import SessionExpiryDialog from './components/SessionExpiryDialog.jsx';
 import { ToastProvider } from './components/ui.jsx';
 import './styles/base.css';
 import './styles/app.css';
@@ -17,8 +19,10 @@ createRoot(document.getElementById('root')).render(
       <PrefsProvider>
         <ToastProvider>
           <AuthProvider>
+            <SessionProvider>
             <StoreProvider>
               <JobsProvider>
+                <SessionExpiryDialog />
                 {/* Last resort. Without this a render error anywhere unmounts
                     the tree and the page just goes white. */}
                 <ErrorBoundary>
@@ -26,6 +30,7 @@ createRoot(document.getElementById('root')).render(
                 </ErrorBoundary>
               </JobsProvider>
             </StoreProvider>
+            </SessionProvider>
           </AuthProvider>
         </ToastProvider>
       </PrefsProvider>

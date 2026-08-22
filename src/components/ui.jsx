@@ -123,12 +123,19 @@ export function useToast() {
    Modal
    ------------------------------------------------------------------------ */
 
-export function Modal({ open, onClose, title, children, footer, width = 520 }) {
+/**
+ * `dismissible: false` is for the rare dialog that is a decision rather than a
+ * detour — the session warning, where closing without choosing would leave a
+ * signed-in browser on a machine somebody has walked away from. It removes the
+ * close button rather than leaving one that does nothing, and stops Escape and
+ * a scrim tap from resolving it, so the only ways out are the actual choices.
+ */
+export function Modal({ open, onClose, title, children, footer, width = 520, dismissible = true }) {
   const ref = useRef(null);
 
   useEffect(() => {
     if (!open) return undefined;
-    const onKey = (e) => e.key === 'Escape' && onClose?.();
+    const onKey = (e) => dismissible && e.key === 'Escape' && onClose?.();
     document.addEventListener('keydown', onKey);
     const previouslyFocused = document.activeElement;
     ref.current?.focus();
@@ -138,7 +145,7 @@ export function Modal({ open, onClose, title, children, footer, width = 520 }) {
       document.body.style.overflow = '';
       previouslyFocused?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open, onClose, dismissible]);
 
   if (!open) return null;
 
@@ -149,7 +156,7 @@ export function Modal({ open, onClose, title, children, footer, width = 520 }) {
   return createPortal(
     <div
       className="modal-scrim"
-      onPointerDown={(e) => e.target === e.currentTarget && onClose?.()}
+      onPointerDown={(e) => dismissible && e.target === e.currentTarget && onClose?.()}
     >
       <div
         className="modal panel-solid"
@@ -162,9 +169,11 @@ export function Modal({ open, onClose, title, children, footer, width = 520 }) {
       >
         <header className="modal-head">
           <h2>{title}</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Close dialog">
-            <Icon name="close" size={20} />
-          </button>
+          {dismissible && (
+            <button className="icon-btn" onClick={onClose} aria-label="Close dialog">
+              <Icon name="close" size={20} />
+            </button>
+          )}
         </header>
         <div className="modal-body">{children}</div>
         {footer && <footer className="modal-foot">{footer}</footer>}
