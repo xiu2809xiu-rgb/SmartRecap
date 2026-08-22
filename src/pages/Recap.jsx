@@ -110,6 +110,57 @@ export default function Recap() {
   }
 
   const { recap } = material;
+
+  /**
+   * A material can exist without a recap.
+   *
+   * The generation path never produces one -- it only registers the material
+   * once the pack is built -- but records restored from durable storage are
+   * hydrated as whatever dict was saved, with no schema check, so a partial or
+   * older record arrives with the extraction intact and the recap missing.
+   *
+   * This used to destructure `recap` and read `recap.readMinutes` straight into
+   * the subtitle, so the whole route threw and the error boundary replaced the
+   * page. That is the worst outcome available: the file was read, the text was
+   * extracted and the chunks are right there in the payload. So rather than
+   * dead-end, this shows what survived -- the extracted notes -- and says
+   * plainly which part is missing.
+   */
+  if (!recap) {
+    return (
+      <StudyShell title={material.title} subtitle={`${material.module} · ${material.pageCount} pages`} wide>
+        <div className="shell recap-missing">
+          {/* Not .crash: that is the error-boundary's red panel, and nothing here
+              has failed. The file was read and its text is intact; one part of
+              the record is absent. */}
+          <div className="recap-missing-notice" role="status">
+            <Icon name="info" size={20} />
+            <div>
+              <strong>The written recap for this material is not available</strong>
+              <p>
+                Its text was extracted and is shown below, but the structured recap was not saved.
+                Uploading the file again will rebuild it.
+              </p>
+            </div>
+          </div>
+          {documentSections.length > 0 ? (
+            <NormalNotes material={material} sections={documentSections} />
+          ) : (
+            <Empty
+              icon="description"
+              title="Nothing to show for this material"
+              body="Neither the recap nor the extracted text was saved with this record."
+              action={
+                <Link to="/app" className="btn btn-primary">
+                  Back to library
+                </Link>
+              }
+            />
+          )}
+        </div>
+      </StudyShell>
+    );
+  }
   // Keep the requested language separate from whether translation actually
   // completed so assistive technology receives the language on screen.
   const askedForTranslation = !!material.language && material.language !== 'en';
