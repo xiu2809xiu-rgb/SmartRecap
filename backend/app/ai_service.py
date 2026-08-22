@@ -1047,15 +1047,42 @@ def _validate_quiz_pack(
 
 
 def _evidence(sources: List[SourceRecord]) -> List[Tuple[SourceRecord, str, str]]:
+    """Split a source into (source, label, sentence) rows on its section markers.
+
+    The extractors write a marker line -- "[Page 4]", "[Slide 2]" -- ahead of
+    each section and return the same strings in `labels`. Splitting on every
+    "[...]" instead trusted any bracket in the material itself: a figure
+    reference, a numbered citation, "[CS101]" in a footer. Two things went
+    wrong when one appeared. The bracket became the citation label for every
+    sentence after it, and since it is not a declared label, _validate_quiz_pack
+    rejected the question ("question 5 has invalid source metadata") and the
+    whole quiz failed. The split also swallowed the bracket and the words
+    around it, so the excerpt shown as evidence was missing the start of its
+    own sentence.
+
+    A bracket is a section marker only if the extractor said so. Sections are
+    sliced straight out of the original text between the markers that qualify,
+    so anything else stays exactly as it was written -- which matters beyond
+    tidiness: _validate_quiz_pack requires the excerpt to be an exact substring
+    of the source, so rebuilding the text rather than slicing it would trade
+    this bug for "citation is not an exact source substring".
+    """
     evidence = []
     for source in sources:
-        parts = re.split(r"\[([^]]+)\]\s*", source.text)
-        if len(parts) > 2:
-            for index in range(1, len(parts), 2):
-                label, section = parts[index], parts[index + 1] if index + 1 < len(parts) else ""
-                evidence.extend((source, label, sentence) for sentence in _sentences(section))
-        else:
-            evidence.extend((source, source.labels[0], sentence) for sentence in _sentences(source.text))
+        known = set(source.labels)
+        text = source.text
+        current = source.labels[0] if source.labels else "Section 1"
+        cursor = 0
+        sections: List[Tuple[str, str]] = []
+        for match in re.finditer(r"\[([^]]+)\]\s*", text):
+            if match.group(1) not in known:
+                continue
+            if match.start() > cursor:
+                sections.append((current, text[cursor:match.start()]))
+            current, cursor = match.group(1), match.end()
+        sections.append((current, text[cursor:]))
+        for label, section in sections:
+            evidence.extend((source, label, sentence) for sentence in _sentences(section))
     return evidence
 
 
@@ -1071,11 +1098,32 @@ _EXPLANATORY_WORDS = {
 }
 
 
+# Periods that do not end a sentence. The splitter breaks on any ". ", and
+# punctuation alone cannot tell "Fig. 3 shows the drop" from a full stop, so a
+# reference like that was cut in two and the back half -- "3 shows the drop" --
+# could be quoted to the student as the evidence for a claim.
+#
+# Each entry trades one failure for the other. Masking a period means two
+# sentences may merge; leaving it out means one sentence may be served as a
+# fragment. A merged pair is still whole and still accurate, so the list holds
+# the forms that rarely end a sentence -- including a lone initial, which
+# protects "J. Smith" at the cost of joining an answer key's "is A." to what
+# follows. "etc." and "no." are left out: they end sentences often enough that
+# splitting is right more of the time.
+_NON_TERMINAL_PERIOD = re.compile(
+    r"\b(?:e\.g|i\.e|cf|al|approx|fig|figs|eq|eqs|ch|sec|ref|refs|pp|vs|"
+    r"dr|mr|mrs|ms|prof|[a-z])\.",
+    re.IGNORECASE,
+)
+_PERIOD_MASK = "\x00"
+
+
 def _sentences(text: str) -> List[str]:
     text = re.sub(r"[•●▪◦]+", "\n", text)
+    masked = _NON_TERMINAL_PERIOD.sub(lambda m: m.group(0)[:-1] + _PERIOD_MASK, text)
     parts = [
-        re.sub(r"\s+", " ", item).strip(" -–—|:")
-        for item in re.split(r"(?:\r?\n)+|(?<=[.!?])\s+", text)
+        re.sub(r"\s+", " ", item).strip(" -–—|:").replace(_PERIOD_MASK, ".")
+        for item in re.split(r"(?:\r?\n)+|(?<=[.!?])\s+", masked)
     ]
     meaningful = []
     seen = set()
