@@ -325,9 +325,6 @@
   color: var(--ink-4);
 }
 
-/* The personal line under the team credit: present, not shouting. */
-.foot-signature { opacity: 0.72; }
-
 @media (max-width: 760px) {
   .foot-top { grid-template-columns: minmax(0, 1fr); }
 }

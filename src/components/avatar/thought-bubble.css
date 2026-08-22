@@ -68,6 +68,23 @@
 /* Reduced motion: present and readable, with no entrance. */
 .thought.is-still { transform: none; transition: opacity 0.01ms; }
 
+/* --------------------------------------------- static models on the landing
+   carousel
+
+   The defaults above were measured against Richie's animated export, whose
+   clips keep his head low in the frame and whose hands reach into the top
+   corners. The Meshy figures are the opposite shape: they stand straight, arms
+   down, head almost at the top of the frame — so a bubble at `top: 4%` lands
+   squarely on the face, which is the one thing it must never cover.
+
+   Dropped to chest height and narrowed. It grazes a sleeve at the widest
+   point, which is fine; a bubble overlapping a shoulder reads as a bubble,
+   while a bubble over a face reads as a bug. */
+.avatar-stage.is-static .thought {
+  top: 27%;
+  width: min(205px, 50%);
+}
+
 /* ------------------------------------------------------------- auth page */
 
 /* Now that the frame is centred in its column the space either side is close

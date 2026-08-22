@@ -44,5 +44,5 @@ export const THOUGHTS = [
   'Been sitting since two. Stretch, then the last topic.',
 ];
 
-/** Clips can be added to the model without the list having to keep up. */
-export const thoughtFor = (index) => THOUGHTS[index % THOUGHTS.length];
+/* Indexed by the caller — AvatarStage wraps on length, so clips can be added to
+   the model without this list having to keep up. */

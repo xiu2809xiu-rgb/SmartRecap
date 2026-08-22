@@ -28,3 +28,8 @@ backend/node_modules/
 backend/.venv/
 **/__pycache__/
 *.py[cod]
+
+# Raw model exports dropped in the repo root. The optimised copy that the app
+# actually loads lives in public/models/; the source is 79 MB and has no
+# business in git history.
+/Meshy_AI_*.glb

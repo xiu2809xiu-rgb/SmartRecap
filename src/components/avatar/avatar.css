@@ -103,12 +103,108 @@
 
 .avatar-name { width: min(300px, 78%); }
 
-.avatar-caption-role {
-  font-size: var(--t-xs);
-  color: var(--ink-4);
-  letter-spacing: 0.01em;
-}
-
 @media (max-width: 900px) {
   .avatar-name { width: min(260px, 76%); }
+}
+
+/* ── Carousel ──────────────────────────────────────────────────────────────
+   The frame, the arrows over it, and the dots under it. One grid cell. */
+
+.avatar-carousel { display: flex; flex-direction: column; gap: 14px; }
+
+.avatar-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--glass-line);
+  background: var(--glass-strong);
+  backdrop-filter: blur(10px);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background 200ms var(--ease), color 200ms var(--ease), border-color 200ms var(--ease);
+}
+
+/* Outside the frame on a wide screen, so an arrow never sits over the figure's
+   hands. Tucked back inside once there is no room beside it — see below. */
+.avatar-arrow.is-prev { left: -20px; }
+.avatar-arrow.is-next { right: -20px; }
+
+.avatar-arrow:hover {
+  background: color-mix(in srgb, var(--aurora-violet) 30%, var(--glass-strong));
+  border-color: color-mix(in srgb, var(--aurora-violet) 55%, transparent);
+  color: var(--ink);
+}
+
+.avatar-arrow:focus-visible { outline: 2px solid var(--aurora-cyan); outline-offset: 3px; }
+
+/* The dots sit in their own glass track rather than floating loose under the
+   frame. Four bare dots on a dark gradient read as debris; the same four inside
+   a pill read as a control. */
+.avatar-dots {
+  display: flex;
+  align-self: center;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-line);
+  background: var(--glass);
+  backdrop-filter: blur(10px);
+}
+
+.avatar-dot {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink-4) 45%, transparent);
+  cursor: pointer;
+  transition: width 260ms var(--ease), background 200ms var(--ease), box-shadow 260ms var(--ease);
+}
+
+/* An 8px target is well under the 24px minimum, and the dots cannot simply be
+   drawn bigger without becoming the loudest thing in the section. This grows
+   the hit area without touching the ink. */
+.avatar-dot::after {
+  content: '';
+  position: absolute;
+  inset: -9px -4px;
+}
+
+.avatar-dot:hover { background: color-mix(in srgb, var(--ink-2) 70%, transparent); }
+
+/* The active dot stretches into a lozenge as well as changing colour, so which
+   person you are on survives being read at a glance, in greyscale, or by
+   someone who cannot separate the violet from the cyan. The glow is the same
+   token the rest of the product uses for "this one is live". */
+.avatar-dot.is-on {
+  width: 26px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-cool));
+  box-shadow: var(--glow-cyan);
+}
+
+.avatar-dot.is-on:hover { background: linear-gradient(90deg, var(--accent), var(--accent-cool)); }
+
+.avatar-dot:focus-visible { outline: 2px solid var(--aurora-cyan); outline-offset: 3px; }
+
+@media (max-width: 900px) {
+  /* The frame is width-capped on a phone, so there is no gutter left to hang
+     the arrows in — they move onto the frame, low enough to clear the head and
+     high enough to clear the feet. */
+  .avatar-arrow.is-prev { left: 8px; }
+  .avatar-arrow.is-next { right: 8px; }
+  .avatar-carousel { align-items: center; }
+  .avatar-carousel .avatar-figure { width: 100%; max-width: 420px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .avatar-arrow, .avatar-dot { transition: none; }
 }
