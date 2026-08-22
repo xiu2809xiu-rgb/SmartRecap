@@ -101,7 +101,10 @@
 .quiz-editor { margin-top: 18px; overflow: hidden; border-radius: var(--r-xl); }
 .editor-head { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 24px 26px; border-bottom: 1px solid var(--glass-line); background: rgba(255, 255, 255, 0.025); }
 .editor-head > div:first-child { display: flex; align-items: center; gap: 13px; }
-.editor-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 14px; color: var(--series-3); background: var(--series-3-soft); }
+.editor-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 14px;
+  /* --accent-cool, not --series-3: this is chrome, not a data mark, and the
+     chart cyan is too light to read as a glyph on its own tint. */
+  color: var(--accent-cool); background: color-mix(in srgb, var(--accent-cool) 13%, transparent); }
 .editor-basics { display: grid; grid-template-columns: minmax(220px, 0.8fr) minmax(260px, 1.2fr); gap: 16px; padding: 24px 26px; border-bottom: 1px solid var(--glass-line); }
 .editor-question-list { display: flex; flex-direction: column; gap: 16px; padding: 24px 26px; background: rgba(0, 0, 0, 0.08); }
 .editor-question { position: relative; min-width: 0; padding: 26px 22px 22px; border: 1px solid var(--glass-line); border-radius: var(--r-lg); background: var(--glass); }

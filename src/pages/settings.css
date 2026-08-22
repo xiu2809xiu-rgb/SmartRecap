@@ -126,7 +126,11 @@
   place-items: center;
   border-radius: 50%;
   background: var(--accent);
-  color: #fff;
+  /* The page ground, not white. --accent is a light violet on the dark theme,
+     where a white tick sat at 2.72:1 -- under the 3:1 a glyph needs. --ground
+     is dark there and light on the light theme, so it inverts against --accent
+     in both directions instead of only one. */
+  color: var(--ground);
 }
 
 /* -------------------------------------------------------------- shared -- */

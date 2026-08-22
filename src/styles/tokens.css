@@ -33,10 +33,20 @@
   --tint-3: rgba(255, 255, 255, 0.11);
 
   /* ---- Ink on dark ---------------------------------------------------- */
+  /* The bottom of this ramp failed the same way the light one did, and by more:
+     --ink-4 was 2.17:1 against the darkest surfaces it sits on, where body text
+     needs 4.5:1, and --ink-3 was 3.76:1. Hint and caption text was the hardest
+     thing on the page to read, on the theme most people see.
+
+     Raised until both clear AA, with --ink-3 lifted enough to stay a visible
+     step apart rather than collapsing onto --ink-4. Worst-case ratios across
+     the dark surfaces are now 11.95 / 7.09 / 5.91 / 4.57 -- the ramp is tighter
+     than it was, because three of those four values were only spaced out by
+     being too faint to read. */
   --ink: #f4f0ff;
   --ink-2: #c3b6e4;
-  --ink-3: #8e80b4;
-  --ink-4: #665a8c;
+  --ink-3: #b4a3e5;
+  --ink-4: #9e8cd9;
 
   /* ---- Accents (interactive) ----------------------------------------- */
   --accent: #a78bfa;
@@ -147,14 +157,29 @@
   --tint-2: rgba(24, 16, 46, 0.07);
   --tint-3: rgba(24, 16, 46, 0.11);
 
+  /* Measured against the surfaces these actually sit on -- white, the raised
+     panel, and the tinted #e9e5fa -- rather than picked by eye.
+
+     --ink-4 was #8d82ab: 2.88:1 on a tinted panel, well under the 4.5:1 AA
+     needs for body text, which is why hints and captions were hard to read on
+     the light theme. It is now 4.57:1 there.
+
+     --ink-3 moved with it. At the new --ink-4 the two were 5.63 and 5.77:1 on
+     white -- indistinguishable, so the ramp would have lost its last step.
+     Darkening --ink-3 keeps a 1.5x step between them with both passing.
+
+     --accent-cool was 2.94:1 on a light panel; --accent was 4.44:1 on a tinted
+     one, just short. Both are nudged to clear 4.5:1. The --series-* values
+     below are deliberately untouched: they are the chart palette and were
+     validated separately against #F6F4FB. */
   --ink: #140f22;
   --ink-2: #453a63;
-  --ink-3: #6b5f8c;
-  --ink-4: #8d82ab;
+  --ink-3: #51486a;
+  --ink-4: #6b6382;
 
-  --accent: #6d4fe0;
+  --accent: #6c4ede;
   --accent-hot: #d01b63;
-  --accent-cool: #0098b0;
+  --accent-cool: #007688;
 
   --glow-violet: 0 0 18px rgba(109, 79, 224, 0.28);
   --glow-magenta: 0 0 18px rgba(208, 27, 99, 0.24);

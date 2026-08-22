@@ -229,7 +229,19 @@ function JobCenter({ jobs, collapsed, onCollapse, onDismiss, onOpen }) {
             {job.status === 'running' ? (
               <>
                 <ProgressBar value={job.progress || 0} label={`${job.kind || 'Task'} progress`} />
-                <p className="job-stage">{job.stageLabel || 'Working…'}</p>
+                <div className="job-running-foot">
+                  <p className="job-stage">{job.stageLabel || 'Working…'}</p>
+                  {/* The way back. "Minimize and continue browsing" leaves the
+                      full progress screen for the library, and until now a
+                      running job offered nothing to click -- only finished jobs
+                      had an Open button -- so the screen could be left but not
+                      returned to. openJob already knew the route for a running
+                      recap; nothing ever reached it. */}
+                  <button className="btn btn-ghost btn-sm" onClick={() => onOpen(job)}>
+                    <Icon name="open_in_full" size={15} />
+                    {job.kind === 'recap' ? 'Full screen' : 'View'}
+                  </button>
+                </div>
               </>
             ) : (
               <div className="job-finished">
