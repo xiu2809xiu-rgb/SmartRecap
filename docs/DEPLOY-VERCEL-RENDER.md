@@ -105,10 +105,13 @@ Three of those deserve an explanation:
 
 Click **Create Web Service**. The first build takes 3–6 minutes.
 
-When it says *Live*, open:
+When it says *Live*, Render shows the service URL at the top of the page,
+just under the service name. It is built from the name **you** chose, so it is
+almost certainly not the one written in this guide. Open your URL with
+`/api/health` on the end:
 
 ```
-https://smartrecap-api.onrender.com/api/health
+https://<your-service-name>.onrender.com/api/health
 ```
 
 You want:
@@ -139,9 +142,15 @@ You want:
 Before deploying, open **Environment Variables** and add:
 
 ```
-VITE_API_BASE_URL     https://smartrecap-api.onrender.com
+VITE_API_BASE_URL     https://<your-service-name>.onrender.com
 VITE_GOOGLE_CLIENT_ID <the same Google client id as the backend>
 ```
+
+> **Paste your own Render URL here, not the placeholder.** Copy it from the top
+> of the Render service page. If you paste a hostname that does not exist, the
+> site loads perfectly and then every action fails with "The SmartRecap API is
+> not responding" — which looks like the backend is down when it is actually
+> fine and simply being called at the wrong address.
 
 > **These are baked into the JavaScript at build time, not read at runtime.**
 > Vite replaces `import.meta.env.VITE_*` with literal strings during the build.
@@ -170,10 +179,16 @@ Three things still point at the wrong place.
 
 ### 3.1 Tell the backend about the frontend
 
+Vercel gives a project several URLs. Use the **production domain** from
+Project → Settings → Domains — the short, stable one. The long URL with a random
+string in it (`smartrecap-qp7flphw6-...`) belongs to one individual deployment
+and changes every time you deploy, so anything you configure against it breaks
+on your next push.
+
 Render → your service → **Environment** → edit `CORS_ORIGINS`:
 
 ```
-https://smartrecap.vercel.app,http://localhost:5173
+https://<your-project>.vercel.app,http://localhost:5173
 ```
 
 Comma-separated, no spaces, **no trailing slashes**, and the scheme (`https://`)
@@ -289,6 +304,8 @@ Later deploys take a minute or two.
 | Refreshing `/app/anything` gives 404 | `vercel.json` is missing or its rewrite was removed |
 | First request takes ~50 s | The instance was asleep. Expected on the free plan |
 | Recap generates but reads like a list of sentences | No provider key reached the backend. `/api/health` will show `ai_configured: false` |
+| Every recap is the same sample about geometric progressions | `DEMO_MODE` is `true` on Render. Set it to `false` |
+| Sharing the link shows a Vercel login page | Deployment Protection is on. Vercel → Project → Settings → Deployment Protection |
 
 ---
 
