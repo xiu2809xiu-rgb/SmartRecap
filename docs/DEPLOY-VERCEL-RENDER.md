@@ -142,9 +142,15 @@ You want:
 Before deploying, open **Environment Variables** and add:
 
 ```
-VITE_API_BASE_URL     https://<your-service-name>.onrender.com
+VITE_API_BASE_URL     https://<your-service-name>.onrender.com/api
 VITE_GOOGLE_CLIENT_ID <the same Google client id as the backend>
 ```
+
+> **The `/api` on the end is required.** The frontend appends paths like
+> `/auth/guest` to whatever this is set to, and every route on the backend lives
+> under `/api`. Without it, requests land on `/auth/guest` instead of
+> `/api/auth/guest` and every call returns **Not Found** — the site loads, the
+> backend is healthy, and nothing works.
 
 > **Paste your own Render URL here, not the placeholder.** Copy it from the top
 > of the Render service page. If you paste a hostname that does not exist, the
@@ -157,8 +163,12 @@ VITE_GOOGLE_CLIENT_ID <the same Google client id as the backend>
 > Changing one in the dashboard does nothing until you **Redeploy**. This
 > catches everyone once; when a change appears to have no effect, this is why.
 
-No trailing slash on the API URL. The frontend strips one if present, but the
+No trailing slash after `/api`. The frontend strips one if present, but the
 habit will bite you elsewhere.
+
+To sanity-check the value before you deploy, open it in a browser with `/health`
+on the end. `https://<your-service>.onrender.com/api/health` should return JSON.
+If it 404s, the value is wrong.
 
 ### 2.3 Deploy
 
@@ -303,6 +313,7 @@ Later deploys take a minute or two.
 | Google popup shows an error page | The Vercel origin is not in **Authorised JavaScript origins** |
 | Refreshing `/app/anything` gives 404 | `vercel.json` is missing or its rewrite was removed |
 | First request takes ~50 s | The instance was asleep. Expected on the free plan |
+| Every action fails with **Not Found** | `VITE_API_BASE_URL` is missing the `/api` suffix. It must end `.onrender.com/api` |
 | Recap generates but reads like a list of sentences | No provider key reached the backend. `/api/health` will show `ai_configured: false` |
 | Every recap is the same sample about geometric progressions | `DEMO_MODE` is `true` on Render. Set it to `false` |
 | Sharing the link shows a Vercel login page | Deployment Protection is on. Vercel → Project → Settings → Deployment Protection |
