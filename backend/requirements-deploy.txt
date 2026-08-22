@@ -1,0 +1,47 @@
+# What the API needs to run on a small host — Render's free tier and similar.
+#
+# requirements.txt is the full stack, including the OCR toolchain: torch,
+# torchvision, paddlepaddle, paddleocr, pix2text and two OpenCV builds. That is
+# several gigabytes installed and will not fit in a 512 MB instance, let alone
+# build inside one.
+#
+# It does not have to. Every one of those is imported LAZILY, inside the
+# function that uses it (extractors.py:428, :452), and nothing heavy appears at
+# module scope anywhere in app/ — checked by parsing the module-level imports of
+# every file in the package. The API starts, serves and generates recaps
+# without them.
+#
+# What you give up by deploying this set: OCR. A scanned PDF or a photo of
+# handwritten notes has no selectable text, so nothing is extracted from it.
+# Text PDFs, PowerPoint, Word, plain text and Markdown all work normally.
+#
+# Versions match requirements.txt exactly, so what runs on the host is what was
+# tested locally.
+
+fastapi==0.128.8
+uvicorn[standard]==0.39.0
+python-multipart==0.0.20
+pydantic-settings==2.11.0
+
+# Document extraction. These are the only non-trivial imports at module scope.
+PyMuPDF==1.26.5
+python-pptx==1.0.2
+python-docx==1.2.0
+
+# Model providers.
+openai==2.48.0
+httpx==0.28.1
+
+# Shared utilities the extractor and image paths import.
+numpy==2.0.2
+Pillow==11.3.0
+filetype==1.2.0
+
+# Google sign-in: verifies the ID token against Google's JWKS. `requests` is the
+# transport google-auth uses.
+google-auth==2.56.3
+requests==2.32.5
+
+# Imported lazily, and only reached when S3_BUCKET or TABLE_NAME is set. Kept in
+# so durable storage can be switched on later without changing this file.
+boto3==1.42.97

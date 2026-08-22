@@ -1,0 +1,66 @@
+# Render Blueprint for the FastAPI backend.
+#
+# Render can read this file and create the service for you ("New > Blueprint"),
+# or you can create a Web Service by hand and copy the four settings below into
+# the form. Both end up in the same place; the file exists so the settings are
+# written down rather than living only in a dashboard.
+#
+# See docs/DEPLOY-VERCEL-RENDER.md for the full walkthrough.
+
+services:
+  - type: web
+    name: smartrecap-api
+    runtime: python
+    plan: free
+    # The FastAPI app lives in backend/, so Render runs everything from there.
+    rootDir: backend
+    # requirements-deploy.txt, not requirements.txt. The full file pulls torch,
+    # paddle and two OpenCV builds -- gigabytes that will not build, let alone
+    # run, in a 512 MB free instance. The deploy set is the same API without the
+    # OCR toolchain, which is imported lazily and never touched unless a scanned
+    # page needs reading.
+    buildCommand: pip install -r requirements-deploy.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+
+    envVars:
+      # numpy 2.0.2 and Pillow 11.3.0 publish manylinux wheels for 3.11.
+      # On a newer interpreter pip falls back to building them from source and
+      # the build fails, so this pin is load-bearing rather than tidiness.
+      - key: PYTHON_VERSION
+        value: 3.11.9
+
+      # Signs session tokens. It defaults to a fresh random value per process,
+      # which would silently sign everyone out on every restart and every wake
+      # from sleep. generateValue makes Render mint one once and keep it.
+      - key: JWT_SECRET
+        generateValue: true
+
+      # Set after the frontend is deployed -- it needs the Vercel URL, which
+      # does not exist until then. sync:false means "ask me in the dashboard".
+      - key: CORS_ORIGINS
+        sync: false
+
+      # The same OAuth client id the frontend uses. The backend verifies the
+      # token it receives against Google's keys, so both halves need it.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+
+      # At least one model provider. Without any, recaps fall back to a local
+      # extractive summary: the app works, the writing is much weaker.
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+
+      # Left empty on purpose. Empty S3_BUCKET routes uploads through the API
+      # itself instead of a presigned S3 URL, and empty TABLE_NAME keeps every
+      # record in memory. Both are what make an AWS-free deploy possible; see
+      # the trade-off section of the guide before changing either.
+      - key: S3_BUCKET
+        value: ""
+      - key: TABLE_NAME
+        value: ""
+
+      - key: MAX_FILE_MB
+        value: "25"
