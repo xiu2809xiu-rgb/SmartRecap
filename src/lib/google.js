@@ -165,6 +165,10 @@ export async function mountGoogleButton(container, { onCredential, onError }) {
       shape: 'pill',
       logo_alignment: 'left',
       width: drawnWidth,
+      // Without this GIS picks the browser's or the Google account's language,
+      // so the one control on the page that Google draws could come back in a
+      // different language from everything around it.
+      locale: 'en',
     });
   };
 

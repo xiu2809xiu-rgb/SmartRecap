@@ -139,7 +139,14 @@
   pointer-events: none;
 }
 
-.auth-learner-name { width: 100%; }
+/* The label block stays click-through so it cannot swallow pointer events
+   meant for the model behind it, but the canvas itself has to receive them --
+   ParticleText scatters the glyphs away from the cursor, and with
+   pointer-events inherited from .auth-learner it never saw a pointermove. */
+.auth-learner-name {
+  width: 100%;
+  pointer-events: auto;
+}
 
 .auth-learner-role {
   font-size: var(--t-xs);

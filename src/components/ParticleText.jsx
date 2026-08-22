@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import './ParticleText.css';
 import { usePrefs } from '../lib/prefs.jsx';
 
 /**

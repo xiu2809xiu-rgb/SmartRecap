@@ -20,17 +20,6 @@
   margin-bottom: 4px;
 }
 
-/* The canvas inherits its typeface from here — ParticleText measures the font
-   that actually loaded rather than assuming one. */
-.particle-text {
-  display: block;
-  width: 100%;
-  font-family: var(--font);
-  /* The global `canvas { max-width: 100% }` rule would otherwise fight the
-     explicit pixel height the component sets from its own measurement. */
-  max-width: none;
-}
-
 /* Rec stands clear of the scatter, not in front of it. The offset is one
    mascot-width past the hero's edge so it cannot land on a glyph, and it is
    dropped entirely once the viewport is too narrow to hold both. */

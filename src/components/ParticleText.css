@@ -1,0 +1,20 @@
+/* Base styles for the ParticleText canvas.
+ *
+ * These used to live in notfound.css, which is imported by a lazily-loaded
+ * route. That made them present only after someone had visited the 404 page:
+ * everywhere else the canvas rendered without them, and font-family is not
+ * cosmetic here -- the component reads the computed font to measure the glyphs
+ * it turns into particles. The name on the sign-in page was therefore drawn in
+ * whatever font happened to be inherited, and would change appearance
+ * depending on which pages had been visited first.
+ *
+ * Importing this from the component keeps the rules wherever the component is.
+ */
+.particle-text {
+  display: block;
+  width: 100%;
+  font-family: var(--font);
+  /* The global `canvas { max-width: 100% }` rule would otherwise fight the
+     explicit pixel height the component sets from its own measurement. */
+  max-width: none;
+}
