@@ -107,6 +107,13 @@
   --dur-slow: 520ms;
 
   --shell-max: 1240px;
+  /* Chrome runs wider than the reading column: a comfortable measure is a rule
+     for prose, and the top bar is not prose. Every header uses this so the
+     brand lands in the same place on every page -- the login header used to
+     use --shell-max instead, which put its logo 160px right of the one on the
+     landing page. */
+  --chrome-max: min(1560px, 100%);
+  --chrome-height: 70px;
   --read-max: 74ch;
 }
 

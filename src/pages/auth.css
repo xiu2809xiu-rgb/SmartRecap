@@ -1,11 +1,16 @@
 .auth { position: relative; min-height: 100vh; display: flex; flex-direction: column; }
 
-.auth-head {
+.auth-head.shell {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  height: 76px;
+  /* The same width and height as every other header. It carries .shell for its
+     centring and padding, but overrides the content cap: sharing --shell-max
+     put the brand 160px further right here than on the landing page, and made
+     this header 6px taller than the rest. */
+  max-width: var(--chrome-max);
+  height: var(--chrome-height);
   flex-shrink: 0;
 }
 
