@@ -26,17 +26,25 @@ const ScrollFloat = ({
     // that wraps carries the space onto the next line and renders a visible
     // indent. Bare spaces collapse at a line start, and gsap only ever targets
     // .char elements \u2014 which spaces never needed to be.
-    return text
-      .split('')
-      .map((char, index) =>
-        char === ' ' ? (
-          ' '
-        ) : (
-          <span className="char" key={index}>
-            {char}
-          </span>
-        ),
+    // SmartRecap change: characters are grouped into a .word wrapper.
+    // Every .char is an inline-block, so with nothing holding a word together a
+    // line could break between any two letters -- this heading rendered as
+    // "Three steps, and the t / hird one is the point". The wrapper takes the
+    // line breaking and keeps each word whole; gsap still finds every .char,
+    // in order, because it queries them from the container.
+    let key = 0;
+    return text.split(' ').flatMap((word, wordIndex) => {
+      const chars = (
+        <span className="word" key={`w${wordIndex}`}>
+          {word.split('').map((char) => (
+            <span className="char" key={key++}>
+              {char}
+            </span>
+          ))}
+        </span>
       );
+      return wordIndex === 0 ? [chars] : [' ', chars];
+    });
   }, [children]);
 
   useEffect(() => {

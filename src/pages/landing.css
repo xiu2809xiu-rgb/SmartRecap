@@ -180,31 +180,38 @@
 .how-step h3 { font-size: var(--t-h3); margin-bottom: 8px; }
 .how-step p { color: var(--ink-2); font-size: var(--t-sm); max-width: 54ch; }
 
+/* Stack fills whatever box it is given, so the size lives here rather than in
+   props. The CardSwap rules that used to sit in this spot -- re-anchoring its
+   bottom-right origin to the centre, then scaling it down twice to stop the fan
+   leaving the page -- went with CardSwap; none of it is needed now. */
 .how-visual {
   position: relative;
+  display: grid;
+  place-items: center;
   min-height: 400px;
 }
 
-/* CardSwap anchors itself to the bottom-right of its container and pushes 5%
-   further out, which sends the stack past the page edge here. Re-anchoring it
-   to the centre keeps the whole stack inside the column. */
-.how-visual .card-swap-container {
-  right: 50%;
-  bottom: 50%;
-  transform: translate(50%, 50%);
-  transform-origin: center;
+.how-visual .stack-container {
+  /* Short of the full column on purpose. The cards are rotated a few degrees
+     about a corner, so the fan reaches wider than the card itself -- at 360px
+     that put its edge 2px past the screen. The inset is the room the rotation
+     needs, which is cheaper than clipping the fan to hide it. */
+  width: min(400px, calc(100% - 18px));
+  height: 290px;
+  /* The cards are draggable; say so to a pointer. */
+  cursor: grab;
 }
 
-@media (max-width: 768px) {
-  .how-visual .card-swap-container { transform: translate(50%, 50%) scale(0.8); }
-}
+.how-visual .stack-container:active { cursor: grabbing; }
 
 .swap-card {
   /* Tokens, not literals. A fixed near-black behind token-coloured text is
      dark-on-dark under daylight, where --ink-2 resolves to a dark ink. */
-  background: linear-gradient(160deg, var(--ground-raised), color-mix(in srgb, var(--ground-raised) 70%, var(--ground))) !important;
-  border: 1px solid var(--glass-line-strong) !important;
-  border-radius: var(--r-lg) !important;
+  background: linear-gradient(160deg, var(--ground-raised), color-mix(in srgb, var(--ground-raised) 70%, var(--ground)));
+  border: 1px solid var(--glass-line-strong);
+  border-radius: var(--r-lg);
+  width: 100%;
+  height: 100%;
   padding: 26px;
   display: flex;
   flex-direction: column;
@@ -397,10 +404,8 @@
    clip on the container is the guarantee: however the animation swings, it
    cannot widen the page. */
 @media (max-width: 900px) {
-  .how-visual { overflow: hidden; }
-
-  .how-visual .card-swap-container {
-    transform-origin: center;
-    transform: translate(50%, 50%) scale(0.66);
-  }
+  /* Stack stays inside its own box, so this is a size change rather than the
+     clip-and-shrink the old fan needed. */
+  .how-visual { min-height: 320px; }
+  .how-visual .stack-container { height: 250px; }
 }
