@@ -257,3 +257,7 @@
   .setting-control .segmented { width: 100%; justify-content: space-between; }
   .setting-control .segmented button { flex: 1; justify-content: center; }
 }
+
+/* A setting that reports state rather than offering a control. */
+.settings-fixed { font-size: var(--t-sm); color: var(--ink-3); text-align: right; }
+.settings-fixed.is-on { color: var(--good); font-weight: 650; }

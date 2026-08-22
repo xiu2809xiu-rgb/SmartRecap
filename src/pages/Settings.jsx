@@ -4,6 +4,8 @@ import { usePrefs, THEMES, FONT_SIZES } from '../lib/prefs.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { useStore } from '../lib/store.jsx';
 import { api, isDemo } from '../lib/api.js';
+import { requestSessionAlerts, sessionAlertState } from '../lib/notifications.js';
+import { SESSION_LIMIT_MS, GRACE_MS } from '../lib/session.jsx';
 import { Icon, Modal, Segmented, useToast } from '../components/ui.jsx';
 import Mascot from '../components/mascot/Mascot.jsx';
 import FaceEnrolment from '../components/auth/FaceEnrolment.jsx';
@@ -29,6 +31,44 @@ function Row({ title, hint, children, stacked = false }) {
       </div>
       <div className="setting-control">{children}</div>
     </div>
+  );
+}
+
+/**
+ * Desktop alerts for the session warning.
+ *
+ * Permission can only be asked for from a gesture, so this button exists as
+ * much for recovery as for discovery: someone who waved away the browser's
+ * prompt has no other way back to it inside the app.
+ */
+function SessionAlertControl() {
+  const [state, setState] = useState(() => sessionAlertState());
+  const toast = useToast();
+
+  if (state === 'unsupported') return <span className="settings-fixed">Not available in this browser</span>;
+  if (state === 'granted') return <span className="settings-fixed is-on">On</span>;
+  if (state === 'denied') {
+    return (
+      <span className="settings-fixed">
+        Blocked — allow notifications for this site in your browser
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="btn btn-ghost btn-sm"
+      onClick={async () => {
+        const result = await requestSessionAlerts();
+        setState(result);
+        if (result === 'granted') toast.push('Desktop alerts on.', 'good');
+        else if (result === 'denied') toast.push('Your browser blocked notifications for this site.', 'warn');
+      }}
+    >
+      <Icon name="notifications" size={16} />
+      Turn on
+    </button>
   );
 }
 
@@ -196,6 +236,22 @@ export default function Settings() {
       <FaceEnrolment isGuest={isGuest} />
 
       {/* ------------------------------------------------------- account -- */}
+      <Section title="Session" icon="lock_clock">
+        <Row
+          title="Sign out after an hour"
+          hint={`SmartRecap asks whether you are still there after ${SESSION_LIMIT_MS / 60000} minutes, and signs you out ${GRACE_MS / 60000} minutes later if nothing answers. This keeps a shared machine safe and cannot be turned off.`}
+        >
+          <span className="settings-fixed">Always on</span>
+        </Row>
+
+        <Row
+          title="Alert me on my desktop"
+          hint="So the warning is noticed even when SmartRecap is behind another window. The dialog and the chime always play; this adds a system notification."
+        >
+          <SessionAlertControl />
+        </Row>
+      </Section>
+
       <Section title="Account" icon="person">
         <dl className="settings-dl">
           <div>
