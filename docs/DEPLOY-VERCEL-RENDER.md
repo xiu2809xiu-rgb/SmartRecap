@@ -89,7 +89,7 @@ MAX_FILE_MB         25
 CORS_ORIGINS        http://localhost:5173
 ```
 
-Three of those deserve an explanation:
+Four of those deserve an explanation:
 
 - **`PYTHON_VERSION` is load-bearing, not tidiness.** `numpy==2.0.2` and
   `Pillow==11.3.0` publish prebuilt wheels for Python 3.11. On a newer
@@ -97,6 +97,17 @@ Three of those deserve an explanation:
 - **`JWT_SECRET` must be set.** Left unset it defaults to a fresh random value
   every time the process starts — which on a free instance that sleeps means
   everyone is silently signed out several times a day.
+- **`OPENROUTER_API_KEY` is what decides whether the site looks finished.** It
+  is the one variable here that changes what a visitor actually sees. With a
+  model key, recaps are written prose. With none, the API falls back to a local
+  extractive summary: it pulls real sentences out of your slides and cites them
+  correctly, but it does not write. Everything still works — it just reads like
+  an outline rather than a recap.
+
+  If a previous deployment of this project felt better than yours, this is
+  almost always the difference. Any one of `OPENROUTER_API_KEY`,
+  `GEMINI_API_KEY` or `OPENAI_API_KEY` is enough; you do not need all three.
+
 - **`CORS_ORIGINS` is a placeholder for now.** You will replace it in Part 3
   once Vercel has given you a domain. Leaving localhost in it is harmless and
   useful — it lets you point a local frontend at the deployed API.
@@ -114,14 +125,24 @@ almost certainly not the one written in this guide. Open your URL with
 https://<your-service-name>.onrender.com/api/health
 ```
 
-You want:
+You want `"status": "ok"`. The response looks like this:
 
 ```json
-{ "status": "ok", "ai_configured": true, "demo_mode": false, "extractors": [...] }
+{ "status": "ok", "ai_configured": false, "demo_mode": true, "extractors": [...] }
 ```
 
-- `ai_configured: false` means no provider key was picked up. Recaps still
-  generate, but as a plain extractive summary rather than written prose.
+**Do not read those two flags as a verdict on your deployment.** Both are
+computed from the Gemini key alone:
+
+- `ai_configured` is true only if `GEMINI_API_KEY` is set.
+- `demo_mode` is reported true whenever Gemini is missing, whatever you set
+  `DEMO_MODE` to.
+
+So a service running perfectly well on an OpenRouter key still reports
+`ai_configured: false` and `demo_mode: true`. That is not a fault and there is
+nothing to fix. Judge the AI by whether recaps come back as written prose;
+judge the deploy by `"status": "ok"`.
+
 - A long pause before it responds is expected — see [free tier](#the-free-tier-trade-offs).
 
 **Copy the service URL.** You need it next.
