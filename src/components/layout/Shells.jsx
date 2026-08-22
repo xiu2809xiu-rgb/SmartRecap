@@ -180,7 +180,7 @@ export function MarketingShell({ children }) {
             </nav>
             <nav aria-label="Project">
               <h3>Project</h3>
-              <a href="https://github.com" rel="noreferrer noopener" target="_blank">
+              <a href="https://github.com/RIHAN1009/smartrecap" rel="noreferrer noopener" target="_blank">
                 Source repository
               </a>
               <Link to="/architecture">Architecture and live status</Link>
