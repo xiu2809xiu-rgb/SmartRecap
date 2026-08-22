@@ -54,15 +54,14 @@
 }
 
 .topbar-inner {
-  height: 70px;
+  height: var(--chrome-height);
   display: flex;
   align-items: center;
   gap: 22px;
-  /* Wider than the reading column. .shell caps content at --shell-max (1240px)
-     so prose keeps a comfortable measure, but the bar is chrome, not prose, and
-     at 1240px the seven destinations plus the brand and the account button do
-     not fit -- which is what forced "New recap" onto a second line. */
-  max-width: min(1560px, 100%);
+  /* Chrome width, shared with every other header — see --chrome-max. At
+     --shell-max the seven destinations plus the brand and the account button
+     do not fit, which is what forced "New recap" onto a second line. */
+  max-width: var(--chrome-max);
 }
 
 .brand {
@@ -243,7 +242,11 @@
 
   /* The bar loses its desktop gap so the hamburger, brand and account button
      have room without wrapping. */
-  .topbar-inner { gap: 10px; height: 62px; }
+  /* Shorter chrome on a phone. Set on the token rather than on .topbar-inner,
+     so the auth header shrinks with it instead of standing 8px taller. */
+  :root { --chrome-height: 62px; }
+
+  .topbar-inner { gap: 10px; }
 
   /* The brand is a link and therefore a tap target: it needs the same 44px
      minimum as everything else in the bar. */
