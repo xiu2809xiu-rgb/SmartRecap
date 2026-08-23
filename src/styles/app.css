@@ -325,6 +325,11 @@
   color: var(--ink-4);
 }
 
+/* The right-hand half of .foot-bottom's space-between row. Two names because
+   two people wrote the thing: the carousel above says who is on the team, this
+   says who built which half of it. */
+.foot-signature { opacity: 0.72; }
+
 @media (max-width: 760px) {
   .foot-top { grid-template-columns: minmax(0, 1fr); }
 }

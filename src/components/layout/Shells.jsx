@@ -195,6 +195,7 @@ export function MarketingShell({ children }) {
                 not from the project: it is a copy-and-own library under MIT, and
                 the obligation is to keep the notice with the source. It lives in
                 src/reactbits/LICENSE and src/reactbits/README.md. */}
+            <p className="foot-signature">Frontend by Richie Koh. Backend by Rihan Iqbal.</p>
           </div>
         </div>
       </footer>
